@@ -134,10 +134,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let result = ParkWorld.buildCenter()
         let tile = GameConstants.tileSize
         let storyProgress = gameState?.storyProgress ?? .introCheckFountain
-        let fixedNPCs: [(NPCKind, CGPoint)] = [
-            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8)),
-            (.hazel, CGPoint(x: tile * 44, y: tile * 38))
+        var fixedNPCs: [(NPCKind, CGPoint)] = [
+            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8))
         ]
+        if !(gameState?.hasHazelJoined ?? false) {
+            fixedNPCs.append((.hazel, CGPoint(x: tile * 44, y: tile * 38)))
+        }
         let openingEnemySpawns: [(EnemyKind, CGPoint)]
         switch storyProgress {
         case .acceptedLostAcorn:

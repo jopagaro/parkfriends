@@ -21,6 +21,10 @@ final class BattleNode: SKNode {
     private let backgroundContainer   = SKNode()
     private let panel                 = SKShapeNode()
     private let enemySprite           = SKSpriteNode()
+    private let enemyShadow           = SKSpriteNode(color: SKColor(white: 0, alpha: 0.24),
+                                                     size: CGSize(width: 116, height: 18))
+    private let impactFlash           = SKSpriteNode(color: .white,
+                                                     size: CGSize(width: 4000, height: 4000))
     private let enemyNameLbl          = SKLabelNode()
     private let enemyHPBg             = SKSpriteNode(color: SKColor(white: 0.15, alpha: 1),
                                                       size: CGSize(width: 200, height: 10))
@@ -30,6 +34,7 @@ final class BattleNode: SKNode {
     private var partySlots:           [PartySlot]    = []
     private let menuNode              = SKNode()
     private var menuButtons:          [BattleButton] = []
+    private let enemyBaseY: CGFloat   = 118
 
     // MARK: State
     private var currentEnemy:         EnemyNode?
@@ -85,20 +90,24 @@ final class BattleNode: SKNode {
         backgroundContainer.zPosition = -0.5
         panel.addChild(backgroundContainer)
 
-        let eY: CGFloat = 118
+        enemyShadow.position = CGPoint(x: 220, y: enemyBaseY - 58)
+        enemyShadow.alpha = 0.6
+        enemyShadow.zPosition = 0.2
+        panel.addChild(enemyShadow)
+
         enemySprite.size     = CGSize(width: 110, height: 110)
-        enemySprite.position = CGPoint(x: 220, y: eY)
+        enemySprite.position = CGPoint(x: 220, y: enemyBaseY)
         panel.addChild(enemySprite)
 
         enemyNameLbl.fontName               = "AvenirNext-Bold"
         enemyNameLbl.fontSize               = 18
         enemyNameLbl.fontColor              = .white
         enemyNameLbl.horizontalAlignmentMode = .left
-        enemyNameLbl.position               = CGPoint(x: -panelW/2+28, y: eY+52)
+        enemyNameLbl.position               = CGPoint(x: -panelW/2+28, y: enemyBaseY+52)
         panel.addChild(enemyNameLbl)
 
         enemyHPBg.anchorPoint = CGPoint(x: 0, y: 0.5)
-        enemyHPBg.position    = CGPoint(x: -panelW/2+28, y: eY+28)
+        enemyHPBg.position    = CGPoint(x: -panelW/2+28, y: enemyBaseY+28)
         panel.addChild(enemyHPBg)
         enemyHPFill.anchorPoint = CGPoint(x: 0, y: 0.5)
         enemyHPFill.zPosition   = 1
@@ -140,6 +149,10 @@ final class BattleNode: SKNode {
                          size: 11, color: SKColor(white: 1, alpha: 0.30))
         hint.position = CGPoint(x: 0, y: -panelH/2+20)
         panel.addChild(hint)
+
+        impactFlash.alpha = 0
+        impactFlash.zPosition = 10
+        addChild(impactFlash)
     }
 
     private func buildPartySlots() {
@@ -198,16 +211,22 @@ final class BattleNode: SKNode {
 
         enemySprite.texture = WorldSprites.texture(enemy: enemy.kind)
         enemySprite.size    = enemy.kind.isBoss ? CGSize(width: 150, height: 150) : CGSize(width: 110, height: 110)
+        enemyShadow.size    = enemy.kind.isBoss ? CGSize(width: 148, height: 22) : CGSize(width: 116, height: 18)
         enemyNameLbl.text   = "\(enemy.kind.displayName)  (Lv.\(levelForEnemy(enemy)))"
         refreshEnemyHP(animated: false)
         refreshPartySlots()
         logLabel.text = "A \(enemy.kind.displayName) approaches!\nChoose an action."
 
         isHidden = false
+        alpha = 1
         setScale(0.86)
+        enemySprite.alpha = 0
+        enemySprite.position = CGPoint(x: 340, y: enemyBaseY + 16)
+        enemyShadow.alpha = 0
         let pop = SKAction.group([.scale(to: 1.0, duration: 0.18), .fadeIn(withDuration: 0.18)])
         pop.timingMode = .easeOut
         run(pop)
+        animateBattleIntro(isBoss: enemy.kind.isBoss)
         setMenu(true)
     }
 
@@ -325,12 +344,14 @@ final class BattleNode: SKNode {
 
         showLog(msg) {
             if !hit.isMiss {
+                self.animatePlayerStrike()
                 self.flashEnemy()
                 let defeated = enemy.takeDamage(finalDmg)
                 self.refreshEnemyHP(animated: true)
                 self.checkBossPhaseTransition(enemy: enemy)
                 if defeated { self.doVictory(enemy) } else { self.startEnemyTurn() }
             } else {
+                self.animatePlayerFeint()
                 self.startEnemyTurn()
             }
         }
@@ -363,10 +384,14 @@ final class BattleNode: SKNode {
                               lck: member.lck, attackerSPD: member.spd, defenderSPD: enemy.kind.battleSPD,
                               isSpecial: true, mult: 1.4)
             if hit.isMiss {
-                showLog("Shell Slam! 🐢\nShelly overbalanced — miss!") { self.startEnemyTurn() }
+                showLog("Shell Slam! 🐢\nShelly overbalanced — miss!") {
+                    self.animatePlayerFeint()
+                    self.startEnemyTurn()
+                }
             } else {
                 let recoil = 1
                 showLog("Shell Slam! 💥 \(hit.damage) damage!\n(Shelly takes \(recoil) recoil)") {
+                    self.animatePlayerStrike(heavy: true)
                     self.flashEnemy()
                     _ = enemy.takeDamage(hit.damage)
                     state.party[state.activeIndex].hp = max(0, state.party[state.activeIndex].hp - recoil)
@@ -386,11 +411,14 @@ final class BattleNode: SKNode {
             if distracted && !hit.isMiss { msg += "\nEnemy is Distracted!" }
             showLog(msg) {
                 if !hit.isMiss {
+                    self.animateProjectileArc()
                     self.flashEnemy()
                     _ = enemy.takeDamage(hit.damage)
                     if distracted { self.enemyBonusSPD -= 4; self.enemyBonusTurns = max(self.enemyBonusTurns, 2) }
                     self.refreshEnemyHP(animated: true)
                     self.checkBossPhaseTransition(enemy: enemy)
+                } else {
+                    self.animatePlayerFeint()
                 }
                 if enemy.isDead { self.doVictory(enemy) } else { self.startEnemyTurn() }
             }
@@ -400,6 +428,7 @@ final class BattleNode: SKNode {
                               lck: member.lck, attackerSPD: member.spd, defenderSPD: enemy.kind.battleSPD,
                               isSpecial: true, mult: 1.6)
             showLog("Curl & Roll! ⭐️\nSpike hits for \(hit.damage) damage!") {
+                self.animatePlayerStrike(heavy: true)
                 self.flashEnemy()
                 _ = enemy.takeDamage(hit.damage)
                 self.refreshEnemyHP(animated: true)
@@ -604,6 +633,7 @@ final class BattleNode: SKNode {
             msg += preMsg
             showLog(msg) {
                 if !hit.isMiss {
+                    self.animateEnemyStrike()
                     self.flashParty()
                     state.party[targetIdx].hp = max(0, state.party[targetIdx].hp - dmg)
                     self.refreshPartySlots()
@@ -615,6 +645,7 @@ final class BattleNode: SKNode {
         case .aoeAttack(let mult):
             var totalMsg = "\(eName) uses \(choice.name)!\n\(choice.message)"
             showLog(totalMsg + preMsg) {
+                self.animateEnemyStrike(heavy: true)
                 for i in state.party.indices where state.party[i].isAlive {
                     let hit = self.calcHit(
                         atk: enemy.kind.attackPower + self.enemyBonusATK,
@@ -637,6 +668,7 @@ final class BattleNode: SKNode {
             let dmg = resolvePlayerDamageTaken(max(1, amount - actualDef), target: target, idx: targetIdx)
             let msg = "\(eName) uses \(choice.name)!\n\(choice.message)\n\(dmg) damage.\(preMsg)"
             showLog(msg) {
+                self.animateEnemyStrike()
                 self.flashParty()
                 state.party[targetIdx].hp = max(0, state.party[targetIdx].hp - dmg)
                 self.refreshPartySlots()
@@ -647,6 +679,7 @@ final class BattleNode: SKNode {
         case .aoeFlat(let amount):
             let msg = "\(eName) uses \(choice.name)!\n\(choice.message)\n\(amount) flat damage to all.\(preMsg)"
             showLog(msg) {
+                self.animateEnemyStrike(heavy: true)
                 for i in state.party.indices where state.party[i].isAlive {
                     state.party[i].hp = max(0, state.party[i].hp - amount)
                 }
@@ -891,6 +924,7 @@ final class BattleNode: SKNode {
     // MARK: - Flash effects
 
     private func flashEnemy() {
+        pulseImpactFlash(alpha: 0.14)
         enemySprite.run(.sequence([
             .colorize(with: .white, colorBlendFactor: 0.9, duration: 0.05),
             .colorize(withColorBlendFactor: 0, duration: 0.15),
@@ -900,6 +934,7 @@ final class BattleNode: SKNode {
     }
 
     private func flashParty() {
+        pulseImpactFlash(alpha: 0.10)
         partySlots.forEach { slot in
             slot.run(.sequence([
                 .colorize(with: .red, colorBlendFactor: 0.7, duration: 0.06),
@@ -919,7 +954,14 @@ final class BattleNode: SKNode {
     private func rebuildBackground(for kind: EnemyKind) {
         backgroundContainer.removeAllChildren()
         let bg = kind.battleBackground.buildNode(size: CGSize(width: panelW - 8, height: panelH - 8))
+        bg.position = CGPoint(x: -4, y: -4)
+        bg.alpha = 0.92
         backgroundContainer.addChild(bg)
+        let drift = SKAction.sequence([
+            .moveBy(x: -10, y: 0, duration: 2.2),
+            .moveBy(x: 10, y: 0, duration: 2.2)
+        ])
+        bg.run(.repeatForever(drift))
     }
 
     // MARK: - Item use
@@ -1100,6 +1142,95 @@ final class BattleNode: SKNode {
 
     private func levelForEnemy(_ enemy: EnemyNode) -> Int {
         max(1, enemy.kind.maxHP / 8)
+    }
+
+    private func animateBattleIntro(isBoss: Bool) {
+        let target = enemySprite.position
+        let settle = CGPoint(x: 220, y: target.y - 16)
+        enemySprite.run(.group([
+            .fadeIn(withDuration: 0.18),
+            .move(to: settle, duration: isBoss ? 0.32 : 0.24),
+            .scale(to: 1.0, duration: 0.24)
+        ]))
+        enemyShadow.run(.fadeAlpha(to: 0.6, duration: 0.20))
+        let bob = SKAction.sequence([
+            .moveBy(x: 0, y: 6, duration: 0.9),
+            .moveBy(x: 0, y: -6, duration: 0.9)
+        ])
+        bob.timingMode = .easeInEaseOut
+        enemySprite.run(.repeatForever(bob), withKey: "enemyBob")
+    }
+
+    private func animatePlayerStrike(heavy: Bool = false) {
+        let shake = heavy ? 18.0 : 10.0
+        panel.run(.sequence([
+            .moveBy(x: -shake, y: 0, duration: 0.03),
+            .moveBy(x: shake * 2, y: 0, duration: 0.05),
+            .moveBy(x: -shake, y: 0, duration: 0.03)
+        ]))
+        partySlots.forEach { slot in
+            slot.run(.sequence([
+                .moveBy(x: 0, y: heavy ? 12 : 8, duration: 0.06),
+                .moveBy(x: 0, y: heavy ? -12 : -8, duration: 0.08)
+            ]))
+        }
+    }
+
+    private func animatePlayerFeint() {
+        partySlots.forEach { slot in
+            slot.run(.sequence([
+                .moveBy(x: 0, y: 6, duration: 0.05),
+                .moveBy(x: 0, y: -6, duration: 0.08)
+            ]))
+        }
+    }
+
+    private func animateProjectileArc() {
+        let pellet = SKSpriteNode(color: SKColor(red: 0.73, green: 0.52, blue: 0.22, alpha: 1),
+                                  size: CGSize(width: 14, height: 14))
+        pellet.position = CGPoint(x: -180, y: -148)
+        pellet.zPosition = 4
+        panel.addChild(pellet)
+        let path = CGMutablePath()
+        path.move(to: pellet.position)
+        path.addQuadCurve(to: CGPoint(x: 210, y: 118), control: CGPoint(x: 20, y: 210))
+        pellet.run(.sequence([
+            .group([
+                .follow(path, asOffset: false, orientToPath: false, duration: 0.24),
+                .rotate(byAngle: .pi * 2, duration: 0.24)
+            ]),
+            .removeFromParent()
+        ]))
+    }
+
+    private func animateEnemyStrike(heavy: Bool = false) {
+        enemySprite.removeAction(forKey: "enemyBob")
+        let original = CGPoint(x: 220, y: enemySprite.position.y)
+        enemySprite.run(.sequence([
+            .moveBy(x: heavy ? -34 : -22, y: 0, duration: 0.08),
+            .move(to: original, duration: 0.12)
+        ]))
+        partySlots.forEach { slot in
+            slot.run(.sequence([
+                .moveBy(x: heavy ? -14 : -8, y: 0, duration: 0.05),
+                .moveBy(x: heavy ? 14 : 8, y: 0, duration: 0.08)
+            ]))
+        }
+        let bob = SKAction.sequence([
+            .moveBy(x: 0, y: 6, duration: 0.9),
+            .moveBy(x: 0, y: -6, duration: 0.9)
+        ])
+        bob.timingMode = .easeInEaseOut
+        enemySprite.run(.repeatForever(bob), withKey: "enemyBob")
+    }
+
+    private func pulseImpactFlash(alpha: CGFloat) {
+        impactFlash.removeAllActions()
+        impactFlash.alpha = 0
+        impactFlash.run(.sequence([
+            .fadeAlpha(to: alpha, duration: 0.04),
+            .fadeOut(withDuration: 0.10)
+        ]))
     }
 }
 
