@@ -48,14 +48,16 @@ final class DialogueManager {
         #endif
     }
 
-    func startConversation(with npc: NPCKind, asSpecies species: Species) {
+    func startConversation(with npc: NPCKind, asSpecies species: Species,
+                           quackClues: Set<QuackClue> = []) {
         activeNPC = npc
         activeSpeaker = species
         lines.removeAll()
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *), modelAvailable {
-            let instructions = Self.buildInstructions(npc: npc, species: species)
+            let instructions = Self.buildInstructions(npc: npc, species: species,
+                                                      quackClues: quackClues)
             session = LanguageModelSession(instructions: instructions)
         }
         #endif
@@ -106,24 +108,78 @@ final class DialogueManager {
     }
 
     private func fallbackReply(for npc: NPCKind, to message: String) -> String {
-        // Lightweight canned replies so the game works without the LLM.
+        fallbackReply(for: npc, clues: activeQuackClues)
+    }
+
+    /// Quack clues at the time the conversation started (injected by GameScene).
+    var activeQuackClues: Set<QuackClue> = []
+
+    private func fallbackReply(for npc: NPCKind, clues: Set<QuackClue>) -> String {
+        let rescued = clues.contains(.quackRescued)
+        let hasFeather = clues.contains(.foundFeather)
+
         switch npc {
-        case .jogger: return "*huff* …haven't got time… *puff*… watch out for rangers."
-        case .child: return "Whoaaa are you a REAL talking animal?? Can I pet you?? My mom said—"
-        case .birdwatcher: return "Shh… a goldfinch just landed. …What brings you here, little one?"
-        case .dogwalker: return "Oh hi! — NO, Biscuit, drop it — sorry, what were you saying?"
-        case .gardener: return "Mind the tulips. You seen anyone stomping through my beds?"
+        case .jogger:
+            if rescued {
+                return "*huff* Heard you found your duck friend! Amazing. *puff* Keep it up, little one."
+            } else if clues.contains(.joggerSawCity) {
+                return "*huff* Yeah, I saw that duck again… heading toward the construction zone. *puff* Be careful up there."
+            } else if hasFeather {
+                return "*huff* Missing duck? *puff* I saw one waddling fast past the south gate… looked scared."
+            }
+            return "*huff* …haven't got time… *puff*… watch out for rangers."
+
+        case .child:
+            if rescued {
+                return "YOU SAVED QUACK!! I told everyone!! Everyone says I was lying but I WASN'T!"
+            } else if clues.contains(.childSawChase) {
+                return "I already told you everything I know! The duck went THAT way — toward the big city buildings!"
+            } else if clues.isEmpty || !hasFeather {
+                return "Whoaaa are you a REAL talking animal?? Can I pet you?? My mom said—"
+            } else {
+                return "Wait — is that Quack's feather?? Oh no! I SAW a duck running really fast past the swings yesterday! Some loud machine scared it!"
+            }
+
+        case .birdwatcher:
+            if rescued {
+                return "Wonderful news about the duck. The pond feels alive again. *adjusts binoculars*"
+            } else if clues.contains(.visitedNorthPond) {
+                return "Shh… yes, I noticed the pond seems empty too. The mallard that lives there — gone since Tuesday. I suspect the construction noise drove it south."
+            }
+            return "Shh… a goldfinch just landed. …What brings you here, little one?"
+
+        case .dogwalker:
+            if rescued {
+                return "Oh my gosh that's the best news! — NO, Biscuit, DROP it — sorry, I'm so happy for your duck friend!"
+            } else if clues.contains(.pigeonCityClue) {
+                return "Biscuit kept barking at something near the old warehouse — NO, sit! — probably your duck, now that I think about it."
+            }
+            return "Oh hi! — NO, Biscuit, drop it — sorry, what were you saying?"
+
+        case .gardener:
+            if rescued {
+                return "Good. That duck belongs near the pond, not near all that concrete. *goes back to weeding*"
+            } else if hasFeather {
+                return "Found a duck feather, did you? Saw that bird myself — waddled right through my tulip beds heading toward the city. *grumbles*"
+            }
+            return "Mind the tulips. You seen anyone stomping through my beds?"
         }
     }
 
-    private static func buildInstructions(npc: NPCKind, species: Species) -> String {
-        """
+    private static func buildInstructions(npc: NPCKind, species: Species,
+                                          quackClues: Set<QuackClue>) -> String {
+        let storyContext = Self.storyContext(npc: npc, clues: quackClues)
+        return """
         You are roleplaying as an NPC in a cozy park-adventure game.
 
         YOUR CHARACTER: \(npc.persona)
 
         THE PLAYER: A small talking \(species.rawValue) named \(species.displayName) \
         has just approached you. \(species.personalityPrompt)
+
+        CURRENT SIDE-QUEST — "FIND QUACK":
+        A duck named Quack has gone missing from the pond in Park North. \
+        The player's party is investigating. \(storyContext)
 
         RULES:
         - Stay in character at all times.
@@ -132,8 +188,40 @@ final class DialogueManager {
         - React with mild surprise that an animal is talking, but go with it.
         - If asked about the park, invent vivid local details (paths, benches, \
           a pond, rangers patrolling).
-        - You may give the player hints about items, puzzles, or hidden spots \
-          if they ask.
+        - You may give the player hints about Quack's whereabouts based on \
+          the story context above.
+        - If you have clue information relevant to this NPC, weave it naturally \
+          into conversation when asked about the duck.
         """
+    }
+
+    private static func storyContext(npc: NPCKind, clues: Set<QuackClue>) -> String {
+        let rescued = clues.contains(.quackRescued)
+        if rescued { return "The duck has already been rescued — react with relief and joy." }
+
+        switch npc {
+        case .child:
+            if clues.contains(.foundFeather) && !clues.contains(.childSawChase) {
+                return "YOU saw the duck being chased toward the city by a loud machine noise two days ago. Tell the player if they ask about the feather or missing duck."
+            }
+            return "You saw nothing unusual yet."
+        case .jogger:
+            if clues.contains(.childSawChase) || clues.contains(.foundFeather) {
+                return "You jogged past the south gate and spotted a distressed duck waddling toward the city district. Mention it if they ask."
+            }
+            return "You haven't noticed anything unusual yet."
+        case .birdwatcher:
+            return "You noticed the pond's regular mallard duck has been absent since Tuesday and suspect construction noise is to blame."
+        case .dogwalker:
+            if clues.contains(.pigeonCityClue) {
+                return "Your dog Biscuit kept barking near the old City North warehouse area recently — it was probably the missing duck."
+            }
+            return "You haven't noticed anything duck-related."
+        case .gardener:
+            if clues.contains(.foundFeather) {
+                return "You saw a duck waddling hurriedly through your flower beds toward the city, going south. You're mildly annoyed it trampled your tulips."
+            }
+            return "You haven't seen the duck."
+        }
     }
 }

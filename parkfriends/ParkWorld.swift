@@ -1,177 +1,253 @@
 import SpriteKit
 
-/// Builds the static park world: ground tiles, paths, trees, benches, pond,
-/// and a stone-ruin puzzle room.
+/// Zone 1B (center) + Zone 1A (north) — Part 1 world structure.
 enum ParkWorld {
 
     struct BuildResult {
         let root: SKNode
         let npcSpawns: [CGPoint]
         let itemSpawns: [CGPoint]
-        let enemySpawns: [CGPoint]
+        let fixedItems: [(ItemKind, CGPoint)]  // deterministic story items
+        let enemySpawns: [(EnemyKind, CGPoint)]
         let playerSpawn: CGPoint
-        // Puzzle room wiring
-        let pressurePlate: PressurePlateNode
-        let gate: GateNode
-        let chest: TreasureChestNode
-        let boulder: PushableRockNode
+        let benchPositions: [CGPoint]
+        let zoneExitNodes: [ZoneExitNode]
+        let pressurePlate: PressurePlateNode?
+        let gate: GateNode?
+        let chest: TreasureChestNode?
+        let boulder: PushableRockNode?
     }
 
-    static func build() -> BuildResult {
-        let root      = SKNode()
-        root.name     = "world"
-        let tile      = GameConstants.tileSize
-        let cols      = GameConstants.worldCols
-        let rows      = GameConstants.worldRows
-        let worldSize = GameConstants.worldSize
+    // MARK: - Zone 1B — Park Center (south toward city)
 
-        // MARK: Ground
+    static func buildCenter() -> BuildResult {
+        let root = SKNode(); root.name = "world"
+        let tile = GameConstants.tileSize
+        let cols = GameConstants.parkCenterCols
+        let rows = GameConstants.parkCenterRows
+        let worldSize = GameConstants.parkCenterWorldSize
+
         let groundLayer = SKNode()
         groundLayer.zPosition = GameConstants.ZPos.ground
-        let grassA = SKColor(red: 0.47, green: 0.73, blue: 0.36, alpha: 1)
-        let grassB = SKColor(red: 0.52, green: 0.78, blue: 0.40, alpha: 1)
         for r in 0..<rows {
             for c in 0..<cols {
-                let color = ((r + c) % 2 == 0) ? grassA : grassB
-                let node  = SKSpriteNode(color: color,
-                                         size: CGSize(width: tile, height: tile))
-                node.anchorPoint = .zero
-                node.position    = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
-                groundLayer.addChild(node)
+                let color = ParkMapDesign.centerGroundColor(col: c, localRow: r)
+                let n = SKSpriteNode(color: color, size: CGSize(width: tile, height: tile))
+                n.anchorPoint = .zero
+                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+                groundLayer.addChild(n)
             }
         }
         root.addChild(groundLayer)
 
-        // MARK: Dirt path
-        let pathColor = SKColor(red: 0.78, green: 0.66, blue: 0.45, alpha: 1)
-        let pathLayer = SKNode()
-        pathLayer.zPosition = GameConstants.ZPos.ground + 0.5
-        for r in 0..<rows {
-            let offset = Int(3 * sin(Double(r) / 4.0))
-            let center = cols / 2 + offset
-            for dc in -1...1 {
-                let c = center + dc
-                guard c >= 0, c < cols else { continue }
-                let node = SKSpriteNode(color: pathColor,
-                                        size: CGSize(width: tile, height: tile))
-                node.anchorPoint = .zero
-                node.position    = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
-                pathLayer.addChild(node)
-            }
-        }
-        root.addChild(pathLayer)
-
-        // MARK: Pond (upper-left)
-        let pondLayer = SKNode()
-        pondLayer.zPosition = GameConstants.ZPos.ground + 1
-        let pondCenter = CGPoint(x: CGFloat(8) * tile, y: CGFloat(rows - 8) * tile)
-        let pond = SKShapeNode(ellipseOf: CGSize(width: tile * 6, height: tile * 4))
-        pond.position    = pondCenter
-        pond.fillColor   = SKColor(red: 0.36, green: 0.60, blue: 0.85, alpha: 1)
-        pond.strokeColor = SKColor(white: 1, alpha: 0.4)
-        pond.lineWidth   = 3
-        pondLayer.addChild(pond)
-        root.addChild(pondLayer)
-
-        let pondBody = SKPhysicsBody(circleOfRadius: tile * 2.0)
-        pondBody.isDynamic = false
-        pondBody.categoryBitMask = GameConstants.Category.wall
-        pond.physicsBody = pondBody
-
-        // MARK: World border
         let border = SKNode()
-        let edges = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
-        edges.categoryBitMask = GameConstants.Category.wall
-        border.physicsBody = edges
+        border.physicsBody = {
+            let b = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
+            b.categoryBitMask = GameConstants.Category.wall
+            return b
+        }()
         root.addChild(border)
 
-        // MARK: Decorations
-        let decorLayer = SKNode()
-        decorLayer.zPosition = GameConstants.ZPos.decor
+        let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
         let decorSpots: [(String, Int, Int, Bool)] = [
-            // (glyph, col, row, blocksMovement)
-            ("🌳", 4, 4, true),   ("🌳", 6, 3, true),   ("🌳", 30, 5, true),
-            ("🌳", 3, 15, true),  ("🌳", 36, 20, true),
-            ("🌲", 10, 22, true), ("🌲", 18, 25, true),  ("🌲", 28, 26, true),
-            ("🌳", 14, 10, true), ("🪑", 15, 6, false),  ("🪑", 25, 18, false),
-            ("🌸", 20, 12, false),("🌷", 22, 8, false),  ("🌻", 28, 14, false),
-            ("🍄", 5, 10, false), ("🪨", 9, 18, true),
-            // Extra trees along top edge
-            ("🌳", 2, 27, true),  ("🌳", 7, 28, true),  ("🌳", 15, 27, true),
-            ("🌲", 22, 28, true), ("🌳", 37, 28, true),
-            // Fountain area (centre-ish)
-            ("⛲", 20, 15, true),
+            ("🚧", 27, 3, true), ("🚧", 44, 3, true),
+            ("🥀", 31, 4, false), ("🥀", 41, 4, false),
+            ("🪧", 33, 2, false),
+            ("⛲", 35, 26, true),
+            ("🪑", 30, 24, false), ("🪑", 41, 24, false),
+            ("🪑", 29, 28, false), ("🪑", 42, 28, false),
+            ("🐦", 32, 27, false), ("🐦", 38, 25, false), ("🐦", 36, 29, false),
+            ("🗑️", 34, 23, false), ("🗑️", 37, 29, false),
+            ("🪨", 5, 18, true), ("🪨", 8, 20, true), ("🪨", 11, 16, true),
+            ("🌳", 3, 15, true), ("🌳", 6, 14, true), ("🌳", 2, 12, true),
+            ("🌳", 4, 12, true),
+            ("🎤", 12, 15, false),
+            ("🎾", 48, 9, false), ("🦴", 52, 8, false), ("🥣", 50, 11, false),
+            ("🌳", 20, 16, true), ("🌳", 24, 20, true), ("🌳", 44, 18, true),
+            ("🌳", 48, 22, true), ("🌲", 16, 28, true), ("🌲", 52, 28, true),
+            ("🌳", 10, 5, true), ("🌳", 60, 5, true), ("🌳", 15, 8, true),
+            ("🌳", 55, 8, true),
+            ("🪑", 62, 20, false), ("🌸", 64, 18, false),
+            ("🌻", 66, 22, false), ("🌳", 68, 16, true),
         ]
-        for (glyph, c, r, blocks) in decorSpots {
-            let node = SKSpriteNode(
-                texture: SpriteFactory.emojiTexture(glyph, size: 96)
-            )
-            node.size     = CGSize(width: tile * 1.1, height: tile * 1.1)
-            node.position = CGPoint(
-                x: CGFloat(c) * tile + tile / 2,
-                y: CGFloat(r) * tile + tile / 2
-            )
-            node.zPosition = GameConstants.ZPos.decor
-            if blocks {
-                let body = SKPhysicsBody(circleOfRadius: tile * 0.38)
-                body.isDynamic       = false
-                body.categoryBitMask = GameConstants.Category.wall
-                node.physicsBody     = body
-            }
-            decorLayer.addChild(node)
-        }
+        addDecor(decorLayer, spots: decorSpots, tile: tile)
         root.addChild(decorLayer)
 
-        // MARK: Puzzle Room — stone ruins, upper-right quadrant
-        //
-        //  Cols 30-38, Rows 20-28
-        //  Layout (# = stone wall, . = floor, B = boulder, P = plate, G = gate, X = chest)
-        //
-        //   ##########
-        //   #....X####
-        //   #....G####
-        //   #....P....
-        //   #....B....
-        //   #.........
-        //   ##.#######   ← entrance at col 32
-        //
-        let (plate, gate, chest, boulder) = buildPuzzleRoom(
-            root: root,
-            originCol: 30, originRow: 20,
-            tile: tile
-        )
+        // Park-style lamp posts along main paths
+        let lampCoords: [(Int, Int)] = [
+            (35, 22), (35, 16), (35, 12),   // central path
+            (28, 26), (42, 26),              // fountain plaza
+            (18, 20), (52, 20),              // mid-park
+            (62, 20), (68, 16),              // east garden
+        ]
+        for (lc, lr) in lampCoords {
+            let lamp = WorldSprites.makeLampPost(city: false)
+            lamp.position = CGPoint(x: CGFloat(lc) * tile + tile / 2, y: CGFloat(lr) * tile)
+            lamp.zPosition = GameConstants.ZPos.decor + 1
+            decorLayer.addChild(lamp)
+        }
 
-        // MARK: Spawn points
-        let playerSpawn = CGPoint(x: worldSize.width / 2, y: tile * 2.5)
+        buildAmphitheater(root: root, originCol: 2, originRow: 14, tileW: 20, tileH: 16, tile: tile)
+
+        let southExit = ZoneExitNode(
+            destination: .citySouth,
+            triggerSize: CGSize(width: worldSize.width, height: tile),
+            arrowCount: 7, edgeLabel: "→ City South")
+        southExit.position = CGPoint(x: worldSize.width / 2, y: tile / 2)
+        root.addChild(southExit)
+
+        let northExit = ZoneExitNode(
+            destination: .parkNorth,
+            triggerSize: CGSize(width: worldSize.width, height: tile),
+            arrowCount: 7, edgeLabel: "→ Park North")
+        northExit.position = CGPoint(x: worldSize.width / 2, y: worldSize.height - tile / 2)
+        root.addChild(northExit)
+
+        let benchCoords: [(Int, Int)] = [(30, 24), (40, 24), (30, 28), (40, 28), (62, 20)]
+        let benchPositions = benchCoords.map {
+            CGPoint(x: CGFloat($0.0) * tile + tile / 2, y: CGFloat($0.1) * tile + tile / 2)
+        }
+
+        let playerSpawn = CGPoint(x: tile * 35.5, y: tile * 4)
 
         let itemSpawns: [CGPoint] = [
-            CGPoint(x: tile * 12, y: tile * 8),
-            CGPoint(x: tile * 28, y: tile * 10),
-            CGPoint(x: tile * 22, y: tile * 22),
-            CGPoint(x: tile * 6,  y: tile * 6),
-            CGPoint(x: tile * 7,  y: tile * 20)   // near pond
+            CGPoint(x: tile * 18, y: tile * 12),
+            CGPoint(x: tile * 50, y: tile * 15),
+            CGPoint(x: tile * 8, y: tile * 8),
+            CGPoint(x: tile * 62, y: tile * 8),
+            CGPoint(x: tile * 24, y: tile * 28),
+            CGPoint(x: tile * 46, y: tile * 28),
         ]
 
         let npcSpawns: [CGPoint] = [
-            CGPoint(x: tile * 16, y: tile * 7),    // near bench
-            CGPoint(x: tile * 26, y: tile * 19),   // near bench
-            CGPoint(x: tile * 12, y: tile * 20),   // wanderer
-            CGPoint(x: tile * 20, y: tile * 3)     // south path
+            CGPoint(x: tile * 32, y: tile * 26),
+            CGPoint(x: tile * 22, y: tile * 14),
+            CGPoint(x: tile * 48, y: tile * 20),
+            CGPoint(x: tile * 35, y: tile * 10),
+            CGPoint(x: tile * 8, y: tile * 24),
         ]
 
-        let enemySpawns: [CGPoint] = [
-            CGPoint(x: tile * 30, y: tile * 15),   // ranger
-            CGPoint(x: tile * 8,  y: tile * 14),   // stern adult
-            CGPoint(x: tile * 25, y: tile * 5),    // wasp near south
-            CGPoint(x: tile * 5,  y: tile * 26)    // ranger upper-left
+        let enemySpawns: [(EnemyKind, CGPoint)] = [
+            (.ranger, CGPoint(x: tile * 45, y: tile * 10)),
+            (.sternAdult, CGPoint(x: tile * 20, y: tile * 20)),
+            (.wasp, CGPoint(x: tile * 55, y: tile * 26)),
+            (.pigeon, CGPoint(x: tile * 34, y: tile * 24)),
+            (.pigeon, CGPoint(x: tile * 26, y: tile * 10)),
         ]
 
         return BuildResult(
             root: root,
             npcSpawns: npcSpawns,
             itemSpawns: itemSpawns,
+            fixedItems: [],
             enemySpawns: enemySpawns,
             playerSpawn: playerSpawn,
+            benchPositions: benchPositions,
+            zoneExitNodes: [southExit, northExit],
+            pressurePlate: nil,
+            gate: nil,
+            chest: nil,
+            boulder: nil
+        )
+    }
+
+    // MARK: - Zone 1A — Park North (pond, ruins, meadow)
+
+    static func buildNorth() -> BuildResult {
+        let root = SKNode(); root.name = "world"
+        let tile = GameConstants.tileSize
+        let cols = GameConstants.parkNorthCols
+        let rows = GameConstants.parkNorthRows
+        let worldSize = GameConstants.parkNorthWorldSize
+
+        let groundLayer = SKNode()
+        groundLayer.zPosition = GameConstants.ZPos.ground
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let color = ParkMapDesign.northGroundColor(col: c, localRow: r)
+                let n = SKSpriteNode(color: color, size: CGSize(width: tile, height: tile))
+                n.anchorPoint = .zero
+                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+                groundLayer.addChild(n)
+            }
+        }
+        root.addChild(groundLayer)
+
+        let border = SKNode()
+        border.physicsBody = {
+            let b = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
+            b.categoryBitMask = GameConstants.Category.wall
+            return b
+        }()
+        root.addChild(border)
+
+        let pondLayer = SKNode(); pondLayer.zPosition = GameConstants.ZPos.ground + 1
+        pondLayer.addChild(makePond(cx: CGFloat(12) * tile, cy: CGFloat(10) * tile, w: tile * 9, h: tile * 6))
+        pondLayer.addChild(makePond(cx: CGFloat(52) * tile, cy: CGFloat(6) * tile, w: tile * 5, h: tile * 3.5))
+        root.addChild(pondLayer)
+
+        let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
+        let decorSpots: [(String, Int, Int, Bool)] = [
+            // 🦆 intentionally absent — Quack is missing from the pond!
+            ("👣", 11, 9,  false),   // duck footprints leading away from pond
+            ("👣", 13, 8,  false),   // trail continues south
+            ("⛵", 8, 8, true),
+            ("🪵", 6, 7, true),
+            ("🌳", 24, 18, true), ("🌳", 32, 16, true),
+            ("🍄", 28, 15, false), ("🍄", 38, 18, false), ("🪑", 30, 13, false),
+            ("🌲", 50, 8, true), ("🌲", 53, 10, true), ("🌲", 56, 12, true),
+            ("🌲", 58, 8, true), ("🌳", 60, 11, true), ("🌲", 62, 9, true),
+            ("🌲", 64, 13, true), ("🌳", 48, 10, true), ("🌿", 52, 11, false),
+            ("🪧", 48, 6, false),
+        ]
+        addDecor(decorLayer, spots: decorSpots, tile: tile)
+        root.addChild(decorLayer)
+
+        let (plate, gate, chest, boulder) = buildPuzzleRoom16(
+            root: root, originCol: 52, originRow: 4, tile: tile)
+
+        let southExit = ZoneExitNode(
+            destination: .parkCenter,
+            triggerSize: CGSize(width: worldSize.width, height: tile),
+            arrowCount: 7, edgeLabel: "→ Park Center")
+        southExit.position = CGPoint(x: worldSize.width / 2, y: tile / 2)
+        root.addChild(southExit)
+
+        let benchPositions: [CGPoint] = [
+            CGPoint(x: tile * 30.5, y: tile * 13.5),
+        ]
+
+        let playerSpawn = CGPoint(x: tile * 35.5, y: tile * 8)
+
+        let itemSpawnsFixed: [CGPoint] = [
+            CGPoint(x: tile * 28, y: tile * 16),
+            CGPoint(x: tile * 55, y: tile * 14),
+            CGPoint(x: tile * 10, y: tile * 12),
+        ]
+        // Quack's feather always spawns near the empty pond — story trigger
+        let quackFeatherSpawn = CGPoint(x: tile * 14, y: tile * 9)
+
+        let npcSpawns: [CGPoint] = [
+            CGPoint(x: tile * 14, y: tile * 12),
+            CGPoint(x: tile * 56, y: tile * 8),
+        ]
+
+        let enemySpawns: [(EnemyKind, CGPoint)] = [
+            (.goose, CGPoint(x: tile * 13, y: tile * 11)),
+            (.raccoon, CGPoint(x: tile * 58, y: tile * 8)),
+            (.sternAdult, CGPoint(x: tile * 10, y: tile * 5)),
+            (.wasp, CGPoint(x: tile * 62, y: tile * 6)),
+        ]
+
+        return BuildResult(
+            root: root,
+            npcSpawns: npcSpawns,
+            itemSpawns: itemSpawnsFixed,
+            fixedItems: [(.quackFeather, quackFeatherSpawn)],
+            enemySpawns: enemySpawns,
+            playerSpawn: playerSpawn,
+            benchPositions: benchPositions,
+            zoneExitNodes: [southExit],
             pressurePlate: plate,
             gate: gate,
             chest: chest,
@@ -179,108 +255,165 @@ enum ParkWorld {
         )
     }
 
-    // MARK: - Puzzle Room Builder
+    // MARK: - Shared
 
-    @discardableResult
-    private static func buildPuzzleRoom(
-        root: SKNode,
-        originCol: Int, originRow: Int,
-        tile: CGFloat
+    private static func addDecor(_ layer: SKNode, spots: [(String, Int, Int, Bool)], tile: CGFloat) {
+        for (glyph, c, r, blocks) in spots {
+            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(glyph, size: 96))
+            n.size = CGSize(width: tile * 1.1, height: tile * 1.1)
+            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
+            n.zPosition = GameConstants.ZPos.decor
+            if blocks {
+                let b = SKPhysicsBody(circleOfRadius: tile * 0.38)
+                b.isDynamic = false
+                b.categoryBitMask = GameConstants.Category.wall
+                n.physicsBody = b
+            }
+            layer.addChild(n)
+        }
+    }
+
+    private static func makePond(cx: CGFloat, cy: CGFloat, w: CGFloat, h: CGFloat) -> SKNode {
+        let container = SKNode()
+        container.position = CGPoint(x: cx, y: cy)
+
+        // Base water body
+        let pond = SKShapeNode(ellipseOf: CGSize(width: w, height: h))
+        pond.fillColor   = GamePalette.waterMid
+        pond.strokeColor = GamePalette.waterDeep.withAlphaComponent(0.55)
+        pond.lineWidth   = 3
+        container.addChild(pond)
+
+        // Animated ripple rings
+        for i in 0..<3 {
+            let ripple = SKShapeNode(ellipseOf: CGSize(width: w * 0.35, height: h * 0.35))
+            ripple.fillColor   = .clear
+            ripple.strokeColor = GamePalette.waterHighlight.withAlphaComponent(0.45)
+            ripple.lineWidth   = 1.5
+            ripple.position    = CGPoint(x: CGFloat.random(in: -w*0.2...w*0.2),
+                                         y: CGFloat.random(in: -h*0.15...h*0.15))
+            ripple.alpha       = 0
+            container.addChild(ripple)
+
+            let delay = Double(i) * 1.1
+            ripple.run(.repeatForever(.sequence([
+                .wait(forDuration: delay),
+                .group([
+                    .scale(to: 2.2, duration: 1.6),
+                    .sequence([
+                        .fadeIn(withDuration: 0.3),
+                        .fadeAlpha(to: 0, duration: 1.3)
+                    ])
+                ]),
+                .scale(to: 1.0, duration: 0)
+            ])))
+        }
+
+        // Highlight shimmer (slow drift)
+        let shimmer = SKShapeNode(ellipseOf: CGSize(width: w * 0.28, height: h * 0.18))
+        shimmer.fillColor   = GamePalette.waterHighlight.withAlphaComponent(0.30)
+        shimmer.strokeColor = .clear
+        shimmer.position    = CGPoint(x: -w * 0.15, y: h * 0.1)
+        shimmer.run(.repeatForever(.sequence([
+            .moveBy(x: w * 0.22, y: h * 0.05, duration: 2.8),
+            .moveBy(x: -w * 0.22, y: -h * 0.05, duration: 2.8)
+        ])))
+        container.addChild(shimmer)
+
+        // Physics body (on container, but use pond's bounds)
+        let body = SKPhysicsBody(circleOfRadius: min(w, h) * 0.40)
+        body.isDynamic = false
+        body.categoryBitMask = GameConstants.Category.wall
+        container.physicsBody = body
+
+        return container
+    }
+
+    private static func buildAmphitheater(
+        root: SKNode, originCol: Int, originRow: Int, tileW: Int, tileH: Int, tile: CGFloat
+    ) {
+        let stoneColor = SKColor(red: 0.62, green: 0.60, blue: 0.56, alpha: 1)
+        let stoneColor2 = SKColor(red: 0.58, green: 0.56, blue: 0.52, alpha: 1)
+        for r in 0..<tileH {
+            for c in 0..<tileW {
+                let col = (r + c) % 2 == 0 ? stoneColor : stoneColor2
+                let tileNode = SKSpriteNode(color: col, size: CGSize(width: tile, height: tile))
+                tileNode.anchorPoint = .zero
+                tileNode.position = CGPoint(x: CGFloat(originCol + c) * tile, y: CGFloat(originRow + r) * tile)
+                tileNode.zPosition = GameConstants.ZPos.ground + 1.2
+                root.addChild(tileNode)
+            }
+        }
+        let centerX = CGFloat(originCol + tileW / 2) * tile
+        let centerY = CGFloat(originRow + tileH / 2) * tile
+        for i in 0..<12 {
+            let angle = CGFloat(i) / 11.0 * .pi
+            let radius: CGFloat = tile * CGFloat(min(tileW, tileH)) * 0.28
+            let sx = centerX + cos(angle) * radius * 1.15
+            let sy = centerY - sin(angle) * radius * 0.55
+            let seat = SKSpriteNode(texture: SpriteFactory.emojiTexture("🪨", size: 96))
+            seat.size = CGSize(width: tile * 0.95, height: tile * 0.95)
+            seat.position = CGPoint(x: sx, y: sy)
+            seat.zPosition = GameConstants.ZPos.decor
+            root.addChild(seat)
+        }
+        let stage = SKSpriteNode(
+            color: SKColor(red: 0.70, green: 0.68, blue: 0.64, alpha: 1),
+            size: CGSize(width: tile * CGFloat(tileW / 3), height: tile * 2)
+        )
+        stage.position = CGPoint(x: centerX, y: CGFloat(originRow + 1) * tile + tile)
+        stage.zPosition = GameConstants.ZPos.ground + 1.4
+        root.addChild(stage)
+    }
+
+    private static func buildPuzzleRoom16(
+        root: SKNode, originCol: Int, originRow: Int, tile: CGFloat
     ) -> (PressurePlateNode, GateNode, TreasureChestNode, PushableRockNode) {
 
-        let roomLayer = SKNode()
-        roomLayer.zPosition = GameConstants.ZPos.ground + 2
+        let roomLayer = SKNode(); roomLayer.zPosition = GameConstants.ZPos.ground + 2
         root.addChild(roomLayer)
 
         func pos(_ c: Int, _ r: Int) -> CGPoint {
             CGPoint(
                 x: CGFloat(originCol + c) * tile + tile / 2,
-                y: CGFloat(originRow + r) * tile + tile / 2
-            )
+                y: CGFloat(originRow + r) * tile + tile / 2)
         }
 
-        // Stone floor inside the room
-        let stoneFloor = SKColor(red: 0.60, green: 0.58, blue: 0.55, alpha: 1)
-        let stoneFloor2 = SKColor(red: 0.63, green: 0.61, blue: 0.58, alpha: 1)
-        for r in 0..<8 {
-            for c in 0..<8 {
-                let color = ((r + c) % 2 == 0) ? stoneFloor : stoneFloor2
-                let tile_ = SKSpriteNode(color: color,
-                                          size: CGSize(width: tile, height: tile))
-                tile_.anchorPoint = .zero
-                tile_.position    = CGPoint(
-                    x: CGFloat(originCol + c) * tile,
-                    y: CGFloat(originRow + r) * tile
-                )
-                tile_.zPosition = GameConstants.ZPos.ground + 1.5
-                root.addChild(tile_)
+        let sf1 = SKColor(red: 0.60, green: 0.58, blue: 0.55, alpha: 1)
+        let sf2 = SKColor(red: 0.63, green: 0.61, blue: 0.58, alpha: 1)
+        for r in 0..<16 {
+            for c in 0..<16 {
+                let t = SKSpriteNode(color: (r + c) % 2 == 0 ? sf1 : sf2,
+                                     size: CGSize(width: tile, height: tile))
+                t.anchorPoint = .zero
+                t.position = CGPoint(x: CGFloat(originCol + c) * tile, y: CGFloat(originRow + r) * tile)
+                t.zPosition = GameConstants.ZPos.ground + 1.5
+                root.addChild(t)
             }
         }
 
-        // Wall layout: list of (col-offset, row-offset) that get a 🧱 wall block
-        // Room is 8 wide × 8 tall; entrance gap at bottom (col offsets 1-2, row 0)
-        var wallSlots: [(Int, Int)] = []
-        for c in 0..<8 {
-            wallSlots.append((c, 7))   // top wall
-            if c != 1 && c != 2 {
-                wallSlots.append((c, 0)) // bottom wall with entrance gap at 1,2
-            }
-        }
-        for r in 1..<7 {
-            wallSlots.append((0, r))   // left wall
-            wallSlots.append((7, r))   // right wall
-        }
-        // Inner divider with gate gap at col 4, row 4
-        for r in 5...7 {
-            for c in 3..<7 {
-                wallSlots.append((c, r))
-            }
+        var walls: [(Int, Int)] = []
+        for c in 0..<16 { walls.append((c, 15)) }
+        for c in 0..<16 where c < 6 || c > 9 { walls.append((c, 0)) }
+        for r in 1..<15 { walls.append((0, r)); walls.append((15, r)) }
+        for r in 10..<16 { for c in 6..<16 { walls.append((c, r)) } }
+
+        for (dc, dr) in walls {
+            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture("🧱", size: 96))
+            n.size = CGSize(width: tile, height: tile)
+            n.position = pos(dc, dr)
+            n.zPosition = GameConstants.ZPos.decor
+            let b = SKPhysicsBody(rectangleOf: CGSize(width: tile - 4, height: tile - 4))
+            b.isDynamic = false
+            b.categoryBitMask = GameConstants.Category.wall
+            n.physicsBody = b
+            roomLayer.addChild(n)
         }
 
-        for (dc, dr) in wallSlots {
-            let node = SKSpriteNode(
-                texture: SpriteFactory.emojiTexture("🧱", size: 96)
-            )
-            node.size     = CGSize(width: tile, height: tile)
-            node.position = pos(dc, dr)
-            node.zPosition = GameConstants.ZPos.decor
-
-            let body = SKPhysicsBody(
-                rectangleOf: CGSize(width: tile - 4, height: tile - 4)
-            )
-            body.isDynamic       = false
-            body.categoryBitMask = GameConstants.Category.wall
-            node.physicsBody     = body
-
-            roomLayer.addChild(node)
-        }
-
-        // Sign at entrance
-        let sign = SKSpriteNode(texture: SpriteFactory.emojiTexture("🪧", size: 64))
-        sign.size     = CGSize(width: 30, height: 30)
-        sign.position = pos(3, -1)
-        sign.zPosition = GameConstants.ZPos.decor
-        root.addChild(sign)
-
-        // Pressure plate — centre of room (col+3, row+2)
-        let plate = PressurePlateNode()
-        plate.position = pos(3, 2)
-        root.addChild(plate)
-
-        // Gate — one tile above the plate (col+3, row+4)
-        let gate = GateNode()
-        gate.position = pos(3, 4)
-        root.addChild(gate)
-
-        // Treasure chest — behind the gate (col+3, row+6)
-        let chest = TreasureChestNode()
-        chest.position = pos(3, 6)
-        root.addChild(chest)
-
-        // Pushable boulder — start a bit south of plate (col+3, row+1)
-        let boulder = PushableRockNode()
-        boulder.position = pos(3, 1)
-        root.addChild(boulder)
+        let plate = PressurePlateNode(); plate.position = pos(6, 4); root.addChild(plate)
+        let gate = GateNode(); gate.position = pos(6, 8); root.addChild(gate)
+        let chest = TreasureChestNode(); chest.position = pos(6, 12); root.addChild(chest)
+        let boulder = PushableRockNode(); boulder.position = pos(6, 2); root.addChild(boulder)
 
         return (plate, gate, chest, boulder)
     }

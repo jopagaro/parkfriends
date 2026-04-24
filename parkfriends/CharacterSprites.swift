@@ -46,6 +46,9 @@ enum CharacterSprites {
         let img = NSImage(size: CGSize(width: 128, height: 128))
         img.lockFocus()
         if let ctx = NSGraphicsContext.current?.cgContext {
+            // Flip to Y-down so drawing code matches iOS behaviour
+            ctx.translateBy(x: 0, y: 128)
+            ctx.scaleBy(x: 1, y: -1)
             paint(species: species, frame: frame, ctx: ctx)
         }
         img.unlockFocus()

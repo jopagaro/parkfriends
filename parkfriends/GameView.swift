@@ -70,17 +70,30 @@ struct HUDView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            // Party HP panel
+            // Party panel
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array(state.party.enumerated()), id: \.element.id) { idx, member in
-                    HStack(spacing: 6) {
+                    let isActive = idx == state.activeIndex
+                    HStack(spacing: 5) {
                         Text(member.species.emoji)
-                            .font(.system(size: 20))
-                            .opacity(idx == state.activeIndex ? 1.0 : 0.45)
-                            .scaleEffect(idx == state.activeIndex ? 1.12 : 1.0)
+                            .font(.system(size: 18))
+                            .opacity(isActive ? 1.0 : 0.40)
+                            .scaleEffect(isActive ? 1.10 : 1.0)
                             .animation(.spring(duration: 0.2), value: state.activeIndex)
-                        HPBar(hp: member.hp, maxHP: member.maxHP)
-                            .frame(width: 68, height: 7)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text("Lv\(member.level)")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(isActive ? Color.yellow : Color.secondary)
+                                HPBar(hp: member.hp, maxHP: member.maxHP)
+                                    .frame(width: 60, height: 6)
+                            }
+                            // EXP bar
+                            ExpBar(exp: member.exp, expToNext: member.expToNext)
+                                .frame(width: 68, height: 3)
+                                .opacity(isActive ? 1.0 : 0.35)
+                        }
                     }
                 }
             }
@@ -89,14 +102,20 @@ struct HUDView: View {
 
             Spacer()
 
-            // Score, enemies, inventory
+            // Score + zone + inventory
             VStack(alignment: .trailing, spacing: 3) {
                 HStack(spacing: 8) {
+                    Text(state.currentZone.displayTitle)
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
                     Text("⭐️ \(state.score)")
+                    Text("🪙 \(state.coins)")
                     Text("💀 \(state.enemiesDefeated)")
                 }
                 .font(.headline.monospacedDigit())
                 InventoryStrip(inventory: state.inventory)
+                // Quack side-quest tracker
+                QuackQuestView(clues: state.quackClues)
                 if !dialogue.modelAvailable {
                     Text("🤖 offline mode")
                         .font(.caption2)
@@ -133,6 +152,24 @@ struct HPBar: View {
     }
 }
 
+struct ExpBar: View {
+    let exp: Int
+    let expToNext: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            let frac = expToNext > 0 ? CGFloat(exp) / CGFloat(expToNext) : 0
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.15))
+                Capsule()
+                    .fill(Color.blue.opacity(0.80))
+                    .frame(width: geo.size.width * max(min(frac, 1), 0))
+                    .animation(.easeInOut(duration: 0.4), value: frac)
+            }
+        }
+    }
+}
+
 struct InventoryStrip: View {
     let inventory: [ItemKind: Int]
 
@@ -153,6 +190,44 @@ struct InventoryStrip: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - Quack Quest Tracker
+
+struct QuackQuestView: View {
+    let clues: Set<QuackClue>
+
+    private let storyClues: [QuackClue] = [
+        .visitedNorthPond,
+        .foundFeather,
+        .childSawChase,
+        .joggerSawCity,
+        .raccoonDroppedTag
+    ]
+
+    var body: some View {
+        if clues.contains(.quackRescued) {
+            HStack(spacing: 4) {
+                Text("🦆 Quack: RESCUED!")
+                    .font(.caption.bold())
+                    .foregroundStyle(Color.yellow)
+            }
+        } else if !clues.isEmpty {
+            HStack(spacing: 3) {
+                Text("🦆")
+                    .font(.caption)
+                ForEach(storyClues, id: \.self) { clue in
+                    Circle()
+                        .fill(clues.contains(clue) ? Color.yellow : Color.white.opacity(0.3))
+                        .frame(width: 6, height: 6)
+                }
+                Text("\(clues.subtracting([.quackRescued]).count)/5")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        // No clues yet — don't show the tracker (keeps HUD clean)
     }
 }
 

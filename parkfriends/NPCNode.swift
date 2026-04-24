@@ -46,7 +46,7 @@ final class NPCNode: SKSpriteNode {
 
     init(kind: NPCKind) {
         self.kind = kind
-        let tex = SpriteFactory.emojiTexture(kind.emoji, size: 96)
+        let tex = WorldSprites.texture(npc: kind)
         super.init(texture: tex, color: .clear, size: CGSize(width: 48, height: 48))
         name = "npc"
         zPosition = GameConstants.ZPos.entity
