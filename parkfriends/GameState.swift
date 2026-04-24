@@ -49,6 +49,16 @@ extension GameZone {
         case .cityNorth:  return "Zone 3 · City North"
         }
     }
+
+    var zoneSubtitle: String {
+        switch self {
+        case .parkNorth:  return "The Pond  ·  Ruins  ·  Meadow"
+        case .parkCenter: return "The Heart of the Park"
+        case .citySouth:  return "Alleys  ·  Corner Store  ·  Plaza"
+        case .cityCenter: return "Main Street  ·  Apartments  ·  Subway"
+        case .cityNorth:  return "Construction Zone  ·  Warehouses"
+        }
+    }
 }
 
 // MARK: - Quack story progress

@@ -52,6 +52,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var isTransitioning:    Bool         = false
     private var isBossIntro:        Bool         = false  // freeze world during boss title card
 
+    // Overworld attacks
+    private var attacks:        [AttackNode]   = []
+    private var chargeBarFill:  SKSpriteNode?
+    private var chargeBarBg:    SKSpriteNode?
+
     // Follower trail
     private var trail:           [CGPoint] = []
     private let trailSpacing               = 18
@@ -106,6 +111,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         nearbyBench   = false
         nearbyQuack   = false
         isBossIntro   = false
+        attacks.removeAll()
         trail.removeAll()
         lastUpdate = 0; lastDamageTime = 0; lastBattleEndTime = 0
         pressedKeys.removeAll()
@@ -328,6 +334,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cam.addChild(battleNode)
 
         addVignette()
+        buildChargeBar()
 
 #if canImport(AppKit)
         joystick.isHidden     = true
@@ -335,7 +342,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         switchButton.isHidden = true
 
         let hint = SKLabelNode(
-            text: "WASD/↑↓←→ Move  ·  E Talk/Rest  ·  Tab Switch  ·  walk into enemies to battle")
+            text: "WASD Move  ·  Space Attack  ·  E Talk/Rest  ·  Tab Switch")
         hint.fontName                = "Helvetica Neue"
         hint.fontSize                = 12
         hint.fontColor               = SKColor(white: 1, alpha: 0.55)
@@ -354,12 +361,55 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let w = size.width, h = size.height
 
 #if canImport(AppKit)
-        hintLabel?.position  = CGPoint(x: 0, y: -h/2 + 8)
+        hintLabel?.position           = CGPoint(x: 0,       y: -h/2 + 8)
+        chargeBarBg?.parent?.position = CGPoint(x: w/2 - 90, y: -h/2 + 36)
 #else
         joystick.position     = CGPoint(x: -w/2 + 100, y: -h/2 + 100)
         talkButton.position   = CGPoint(x:  w/2 - 65,  y: -h/2 + 148)
         switchButton.position = CGPoint(x:  w/2 - 38,  y:  h/2 - 50)
+        chargeBarBg?.parent?.position = CGPoint(x: 0, y: -h/2 + 170)
 #endif
+    }
+
+    /// Build the overworld attack charge indicator (stays on camera).
+    private func buildChargeBar() {
+        let barW: CGFloat = 100
+        let barH: CGFloat = 7
+        let container = SKNode()
+        container.zPosition = GameConstants.ZPos.ui
+        cam.addChild(container)
+
+        // Glph label
+        let glyphLabel = SKLabelNode(text: "⚡")
+        glyphLabel.fontSize = 12
+        glyphLabel.horizontalAlignmentMode = .right
+        glyphLabel.verticalAlignmentMode   = .center
+        glyphLabel.position = CGPoint(x: -barW / 2 - 5, y: 0)
+        container.addChild(glyphLabel)
+
+        // Background track
+        let bg = SKSpriteNode(color: SKColor(white: 0, alpha: 0.45),
+                              size: CGSize(width: barW, height: barH))
+        bg.anchorPoint = CGPoint(x: 0, y: 0.5)
+        bg.position    = CGPoint(x: -barW / 2, y: 0)
+        bg.name        = "chargeBarBg"
+        container.addChild(bg)
+        chargeBarBg = bg
+
+        // Fill
+        let fill = SKSpriteNode(color: .green, size: CGSize(width: 0, height: barH - 2))
+        fill.anchorPoint = CGPoint(x: 0, y: 0.5)
+        fill.position    = CGPoint(x: 1, y: 0)
+        container.addChild(fill)
+        chargeBarFill = fill
+
+        // Border
+        let border = SKShapeNode(rect: CGRect(x: -barW/2, y: -barH/2, width: barW, height: barH),
+                                 cornerRadius: 2)
+        border.fillColor   = .clear
+        border.strokeColor = SKColor(white: 1, alpha: 0.22)
+        border.lineWidth   = 1
+        container.addChild(border)
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -380,8 +430,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         switch event.keyCode {
-        case 14: handleInteract()   // E
-        case 48: cycleParty()       // Tab
+        case 14: handleInteract()          // E
+        case 48: cycleParty()              // Tab
+        case 49: fireOverworldAttack()     // Space
         default: break
         }
     }
@@ -861,6 +912,48 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         player.physicsBody?.applyImpulse(CGVector(dx: cos(angle) * 160, dy: sin(angle) * 160))
     }
 
+    // MARK: - Overworld Attack
+
+    private func fireOverworldAttack() {
+        guard let state = gameState,
+              !isTransitioning, !isBossIntro,
+              battleNode.phase == .none,
+              !state.shopOpen,
+              dialogue?.activeNPC == nil else { return }
+
+        let now = CACurrentMediaTime()
+        guard state.attackCharge(now: now) >= 1.0 else { return }  // must be fully charged
+
+        state.recordAttack(now: now)
+        player.playAttackPunch()
+
+        let atk = AttackNode(species: state.activeSpecies,
+                             at: player.position,
+                             facing: player.facing)
+        worldRoot.addChild(atk)
+        attacks.append(atk)
+    }
+
+    private func handleAttackHit(attack: AttackNode, enemy: EnemyNode) {
+        guard !enemy.isDead,
+              !attack.hitEnemies.contains(ObjectIdentifier(enemy)) else { return }
+        attack.hitEnemies.insert(ObjectIdentifier(enemy))
+
+        let dead = enemy.takeDamage(attack.damage)
+
+        DamageLabel.spawn(
+            text: "-\(attack.damage)",
+            color: SKColor(red: 1.0, green: 0.85, blue: 0.25, alpha: 1),
+            at: CGPoint(x: enemy.position.x, y: enemy.position.y + 28),
+            in: worldRoot)
+
+        if dead, let state = gameState {
+            autoWin(enemy: enemy, state: state)
+        }
+        // Alive enemies will chase the player and trigger a battle on contact
+        // (they'll start with reduced HP — the pre-battle damage advantage)
+    }
+
     // MARK: - Zone transition
 
     private func triggerZoneTransition(to destination: GameZone) {
@@ -869,15 +962,47 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         state.currentZone = destination
 
         // Black overlay on camera
-        let overlay = SKSpriteNode(color: .black, size: size)
+        let overlay = SKSpriteNode(color: .black,
+                                   size: CGSize(width: max(size.width, 900),
+                                                height: max(size.height, 900)))
         overlay.position  = .zero
         overlay.zPosition = GameConstants.ZPos.ui + 100
         overlay.alpha     = 0
         cam.addChild(overlay)
         fadeOverlay = overlay
 
+        // Zone title card (shown while screen is black)
+        let titleLabel = SKLabelNode(text: destination.displayTitle)
+        titleLabel.fontName                = "Helvetica Neue Bold"
+        titleLabel.fontSize                = 24
+        titleLabel.fontColor               = .white
+        titleLabel.horizontalAlignmentMode = .center
+        titleLabel.verticalAlignmentMode   = .center
+        titleLabel.position                = CGPoint(x: 0, y: 14)
+        titleLabel.zPosition               = 1
+        titleLabel.alpha                   = 0
+        overlay.addChild(titleLabel)
+
+        let subLabel = SKLabelNode(text: destination.zoneSubtitle)
+        subLabel.fontName                = "Helvetica Neue"
+        subLabel.fontSize                = 13
+        subLabel.fontColor               = SKColor(white: 0.60, alpha: 1)
+        subLabel.horizontalAlignmentMode = .center
+        subLabel.verticalAlignmentMode   = .center
+        subLabel.position                = CGPoint(x: 0, y: -8)
+        subLabel.zPosition               = 1
+        subLabel.alpha                   = 0
+        overlay.addChild(subLabel)
+
         overlay.run(.sequence([
-            .fadeIn(withDuration: 0.45),
+            .fadeIn(withDuration: 0.35),
+            // Reveal zone name while screen is black
+            .run {
+                titleLabel.run(.fadeIn(withDuration: 0.22))
+                subLabel.run(.sequence([.wait(forDuration: 0.10), .fadeIn(withDuration: 0.22)]))
+            },
+            .wait(forDuration: 0.75),   // display zone title ~0.75s
+            // Rebuild world behind the black
             .run { [weak self] in
                 guard let self else { return }
                 self.tearDownWorld()
@@ -885,8 +1010,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 self.buildPlayerAndFollowers()
                 self.cam.position = self.pendingSpawn
             },
-            .wait(forDuration: 0.1),
-            .fadeOut(withDuration: 0.45),
+            .wait(forDuration: 0.08),
+            .fadeOut(withDuration: 0.40),
             .removeFromParent(),
             .run { [weak self] in self?.isTransitioning = false }
         ]))
@@ -1005,6 +1130,20 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         enemies.forEach { $0.tick(now: currentTime, playerPos: player.position) }
 
+        // Overworld attack charge bar
+        if let fill = chargeBarFill, let state = gameState {
+            let charge = CGFloat(state.attackCharge(now: currentTime))
+            let barW: CGFloat = 100
+            fill.size.width = max(0, (barW - 2) * min(charge, 1.0))
+            fill.color = charge >= 1.0
+                ? SKColor(red: 0.2, green: 1.0, blue: 0.3, alpha: 1)   // ready: bright green
+                : SKColor(red: 0.8, green: 0.55 + 0.45 * charge, blue: 0.1, alpha: 1)  // charging: orange→yellow
+        }
+
+        // Projectile range culling
+        attacks = attacks.filter { $0.parent != nil }
+        attacks.forEach { $0.checkRange() }
+
         // NPC proximity
         let nearNPC = npcs.first {
             let dx = $0.position.x - player.position.x
@@ -1090,6 +1229,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if second.categoryBitMask == GameConstants.Category.zoneExit,
                let exitNode = second.node as? ZoneExitNode {
                 triggerZoneTransition(to: exitNode.destination)
+            }
+
+        case GameConstants.Category.attack:
+            if second.categoryBitMask == GameConstants.Category.enemy,
+               let atk = first.node as? AttackNode,
+               let enemy = second.node as? EnemyNode {
+                handleAttackHit(attack: atk, enemy: enemy)
             }
 
         case GameConstants.Category.pushable:
