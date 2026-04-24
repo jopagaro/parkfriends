@@ -430,9 +430,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         switch event.keyCode {
-        case 14: handleInteract()          // E
-        case 48: cycleParty()              // Tab
-        case 49: fireOverworldAttack()     // Space
+        case 14: handleInteract()                          // E
+        case 48: cycleParty()                              // Tab
+        case 49: fireOverworldAttack()                     // Space
+        case 34: gameState?.statsOpen.toggle()             // I — stats screen
+        case 53: gameState?.statsOpen = false              // Esc — close stats
         default: break
         }
     }
@@ -1089,11 +1091,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdate == 0 ? 1/60.0 : min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
 
-        // Freeze world during dialogue, battle, zone transition, boss intro, or shop
+        // Freeze world during dialogue, battle, zone transition, boss intro, or overlays
         let frozen = isTransitioning
                   || isBossIntro
                   || (dialogue?.activeNPC != nil)
                   || (battleNode.phase != .none)
+                  || (gameState?.statsOpen ?? false)
                   || (gameState?.shopOpen ?? false)
         guard !frozen else {
             player?.physicsBody?.velocity = .zero

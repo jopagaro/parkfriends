@@ -60,6 +60,11 @@ struct GameView: View {
                         .transition(.opacity)
                 }
 
+                if g.state.statsOpen {
+                    StatsView(state: g.state) { g.state.statsOpen = false }
+                        .transition(.opacity)
+                }
+
                 if g.state.isGameOver {
                     GameOverView(onRestart: {
                         g.restart()
@@ -83,6 +88,7 @@ struct GameView: View {
         #endif
         .animation(.easeInOut(duration: 0.2), value: g.dialogue.activeNPC)
         .animation(.easeInOut(duration: 0.25), value: g.state.shopOpen)
+        .animation(.easeInOut(duration: 0.22), value: g.state.statsOpen)
     }
 }
 
@@ -613,6 +619,329 @@ struct GameOverView: View {
         }
     }
 }
+
+// MARK: - Stats / Inventory Screen
+
+struct StatsView: View {
+    let state: GameState
+    let onClose: () -> Void
+
+    @State private var tab: Tab = .party
+
+    enum Tab: String, CaseIterable {
+        case party     = "Party"
+        case inventory = "Inventory"
+        case bosses    = "Bosses"
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.68).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("📋  Status")
+                        .font(.headline.bold())
+                    Spacer()
+                    Text("🪙 \(state.coins)  ⭐️ \(state.score)  💀 \(state.enemiesDefeated)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Button { onClose() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 8)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                Picker("Tab", selection: $tab) {
+                    ForEach(Tab.allCases, id: \.self) { t in
+                        Text(t.rawValue).tag(t)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+
+                Divider()
+
+                ScrollView {
+                    switch tab {
+                    case .party:     PartyStatsPanel(state: state)
+                    case .inventory: InventoryPanel(inventory: state.inventory)
+                    case .bosses:    BossesPanel(defeated: state.defeatedBosses)
+                    }
+                }
+            }
+            .frame(maxWidth: 560, maxHeight: 520)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .shadow(radius: 28)
+            .padding(24)
+        }
+    }
+}
+
+// MARK: Party panel
+
+struct PartyStatsPanel: View {
+    let state: GameState
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach(Array(state.party.enumerated()), id: \.element.id) { idx, m in
+                let isActive = idx == state.activeIndex
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        Text(m.species.emoji)
+                            .font(.system(size: 36))
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(m.species.displayName)
+                                    .font(.headline.bold())
+                                if isActive {
+                                    Text("ACTIVE")
+                                        .font(.caption2.bold())
+                                        .padding(.horizontal, 5).padding(.vertical, 2)
+                                        .background(Color.yellow.opacity(0.25))
+                                        .clipShape(Capsule())
+                                        .foregroundStyle(.yellow)
+                                }
+                                Spacer()
+                                Text("Lv.\(m.level)")
+                                    .font(.caption.bold().monospacedDigit())
+                            }
+                            // HP bar
+                            StatsBarRow(label: "HP", value: m.hp, max: m.maxHP, color: .green)
+                            // PP bar
+                            StatsBarRow(label: "PP", value: m.pp, max: m.maxPP, color: .blue)
+                            // EXP
+                            StatsBarRow(label: "EXP", value: m.exp, max: m.expToNext, color: .purple)
+                        }
+                    }
+                    // Stat grid
+                    HStack(spacing: 0) {
+                        StatCell(label: "ATK", value: m.atk)
+                        StatCell(label: "DEF", value: m.def)
+                        StatCell(label: "SPD", value: m.spd)
+                        StatCell(label: "LCK", value: m.lck)
+                        StatCell(label: "PP/turn", value: m.species.specialPPCost)
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Special: \(m.species.specialName)")
+                                .font(.caption.bold())
+                            Text(m.species.attackGlyph + " " + (m.species.attackIsProjectile ? "Ranged" : "Melee"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.trailing, 4)
+                    }
+                    // Status effects
+                    if !m.statusEffects.isEmpty {
+                        HStack(spacing: 4) {
+                            ForEach(Array(m.statusEffects), id: \.self) { eff in
+                                Text("\(eff.emoji) \(eff.displayName)")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Color.red.opacity(0.2))
+                                    .clipShape(Capsule())
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(12)
+                .background(isActive ? Color.yellow.opacity(0.06) : Color.primary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(isActive ? Color.yellow.opacity(0.3) : Color.clear, lineWidth: 1))
+            }
+        }
+        .padding(12)
+    }
+}
+
+struct StatsBarRow: View {
+    let label: String
+    let value: Int
+    let max: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .leading)
+            GeometryReader { geo in
+                let frac = max > 0 ? CGFloat(value) / CGFloat(max) : 0
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.1))
+                    Capsule().fill(color.opacity(0.7))
+                        .frame(width: geo.size.width * Swift.max(0, frac))
+                }
+            }
+            .frame(height: 6)
+            Text("\(value)/\(max)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 54, alignment: .trailing)
+        }
+    }
+}
+
+struct StatCell: View {
+    let label: String
+    let value: Int
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text("\(value)")
+                .font(.caption.bold().monospacedDigit())
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: Inventory panel
+
+struct InventoryPanel: View {
+    let inventory: [ItemKind: Int]
+
+    private var consumables: [(ItemKind, Int)] {
+        ItemKind.allCases.compactMap { k in
+            guard let c = inventory[k], c > 0, k.isConsumable else { return nil }
+            return (k, c)
+        }
+    }
+    private var keyItems: [(ItemKind, Int)] {
+        ItemKind.allCases.compactMap { k in
+            guard let c = inventory[k], c > 0, !k.isConsumable else { return nil }
+            return (k, c)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if consumables.isEmpty && keyItems.isEmpty {
+                Text("Bag is empty.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 30)
+            }
+            if !consumables.isEmpty {
+                SectionHeader(title: "Consumables")
+                ForEach(consumables, id: \.0) { kind, count in
+                    InventoryRow(kind: kind, count: count)
+                }
+            }
+            if !keyItems.isEmpty {
+                SectionHeader(title: "Key Items")
+                ForEach(keyItems, id: \.0) { kind, count in
+                    InventoryRow(kind: kind, count: count)
+                }
+            }
+        }
+        .padding(14)
+    }
+}
+
+struct InventoryRow: View {
+    let kind: ItemKind
+    let count: Int
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(kind.emoji).font(.title3).frame(width: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(kind.displayName).font(.subheadline.bold())
+                let desc = kind.shopDescription
+                if !desc.isEmpty {
+                    Text(desc).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if count > 1 {
+                Text("×\(count)")
+                    .font(.subheadline.bold().monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            if let price = kind.buyPrice {
+                Text("🪙\(price)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct SectionHeader: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(.caption.bold())
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+    }
+}
+
+// MARK: Bosses panel
+
+struct BossesPanel: View {
+    let defeated: Set<EnemyKind>
+    private let bosses: [EnemyKind] = [.grandGooseGerald, .officerGrumble, .foremanRex]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ForEach(bosses, id: \.self) { boss in
+                let done = defeated.contains(boss)
+                HStack(spacing: 12) {
+                    Text(boss.bossEmoji)
+                        .font(.system(size: 36))
+                        .opacity(done ? 1.0 : 0.35)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(boss.displayName)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(done ? .primary : .secondary)
+                        Text(boss.bossIntroTitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if done {
+                        Text("✅ Defeated")
+                            .font(.caption.bold())
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("⚔️ Not yet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
+                .background(done ? Color.green.opacity(0.06) : Color.primary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(done ? Color.green.opacity(0.3) : Color.clear, lineWidth: 1))
+            }
+            Spacer(minLength: 8)
+            Text("Defeat all three bosses to unlock the final zone.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(14)
+    }
+}
+
+// MARK: - Preview
 
 #Preview {
     GameView()
