@@ -170,11 +170,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func buildCitySouth() {
         backgroundColor = GamePalette.asphalt1
         let result = CitySouthWorld.build()
+        let tile = GameConstants.tileSize
         finishWorldBuild(
             root: result.root,
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: [],
+            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 20, y: tile * 6))], // corner store keeper
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
@@ -223,6 +225,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playerSpawn: CGPoint,
         itemSpawns: [CGPoint],
         fixedItems: [(ItemKind, CGPoint)],
+        fixedNPCs: [(NPCKind, CGPoint)] = [],
         npcSpawns: [CGPoint],
         enemySpawns: [(EnemyKind, CGPoint)],
         benchPositions: [CGPoint],
@@ -253,7 +256,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             items.append(item)
         }
 
-        let npcKinds = NPCKind.allCases
+        // Fixed NPCs (shopkeeper, quest NPCs) — placed at specific positions
+        for (kind, pos) in fixedNPCs {
+            let npc = NPCNode(kind: kind)
+            npc.position = pos
+            worldRoot.addChild(npc)
+            npcs.append(npc)
+        }
+
+        // Random NPC rotation — shopkeeper excluded from pool
+        let npcKinds = NPCKind.allCases.filter { !$0.isShopkeeper }
         for (i, pos) in npcSpawns.enumerated() {
             let npc = NPCNode(kind: npcKinds[i % npcKinds.count])
             npc.position = pos
@@ -406,7 +418,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleTalk() { handleInteract() }
 
     private func handleTalk(npc: NPCNode) {
-        guard let state = gameState, let dialogue else { return }
+        guard let state = gameState else { return }
+
+        // Shopkeeper → open the store instead of dialogue
+        if npc.kind.isShopkeeper {
+            state.shopOpen = true
+            return
+        }
+
+        guard let dialogue else { return }
         let clues = state.quackClues
         dialogue.activeQuackClues = clues
         dialogue.startConversation(with: npc.kind, asSpecies: state.activeSpecies,
@@ -943,11 +963,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdate == 0 ? 1/60.0 : min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
 
-        // Freeze world during dialogue, battle, zone transition, or boss intro
+        // Freeze world during dialogue, battle, zone transition, boss intro, or shop
         let frozen = isTransitioning
                   || isBossIntro
                   || (dialogue?.activeNPC != nil)
                   || (battleNode.phase != .none)
+                  || (gameState?.shopOpen ?? false)
         guard !frozen else {
             player?.physicsBody?.velocity = .zero
             enemies.forEach { $0.physicsBody?.velocity = .zero }

@@ -2,26 +2,32 @@ import SpriteKit
 
 enum NPCKind: String, CaseIterable {
     case jogger, child, birdwatcher, dogwalker, gardener
+    case shopkeeper   // Opens the corner store shop overlay — not used in random NPC cycling
 
     var emoji: String {
         switch self {
-        case .jogger: "🏃"
-        case .child: "🧒"
+        case .jogger:      "🏃"
+        case .child:       "🧒"
         case .birdwatcher: "👩‍🦳"
-        case .dogwalker: "🧑‍🦱"
-        case .gardener: "👨‍🌾"
+        case .dogwalker:   "🧑‍🦱"
+        case .gardener:    "👨‍🌾"
+        case .shopkeeper:  "🧑‍💼"
         }
     }
 
     var displayName: String {
         switch self {
-        case .jogger: "Jogger"
-        case .child: "Kid"
+        case .jogger:      "Jogger"
+        case .child:       "Kid"
         case .birdwatcher: "Birdwatcher"
-        case .dogwalker: "Dog Walker"
-        case .gardener: "Gardener"
+        case .dogwalker:   "Dog Walker"
+        case .gardener:    "Gardener"
+        case .shopkeeper:  "Corner Store"
         }
     }
+
+    /// Shopkeeper NPCs open the shop UI; regular NPCs go to AI dialogue.
+    var isShopkeeper: Bool { self == .shopkeeper }
 
     /// System-prompt seed given to the LLM for this NPC's personality.
     var persona: String {
@@ -36,6 +42,8 @@ enum NPCKind: String, CaseIterable {
             "You are a chatty twenty-something walking three dogs. Easily distracted by your dogs mid-sentence."
         case .gardener:
             "You are a weathered park gardener who grumbles about litter and rabbits eating the flowers, but secretly loves animals."
+        case .shopkeeper:
+            "You are a tired corner store owner who sells snacks. You speak only in short, dry quips."
         }
     }
 }

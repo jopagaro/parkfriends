@@ -120,6 +120,7 @@ final class GameState {
     var coins:           Int             = 0
     var enemiesDefeated: Int             = 0
     var isPaused:        Bool            = false
+    var shopOpen:        Bool            = false   // corner store overlay
     var currentZone:     GameZone        = .parkCenter
 
     // MARK: - "Find Quack" story
@@ -260,6 +261,7 @@ final class GameState {
         coins = 0
         enemiesDefeated = 0
         isPaused = false
+        shopOpen = false
         lastAttackTime.removeAll()
         currentZone = .parkCenter
         pendingLevelUps.removeAll()

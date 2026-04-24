@@ -33,32 +33,56 @@ final class GameContainer {
 
 struct GameView: View {
     @State private var g = GameContainer()
+    @State private var showTitle = true
 
     var body: some View {
         ZStack {
+            // Game world (always rendered so the scene is alive/preloaded)
             SpriteView(scene: g.scene, options: [.ignoresSiblingOrder])
                 .ignoresSafeArea()
 
-            VStack {
-                HUDView(state: g.state, dialogue: g.dialogue)
-                Spacer()
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 12)
+            // In-game overlays — hidden while title is showing
+            if !showTitle {
+                VStack {
+                    HUDView(state: g.state, dialogue: g.dialogue)
+                    Spacer()
+                }
+                .padding(.top, 8)
+                .padding(.horizontal, 12)
 
-            if g.dialogue.activeNPC != nil {
-                DialogueOverlay(dialogue: g.dialogue)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                if g.dialogue.activeNPC != nil {
+                    DialogueOverlay(dialogue: g.dialogue)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+
+                if g.state.shopOpen {
+                    ShopView(state: g.state) { g.state.shopOpen = false }
+                        .transition(.opacity)
+                }
+
+                if g.state.isGameOver {
+                    GameOverView(onRestart: {
+                        g.restart()
+                        withAnimation { showTitle = true }
+                    })
+                }
             }
 
-            if g.state.isGameOver {
-                GameOverView(onRestart: g.restart)
+            // Title screen overlay
+            if showTitle {
+                TitleView(hasSave: g.state.hasSave) { fresh in
+                    if fresh { g.state.reset() } else { g.state.load() }
+                    g.scene.restart()
+                    withAnimation(.easeInOut(duration: 0.55)) { showTitle = false }
+                }
+                .transition(.opacity)
             }
         }
         #if os(iOS)
         .statusBarHidden(true)
         #endif
         .animation(.easeInOut(duration: 0.2), value: g.dialogue.activeNPC)
+        .animation(.easeInOut(duration: 0.25), value: g.state.shopOpen)
     }
 }
 
@@ -332,6 +356,236 @@ struct DialogueLineView: View {
             }
         }
         .padding(.vertical, 1)
+    }
+}
+
+// MARK: - Title Screen
+
+struct TitleView: View {
+    let hasSave: Bool
+    let onStart: (_ fresh: Bool) -> Void
+
+    var body: some View {
+        ZStack {
+            // Dark park gradient
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.16, blue: 0.05),
+                    Color(red: 0.02, green: 0.08, blue: 0.02)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Animated bouncing characters
+                TimelineView(.animation) { ctx in
+                    let t = ctx.date.timeIntervalSinceReferenceDate
+                    HStack(spacing: 22) {
+                        ForEach(Array(Species.allCases.enumerated()), id: \.element) { i, s in
+                            VStack(spacing: 5) {
+                                Text(s.emoji)
+                                    .font(.system(size: 54))
+                                    .offset(y: sin(t * 1.9 + Double(i) * 0.9) * 9)
+                                Text(s.displayName)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(Color.white.opacity(0.45))
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 30)
+
+                // Game logo
+                VStack(spacing: 2) {
+                    Text("PARK")
+                        .font(.system(size: 70, weight: .black, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(red: 0.52, green: 1.0, blue: 0.42),
+                                         Color(red: 0.30, green: 0.85, blue: 0.30)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                    Text("FRIENDS")
+                        .font(.system(size: 70, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .shadow(color: Color(red: 0.3, green: 0.8, blue: 0.3, opacity: 0.45), radius: 24)
+                .padding(.bottom, 10)
+
+                Text("An EarthBound-style park adventure")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.32))
+                    .padding(.bottom, 44)
+
+                // Action buttons
+                VStack(spacing: 13) {
+                    if hasSave {
+                        Button("▶  Continue") { onStart(false) }
+                            .buttonStyle(TitleButtonStyle(accent: true))
+                        Button("✦  New Game") { onStart(true) }
+                            .buttonStyle(TitleButtonStyle(accent: false))
+                    } else {
+                        Button("▶  Start Adventure") { onStart(true) }
+                            .buttonStyle(TitleButtonStyle(accent: true))
+                    }
+                }
+
+                Spacer()
+
+                Text("🌳  Walk  ·  Talk  ·  Battle  🌳")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.white.opacity(0.18))
+                    .padding(.bottom, 24)
+            }
+            .padding(.horizontal, 36)
+        }
+    }
+}
+
+struct TitleButtonStyle: ButtonStyle {
+    let accent: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.title3.bold())
+            .foregroundStyle(accent ? Color.black : Color.white)
+            .frame(width: 240, height: 52)
+            .background(
+                accent
+                    ? Color(red: 0.52, green: 0.95, blue: 0.42)
+                    : Color.white.opacity(0.10)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(accent ? Color.clear : Color.white.opacity(0.22), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Item Shop
+
+struct ShopView: View {
+    let state: GameState
+    let onClose: () -> Void
+
+    private static let forSale: [ItemKind] = ItemKind.allCases.filter { $0.buyPrice != nil }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.65).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack(spacing: 12) {
+                    Text("🏪")
+                        .font(.system(size: 30))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Corner Store")
+                            .font(.headline.bold())
+                        Text("Open late. No refunds. We don't ask questions.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("🪙 \(state.coins)")
+                            .font(.title3.bold().monospacedDigit())
+                            .foregroundStyle(Color.yellow)
+                        Text("your coins")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button { onClose() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 6)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+
+                Divider()
+
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(Self.forSale, id: \.self) { kind in
+                            ShopItemRow(kind: kind, state: state)
+                        }
+                    }
+                    .padding(12)
+                }
+            }
+            .frame(maxWidth: 540, maxHeight: 480)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .shadow(radius: 24)
+            .padding(28)
+        }
+    }
+}
+
+struct ShopItemRow: View {
+    let kind: ItemKind
+    let state: GameState
+
+    private var price: Int { kind.buyPrice ?? 0 }
+    private var canAfford: Bool { state.coins >= price }
+    private var owned: Int { state.inventory[kind] ?? 0 }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(kind.emoji)
+                .font(.title2)
+                .frame(width: 38)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(kind.displayName)
+                    .font(.subheadline.bold())
+                Text(kind.shopDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("🪙\(price)")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(canAfford ? Color.primary : Color.red)
+                if owned > 0 {
+                    Text("have ×\(owned)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Button {
+                guard canAfford else { return }
+                state.coins -= price
+                state.inventory[kind, default: 0] += 1
+                state.save()
+            } label: {
+                Text("Buy")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(canAfford ? Color.green.opacity(0.75) : Color.gray.opacity(0.25))
+                    .foregroundStyle(canAfford ? .white : .secondary)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canAfford)
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 

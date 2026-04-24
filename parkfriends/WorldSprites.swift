@@ -984,7 +984,33 @@ enum WorldSprites {
         case .birdwatcher: drawBirdwatcher(ctx)
         case .dogwalker:   drawDogWalker(ctx)
         case .gardener:    drawGardener(ctx)
+        case .shopkeeper:  drawShopkeeper(ctx)
         }
+    }
+
+    // ── Shopkeeper ────────────────────────────────────────────────────────────
+    private static func drawShopkeeper(_ ctx: CGContext) {
+        shadow(ctx, cx: 64, w: 46)
+        humanBody(ctx, cx: 64,
+                  skin:  c(0.88, 0.70, 0.52),
+                  shirt: c(0.95, 0.95, 0.95),   // white shirt
+                  pants: c(0.25, 0.20, 0.55),   // dark trousers
+                  shoes: c(0.15, 0.10, 0.08))
+
+        // Green shopkeeper apron over torso
+        let apron = CGRect(x: 46, y: 52, width: 36, height: 46)
+        ctx.setFillColor(c(0.20, 0.50, 0.22, 0.85))
+        ctx.addEllipse(in: apron.insetBy(dx: 0, dy: 0))
+        ctx.setStrokeColor(c(0.12, 0.35, 0.15))
+        ctx.setLineWidth(1.5)
+        ctx.strokePath()
+        ctx.fillPath()
+
+        // Simple visor cap (flat brim + rounded top)
+        ellipse(ctx, cx: 64, cy: 13, w: 44, h: 10, fill: c(0.18, 0.38, 0.18), stroke: ink, lw: 2)
+        ellipse(ctx, cx: 64, cy: 11, w: 30, h: 12, fill: c(0.16, 0.34, 0.16), stroke: ink, lw: 2)
+        // Cap button on top
+        ellipse(ctx, cx: 64, cy:  6, w:  6, h:  6, fill: c(0.12, 0.28, 0.12))
     }
 
     // ── Jogger ────────────────────────────────────────────────────────────────

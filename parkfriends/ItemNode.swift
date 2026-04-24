@@ -114,6 +114,45 @@ enum ItemKind: String, CaseIterable {
         }
     }
 
+    // MARK: - Shop
+
+    /// Non-nil → item appears in corner store at this coin price.
+    var buyPrice: Int? {
+        switch self {
+        case .parkWater:    4
+        case .staleChip:    3
+        case .warmCola:     6
+        case .berry:        8
+        case .juiceBox:     10
+        case .granolaBar:   12
+        case .energyDrink:  15
+        case .antidote:     20
+        case .comfortSnack: 18
+        case .superBerry:   25
+        case .megaBerry:    40
+        case .mysteryBag:   5
+        default: nil
+        }
+    }
+
+    var shopDescription: String {
+        switch self {
+        case .parkWater:    "Restores 15 HP"
+        case .staleChip:    "Restores 20 HP (kinda gross)"
+        case .warmCola:     "Restores 25 HP + 5 PP"
+        case .berry:        "Restores 30 HP"
+        case .juiceBox:     "Restores 35 HP + 10 PP"
+        case .granolaBar:   "Restores 40 HP"
+        case .energyDrink:  "Restores 20 PP + 10 HP"
+        case .antidote:     "Cures poison"
+        case .comfortSnack: "Restores 50 HP"
+        case .superBerry:   "Restores 80 HP"
+        case .megaBerry:    "Fully restores HP to one member"
+        case .mysteryBag:   "Contents unknown. Cheap though."
+        default: ""
+        }
+    }
+
     var isConsumable: Bool {
         switch self {
         case .parkToken, .cityHallKey, .constructionPass,

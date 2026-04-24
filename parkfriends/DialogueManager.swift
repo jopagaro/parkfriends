@@ -163,6 +163,9 @@ final class DialogueManager {
                 return "Found a duck feather, did you? Saw that bird myself — waddled right through my tulip beds heading toward the city. *grumbles*"
             }
             return "Mind the tulips. You seen anyone stomping through my beds?"
+
+        case .shopkeeper:
+            return "We're open. Buy something or move along."
         }
     }
 
@@ -222,6 +225,9 @@ final class DialogueManager {
                 return "You saw a duck waddling hurriedly through your flower beds toward the city, going south. You're mildly annoyed it trampled your tulips."
             }
             return "You haven't seen the duck."
+
+        case .shopkeeper:
+            return "You run a corner store. You sell snacks and supplies. You don't get involved in duck drama."
         }
     }
 }
