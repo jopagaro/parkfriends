@@ -116,12 +116,27 @@ enum CityNorthWorld {
             root.addChild(n)
         }
 
+        // Foreman Rex territory: blueprint board + hard hats around his patrol zone
+        let rexDecor: [(String, CGFloat, CGFloat)] = [
+            ("📋", tile * 31, tile * 9),
+            ("⛑️", tile * 28, tile * 9),
+            ("⛑️", tile * 34, tile * 9),
+        ]
+        for (g, x, y) in rexDecor {
+            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
+            n.size = CGSize(width: tile, height: tile)
+            n.position = CGPoint(x: x + tile / 2, y: y + tile / 2)
+            n.zPosition = GameConstants.ZPos.decor
+            root.addChild(n)
+        }
+
         return BuildResult(
             root: root,
             npcSpawns: [CGPoint(x: tile * 25, y: tile * 8)],
             itemSpawns: [CGPoint(x: tile * 35, y: tile * 7)],
             fixedItems: [],
             enemySpawns: [
+                (.foremanRex,     CGPoint(x: tile * 31, y: tile * 8)),  // Boss — construction site center
                 (.vendingMachine, CGPoint(x: tile * 20, y: tile * 3)),
                 (.skateboardKid,  CGPoint(x: tile * 33, y: tile * 3)),
                 (.wasp,           CGPoint(x: tile * 18, y: tile * 3)),

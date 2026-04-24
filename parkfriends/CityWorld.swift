@@ -149,13 +149,28 @@ enum CityWorld {
             CGPoint(x: tile * 29, y: tile * 34),
         ]
 
+        // Officer Grumble territory markers near subway entrance
+        let grumbleDecor: [(String, Int, Int)] = [
+            ("🚫", 27, 4), ("🚫", 31, 4),
+            ("🪧", 29, 4),   // "Subway closed by order of Officer Grumble"
+        ]
+        for (g, c, r) in grumbleDecor {
+            guard c >= 0, c < cols, r >= 0, r < rows else { continue }
+            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
+            n.size = CGSize(width: tile * 1.05, height: tile * 1.05)
+            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
+            n.zPosition = GameConstants.ZPos.decor
+            decorLayer.addChild(n)
+        }
+
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.pigeon, CGPoint(x: tile * 20, y: tile * 21)),
-            (.pigeon, CGPoint(x: tile * 39, y: tile * 21)),
-            (.raccoon, CGPoint(x: tile * 13, y: tile * 11)),
-            (.raccoon, CGPoint(x: tile * 46, y: tile * 11)),
-            (.sternAdult, CGPoint(x: tile * 22, y: tile * 7)),
-            (.wasp, CGPoint(x: tile * 29, y: tile * 25)),
+            (.officerGrumble, CGPoint(x: tile * 29, y: tile * 6)),  // Boss — blocks subway
+            (.pigeon,         CGPoint(x: tile * 20, y: tile * 21)),
+            (.pigeon,         CGPoint(x: tile * 39, y: tile * 21)),
+            (.raccoon,        CGPoint(x: tile * 13, y: tile * 11)),
+            (.raccoon,        CGPoint(x: tile * 46, y: tile * 11)),
+            (.sternAdult,     CGPoint(x: tile * 22, y: tile * 7)),
+            (.wasp,           CGPoint(x: tile * 29, y: tile * 25)),
         ]
 
         return BuildResult(

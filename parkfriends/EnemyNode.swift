@@ -205,6 +205,37 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    // MARK: - Boss intro presentation
+
+    var bossEmoji: String {
+        switch self {
+        case .grandGooseGerald: "🦢"
+        case .officerGrumble:   "👮"
+        case .foremanRex:       "👷"
+        default: ""
+        }
+    }
+
+    /// Short dramatic subtitle shown on the boss title card.
+    var bossIntroTitle: String {
+        switch self {
+        case .grandGooseGerald: "Ruler of the Pond"
+        case .officerGrumble:   "12 Years on the Force. Zero Tolerance for Fun."
+        case .foremanRex:       "The Man Behind the Construction"
+        default: ""
+        }
+    }
+
+    /// One-line flavor text shown beneath the title card.
+    var bossIntroFlavor: String {
+        switch self {
+        case .grandGooseGerald: "Gerald didn't ask to be this way. The pond just makes him this way."
+        case .officerGrumble:   "He has a clipboard. He has been waiting to use it."
+        case .foremanRex:       "He doesn't know what's under the site. He doesn't care."
+        default: ""
+        }
+    }
+
     var bossPhase2HPThreshold: Int {
         switch self {
         case .grandGooseGerald: 80

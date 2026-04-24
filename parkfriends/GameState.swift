@@ -68,14 +68,43 @@ enum QuackClue: String, CaseIterable, Codable {
 // MARK: - Save data envelope
 
 private struct SaveData: Codable {
-    var party:           [PartyMember]
-    var activeIndex:     Int
-    var inventoryRaw:    [String: Int]   // ItemKind.rawValue → count
-    var score:           Int
-    var coins:           Int
-    var enemiesDefeated: Int
-    var zone:            GameZone
-    var quackCluesRaw:   [String]        // QuackClue.rawValue set
+    var party:              [PartyMember]
+    var activeIndex:        Int
+    var inventoryRaw:       [String: Int]   // ItemKind.rawValue → count
+    var score:              Int
+    var coins:              Int
+    var enemiesDefeated:    Int
+    var zone:               GameZone
+    var quackCluesRaw:      [String]        // QuackClue.rawValue set
+    var defeatedBossesRaw:  [String]        // EnemyKind.rawValue set
+
+    // Custom decoder so old saves missing defeatedBossesRaw still load cleanly.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        party           = try c.decode([PartyMember].self,    forKey: .party)
+        activeIndex     = try c.decode(Int.self,              forKey: .activeIndex)
+        inventoryRaw    = try c.decode([String: Int].self,    forKey: .inventoryRaw)
+        score           = try c.decode(Int.self,              forKey: .score)
+        coins           = try c.decode(Int.self,              forKey: .coins)
+        enemiesDefeated = try c.decode(Int.self,              forKey: .enemiesDefeated)
+        zone            = try c.decode(GameZone.self,         forKey: .zone)
+        quackCluesRaw   = try c.decode([String].self,         forKey: .quackCluesRaw)
+        defeatedBossesRaw = (try? c.decode([String].self, forKey: .defeatedBossesRaw)) ?? []
+    }
+
+    init(party: [PartyMember], activeIndex: Int, inventoryRaw: [String: Int],
+         score: Int, coins: Int, enemiesDefeated: Int, zone: GameZone,
+         quackCluesRaw: [String], defeatedBossesRaw: [String]) {
+        self.party              = party
+        self.activeIndex        = activeIndex
+        self.inventoryRaw       = inventoryRaw
+        self.score              = score
+        self.coins              = coins
+        self.enemiesDefeated    = enemiesDefeated
+        self.zone               = zone
+        self.quackCluesRaw      = quackCluesRaw
+        self.defeatedBossesRaw  = defeatedBossesRaw
+    }
 }
 
 // MARK: - GameState
@@ -95,6 +124,20 @@ final class GameState {
 
     // MARK: - "Find Quack" story
     var quackClues:      Set<QuackClue>  = []
+
+    // MARK: - Defeated bosses (no respawn)
+    var defeatedBosses:  Set<EnemyKind>  = []
+
+    func defeatBoss(_ kind: EnemyKind) {
+        defeatedBosses.insert(kind)
+        score += kind.defeatScore
+        gainExp(kind.expReward)
+        let rawCoins = Int.random(in: kind.coinRange)
+        coins += rawCoins
+        if let drop = kind.rollDrop() { inventory[drop, default: 0] += 1 }
+        enemiesDefeated += 1
+        save()
+    }
 
     var quackRescued: Bool { quackClues.contains(.quackRescued) }
 
@@ -221,6 +264,7 @@ final class GameState {
         currentZone = .parkCenter
         pendingLevelUps.removeAll()
         quackClues.removeAll()
+        defeatedBosses.removeAll()
     }
 
     // MARK: - Save / Load
@@ -230,14 +274,15 @@ final class GameState {
     func save() {
         let raw = Dictionary(uniqueKeysWithValues: inventory.map { ($0.key.rawValue, $0.value) })
         let data = SaveData(
-            party:           party,
-            activeIndex:     min(activeIndex, party.count - 1),
-            inventoryRaw:    raw,
-            score:           score,
-            coins:           coins,
-            enemiesDefeated: enemiesDefeated,
-            zone:            currentZone,
-            quackCluesRaw:   quackClues.map(\.rawValue)
+            party:              party,
+            activeIndex:        min(activeIndex, party.count - 1),
+            inventoryRaw:       raw,
+            score:              score,
+            coins:              coins,
+            enemiesDefeated:    enemiesDefeated,
+            zone:               currentZone,
+            quackCluesRaw:      quackClues.map(\.rawValue),
+            defeatedBossesRaw:  defeatedBosses.map(\.rawValue)
         )
         if let encoded = try? JSONEncoder().encode(data) {
             UserDefaults.standard.set(encoded, forKey: Self.saveKey)
@@ -257,6 +302,7 @@ final class GameState {
         enemiesDefeated = data.enemiesDefeated
         currentZone     = data.zone
         quackClues      = Set(data.quackCluesRaw.compactMap { QuackClue(rawValue: $0) })
+        defeatedBosses  = Set(data.defeatedBossesRaw.compactMap { EnemyKind(rawValue: $0) })
     }
 
     var hasSave: Bool {

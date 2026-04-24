@@ -50,6 +50,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var lastBattleEndTime:  TimeInterval = 0
     private let battleReengageCooldown: TimeInterval = 2.0
     private var isTransitioning:    Bool         = false
+    private var isBossIntro:        Bool         = false  // freeze world during boss title card
 
     // Follower trail
     private var trail:           [CGPoint] = []
@@ -104,6 +105,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         nearbyNPC     = nil
         nearbyBench   = false
         nearbyQuack   = false
+        isBossIntro   = false
         trail.removeAll()
         lastUpdate = 0; lastDamageTime = 0; lastBattleEndTime = 0
         pressedKeys.removeAll()
@@ -260,6 +262,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         for (kind, pos) in enemySpawns {
+            // Bosses that were already beaten don't reappear
+            if kind.isBoss && (gameState?.defeatedBosses.contains(kind) ?? false) { continue }
             let enemy          = EnemyNode(kind: kind)
             enemy.position     = pos
             enemy.patrolOrigin = pos
@@ -453,6 +457,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                           color: .yellow,
                           at: CGPoint(x: player.position.x, y: player.position.y + 60),
                           in: worldRoot)
+
+        run(.wait(forDuration: 1.5)) { [weak self] in self?.drainPendingLevelUps() }
     }
 
     private func showTalkButton(_ visible: Bool) {
@@ -518,6 +524,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func triggerBattle(with enemy: EnemyNode) {
         guard battleNode.phase == .none,
               !enemy.isDead,
+              !isBossIntro,
               let state = gameState else { return }
         let now = CACurrentMediaTime()
         guard now - lastBattleEndTime > battleReengageCooldown else { return }
@@ -536,7 +543,148 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
 
-        battleNode.show(enemy: enemy, state: state)
+        // Bosses get a dramatic intro screen first
+        if enemy.kind.isBoss {
+            showBossIntro(for: enemy) { [weak self] in
+                guard let self else { return }
+                self.isBossIntro = false
+                self.battleNode.show(enemy: enemy, state: state)
+            }
+        } else {
+            battleNode.show(enemy: enemy, state: state)
+        }
+    }
+
+    // MARK: - Boss intro title card
+
+    private func showBossIntro(for enemy: EnemyNode, then startBattle: @escaping () -> Void) {
+        isBossIntro = true
+        let kind = enemy.kind
+
+        // Stripe color per boss
+        let stripeColor: SKColor
+        switch kind {
+        case .grandGooseGerald: stripeColor = SKColor(red: 0.10, green: 0.28, blue: 0.10, alpha: 1)
+        case .officerGrumble:   stripeColor = SKColor(red: 0.08, green: 0.16, blue: 0.42, alpha: 1)
+        case .foremanRex:       stripeColor = SKColor(red: 0.48, green: 0.22, blue: 0.04, alpha: 1)
+        default:                stripeColor = SKColor(red: 0.35, green: 0.05, blue: 0.05, alpha: 1)
+        }
+
+        // Full-screen dark overlay
+        let overlay = SKSpriteNode(color: .black,
+                                   size: CGSize(width: max(size.width, 900),
+                                                height: max(size.height, 900)))
+        overlay.position  = .zero
+        overlay.zPosition = GameConstants.ZPos.ui + 50
+        overlay.alpha     = 0
+        cam.addChild(overlay)
+
+        // Colored banner stripe across middle
+        let stripe = SKSpriteNode(color: stripeColor,
+                                  size: CGSize(width: overlay.size.width, height: 200))
+        stripe.position  = CGPoint(x: 0, y: 10)
+        stripe.zPosition = 0.1
+        stripe.alpha     = 0
+        overlay.addChild(stripe)
+
+        // ★ BOSS ★ badge (gold, pulsing)
+        let bossTag = SKLabelNode(text: "★  B O S S  ★")
+        bossTag.fontName                = "Helvetica Neue"
+        bossTag.fontSize                = 13
+        bossTag.fontColor               = SKColor(red: 1, green: 0.82, blue: 0.18, alpha: 1)
+        bossTag.horizontalAlignmentMode = .center
+        bossTag.verticalAlignmentMode   = .center
+        bossTag.position                = CGPoint(x: 0, y: 72)
+        bossTag.zPosition               = 0.5
+        bossTag.alpha                   = 0
+        overlay.addChild(bossTag)
+
+        // Boss emoji (large, left-of-center)
+        let emojiLabel = SKLabelNode(text: kind.bossEmoji)
+        emojiLabel.fontSize               = 80
+        emojiLabel.horizontalAlignmentMode = .center
+        emojiLabel.verticalAlignmentMode   = .center
+        emojiLabel.position               = CGPoint(x: -160, y: 10)
+        emojiLabel.zPosition              = 0.5
+        emojiLabel.alpha                  = 0
+        overlay.addChild(emojiLabel)
+
+        // Boss display name (big, white)
+        let nameLabel = SKLabelNode(text: kind.displayName.uppercased())
+        nameLabel.fontName                = "Helvetica Neue Bold"
+        nameLabel.fontSize                = 34
+        nameLabel.fontColor               = .white
+        nameLabel.horizontalAlignmentMode = .center
+        nameLabel.verticalAlignmentMode   = .center
+        nameLabel.position                = CGPoint(x: 40, y: 20)
+        nameLabel.zPosition               = 0.5
+        nameLabel.alpha                   = 0
+        overlay.addChild(nameLabel)
+
+        // Subtitle (italic-style)
+        let titleLabel = SKLabelNode(text: kind.bossIntroTitle)
+        titleLabel.fontName                = "Helvetica Neue"
+        titleLabel.fontSize                = 17
+        titleLabel.fontColor               = SKColor(white: 0.76, alpha: 1)
+        titleLabel.horizontalAlignmentMode = .center
+        titleLabel.verticalAlignmentMode   = .center
+        titleLabel.position                = CGPoint(x: 40, y: -18)
+        titleLabel.zPosition               = 0.5
+        titleLabel.alpha                   = 0
+        overlay.addChild(titleLabel)
+
+        // Flavor text (below stripe)
+        let flavorLabel = SKLabelNode(text: kind.bossIntroFlavor)
+        flavorLabel.fontName                = "Helvetica Neue"
+        flavorLabel.fontSize                = 13
+        flavorLabel.fontColor               = SKColor(white: 0.55, alpha: 1)
+        flavorLabel.horizontalAlignmentMode = .center
+        flavorLabel.verticalAlignmentMode   = .center
+        flavorLabel.position                = CGPoint(x: 0, y: -115)
+        flavorLabel.zPosition               = 0.5
+        flavorLabel.alpha                   = 0
+        overlay.addChild(flavorLabel)
+
+        // Camera shake on stripe reveal
+        let shake = SKAction.sequence([
+            .moveBy(x: -7, y: 0, duration: 0.04),
+            .moveBy(x: 14, y: 0, duration: 0.04),
+            .moveBy(x: -7, y: 0, duration: 0.04),
+        ])
+
+        overlay.run(.sequence([
+            .fadeAlpha(to: 0.90, duration: 0.35),
+            .run { [weak self] in
+                self?.cam.run(shake)
+                stripe.run(.fadeAlpha(to: 1, duration: 0.12))
+                emojiLabel.run(.sequence([
+                    .scale(to: 1.5, duration: 0),
+                    .group([.scale(to: 1.0, duration: 0.30), .fadeIn(withDuration: 0.25)])
+                ]))
+                nameLabel.run(.sequence([
+                    .wait(forDuration: 0.08),
+                    .group([
+                        .fadeIn(withDuration: 0.22),
+                        .sequence([.moveBy(x: 0, y: -10, duration: 0),
+                                   .moveBy(x: 0, y:  10, duration: 0.22)])
+                    ])
+                ]))
+                bossTag.run(.sequence([
+                    .wait(forDuration: 0.05),
+                    .fadeIn(withDuration: 0.18),
+                    .repeatForever(.sequence([
+                        .fadeAlpha(to: 0.35, duration: 0.55),
+                        .fadeAlpha(to: 1.00, duration: 0.55)
+                    ]))
+                ]))
+                titleLabel.run(.sequence([.wait(forDuration: 0.20), .fadeIn(withDuration: 0.20)]))
+                flavorLabel.run(.sequence([.wait(forDuration: 0.40), .fadeIn(withDuration: 0.30)]))
+            },
+            .wait(forDuration: 2.8),
+            .fadeOut(withDuration: 0.40),
+            .removeFromParent(),
+            .run(startBattle)
+        ]))
     }
 
     /// Instant-win for trivially weak enemies — flash, award exp/coins, remove enemy.
@@ -561,6 +709,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         enemies.removeAll { $0 === enemy }
 
         state.defeatEnemy(kind: enemy.kind)
+        drainPendingLevelUps()
         DamageLabel.spawn(text: "💨 Too easy!",
                           color: SKColor(red: 0.9, green: 0.75, blue: 0.2, alpha: 1),
                           at: CGPoint(x: pos.x, y: pos.y + 30),
@@ -590,15 +739,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if let idx = enemies.firstIndex(where: { $0.kind == kind && $0.isDead }) {
             let enemy = enemies[idx]
             enemies.remove(at: idx)
+            let deathPos = enemy.position
             enemy.playDeathAndRemove {}
 
             DamageLabel.score(kind.defeatScore,
-                              at: CGPoint(x: enemy.position.x, y: enemy.position.y + 44),
+                              at: CGPoint(x: deathPos.x, y: deathPos.y + 44),
                               in: worldRoot)
 
+            // Bosses: record permanently, no respawn, show victory burst
+            if kind.isBoss {
+                gameState?.defeatBoss(kind)
+                showBossVictoryBurst(at: deathPos, kind: kind)
+                drainPendingLevelUps()
+                return
+            }
+
+            drainPendingLevelUps()
+
+            // Regular enemies respawn after a delay
             let spawnPos = CGPoint(
-                x: enemy.position.x + CGFloat.random(in: -80...80),
-                y: enemy.position.y + CGFloat.random(in: -80...80)
+                x: deathPos.x + CGFloat.random(in: -80...80),
+                y: deathPos.y + CGFloat.random(in: -80...80)
             )
             run(.wait(forDuration: 15)) { [weak self] in
                 guard let self else { return }
@@ -607,6 +768,65 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 newEnemy.patrolOrigin = spawnPos
                 self.worldRoot.addChild(newEnemy)
                 self.enemies.append(newEnemy)
+            }
+        }
+    }
+
+    /// Firework-style confetti burst when a boss is defeated.
+    private func showBossVictoryBurst(at pos: CGPoint, kind: EnemyKind) {
+        let emojis = ["🎉", "🎊", "⭐️", "✨", "🏆"]
+        for i in 0..<16 {
+            let label = SKLabelNode(text: emojis[i % emojis.count])
+            label.fontSize  = CGFloat.random(in: 22...42)
+            label.position  = CGPoint(x: pos.x + CGFloat.random(in: -60...60),
+                                      y: pos.y + CGFloat.random(in: -30...30))
+            label.zPosition = GameConstants.ZPos.entity + 5
+            label.alpha     = 0
+            worldRoot.addChild(label)
+            label.run(.sequence([
+                .wait(forDuration: Double(i) * 0.06),
+                .group([
+                    .fadeIn(withDuration: 0.15),
+                    .moveBy(x: CGFloat.random(in: -100...100),
+                            y: CGFloat.random(in: 60...180), duration: 1.4)
+                ]),
+                .fadeOut(withDuration: 0.3),
+                .removeFromParent()
+            ]))
+        }
+
+        // Big centered toast
+        let toast = SKLabelNode(text: "🏆 \(kind.displayName) defeated!")
+        toast.fontName                = "Helvetica Neue Bold"
+        toast.fontSize                = 22
+        toast.fontColor               = SKColor(red: 1.0, green: 0.85, blue: 0.2, alpha: 1)
+        toast.horizontalAlignmentMode = .center
+        toast.position                = CGPoint(x: 0, y: 80)
+        toast.zPosition               = GameConstants.ZPos.ui + 10
+        toast.alpha                   = 0
+        cam.addChild(toast)
+        toast.run(.sequence([
+            .group([.fadeIn(withDuration: 0.25), .scale(to: 1.1, duration: 0.25)]),
+            .wait(forDuration: 2.0),
+            .group([.fadeOut(withDuration: 0.4), .scale(to: 0.9, duration: 0.4)]),
+            .removeFromParent()
+        ]))
+    }
+
+    /// Show floating level-up toasts for any pending level-ups.
+    private func drainPendingLevelUps() {
+        guard let state = gameState, !state.pendingLevelUps.isEmpty else { return }
+        let ups = state.pendingLevelUps
+        state.pendingLevelUps.removeAll()
+        for (i, lu) in ups.enumerated() {
+            run(.wait(forDuration: Double(i) * 1.1 + 0.6)) { [weak self] in
+                guard let self, let p = self.player else { return }
+                DamageLabel.spawn(
+                    text: "⬆️ \(lu.name) → Lv.\(lu.level)!  \(lu.summary)",
+                    color: SKColor(red: 0.55, green: 1.0, blue: 0.45, alpha: 1),
+                    at: CGPoint(x: p.position.x,
+                                y: p.position.y + 65 + CGFloat(i) * 26),
+                    in: self.worldRoot)
             }
         }
     }
@@ -723,8 +943,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdate == 0 ? 1/60.0 : min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
 
-        // Freeze world during dialogue, battle, or zone transition
+        // Freeze world during dialogue, battle, zone transition, or boss intro
         let frozen = isTransitioning
+                  || isBossIntro
                   || (dialogue?.activeNPC != nil)
                   || (battleNode.phase != .none)
         guard !frozen else {

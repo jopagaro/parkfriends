@@ -128,11 +128,12 @@ enum ParkWorld {
         ]
 
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.ranger, CGPoint(x: tile * 45, y: tile * 10)),
-            (.sternAdult, CGPoint(x: tile * 20, y: tile * 20)),
-            (.wasp, CGPoint(x: tile * 55, y: tile * 26)),
-            (.pigeon, CGPoint(x: tile * 34, y: tile * 24)),
-            (.pigeon, CGPoint(x: tile * 26, y: tile * 10)),
+            (.ranger,      CGPoint(x: tile * 45, y: tile * 10)),
+            (.sternAdult,  CGPoint(x: tile * 20, y: tile * 20)),
+            (.wasp,        CGPoint(x: tile * 55, y: tile * 26)),
+            (.pigeon,      CGPoint(x: tile * 34, y: tile * 24)),
+            (.pigeon,      CGPoint(x: tile * 26, y: tile * 10)),
+            (.flockLeader, CGPoint(x: tile * 36, y: tile * 27)), // Pigeon Flock Leader near fountain
         ]
 
         return BuildResult(
@@ -232,11 +233,25 @@ enum ParkWorld {
             CGPoint(x: tile * 56, y: tile * 8),
         ]
 
+        // ── Grand Goose Gerald territory markers around the pond ──────────────
+        let geraldDecor: [(String, Int, Int)] = [
+            ("👑", 9,  13), ("👑", 15, 14), ("👑", 7,  11),
+            ("🪧", 11, 14), // "NO TRESPASSING — By order of Gerald"
+        ]
+        for (g, c, r) in geraldDecor {
+            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
+            n.size = CGSize(width: tile, height: tile)
+            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
+            n.zPosition = GameConstants.ZPos.decor
+            root.addChild(n)
+        }
+
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.goose, CGPoint(x: tile * 13, y: tile * 11)),
-            (.raccoon, CGPoint(x: tile * 58, y: tile * 8)),
-            (.sternAdult, CGPoint(x: tile * 10, y: tile * 5)),
-            (.wasp, CGPoint(x: tile * 62, y: tile * 6)),
+            (.grandGooseGerald, CGPoint(x: tile * 10, y: tile * 12)), // Boss — guards the pond
+            (.goose,            CGPoint(x: tile * 13, y: tile * 11)), // Gerald's lieutenants
+            (.raccoon,          CGPoint(x: tile * 58, y: tile * 8)),
+            (.sternAdult,       CGPoint(x: tile * 10, y: tile * 5)),
+            (.wasp,             CGPoint(x: tile * 62, y: tile * 6)),
         ]
 
         return BuildResult(
