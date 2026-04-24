@@ -79,7 +79,8 @@ final class NPCNode: SKSpriteNode {
     required init?(coder aDecoder: NSCoder) { fatalError() }
 
     private func addIndicator() {
-        let bubble = SKLabelNode(text: "💬")
+        let glyph = kind.isShopkeeper ? "🛍️" : "💬"
+        let bubble = SKLabelNode(text: glyph)
         bubble.fontSize = 18
         bubble.position = CGPoint(x: 0, y: 32)
         bubble.zPosition = 1

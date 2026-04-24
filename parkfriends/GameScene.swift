@@ -960,6 +960,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !isTransitioning, let state = gameState else { return }
         isTransitioning = true
         state.currentZone = destination
+        state.save()   // auto-save when crossing zone borders
 
         // Black overlay on camera
         let overlay = SKSpriteNode(color: .black,

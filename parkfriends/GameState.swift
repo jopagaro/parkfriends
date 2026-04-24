@@ -226,7 +226,13 @@ final class GameState {
         let rawCoins = Int.random(in: kind.coinRange)
         coins += max(0, Int(Double(rawCoins) * coinMultiplier))
         if let drop = kind.rollDrop() {
-            inventory[drop, default: 0] += 1
+            collect(drop)
+        }
+        // Raccoon has a 35% chance to drop Quack's Duck Tag (story clue)
+        if kind == .raccoon,
+           !quackClues.contains(.raccoonDroppedTag),
+           Double.random(in: 0...1) < 0.35 {
+            collect(.duckTag)   // collect() auto-inserts raccoonDroppedTag clue
         }
     }
 
