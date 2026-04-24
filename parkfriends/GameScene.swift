@@ -526,7 +526,61 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         pressedKeys.removeAll()
         enemies.forEach { $0.physicsBody?.velocity = .zero }
 
+        // Auto-win: if average living party level > enemy level + 3, skip the battle UI
+        let enemyLevel = max(1, enemy.kind.maxHP / 8)
+        let livingMembers = state.party.filter(\.isAlive)
+        let avgLevel = livingMembers.isEmpty ? 1 :
+            livingMembers.map(\.level).reduce(0, +) / livingMembers.count
+        if !enemy.kind.isBoss && avgLevel > enemyLevel + 3 {
+            autoWin(enemy: enemy, state: state)
+            return
+        }
+
         battleNode.show(enemy: enemy, state: state)
+    }
+
+    /// Instant-win for trivially weak enemies — flash, award exp/coins, remove enemy.
+    private func autoWin(enemy: EnemyNode, state: GameState) {
+        lastBattleEndTime = CACurrentMediaTime()
+
+        _ = enemy.takeDamage(enemy.hp + 1)   // drain all HP → isDead becomes true
+        let pos = enemy.position
+
+        // Quick flash + pop
+        enemy.run(.sequence([
+            .group([
+                .scale(to: 1.4, duration: 0.08),
+                .colorize(with: .yellow, colorBlendFactor: 0.8, duration: 0.08)
+            ]),
+            .group([
+                .scale(to: 0, duration: 0.12),
+                .fadeOut(withDuration: 0.12)
+            ]),
+            .removeFromParent()
+        ]))
+        enemies.removeAll { $0 === enemy }
+
+        state.defeatEnemy(kind: enemy.kind)
+        DamageLabel.spawn(text: "💨 Too easy!",
+                          color: SKColor(red: 0.9, green: 0.75, blue: 0.2, alpha: 1),
+                          at: CGPoint(x: pos.x, y: pos.y + 30),
+                          in: worldRoot)
+        DamageLabel.score(enemy.kind.defeatScore,
+                          at: CGPoint(x: pos.x, y: pos.y + 55),
+                          in: worldRoot)
+
+        // Respawn after delay
+        let kind = enemy.kind
+        run(.wait(forDuration: 20)) { [weak self] in
+            guard let self else { return }
+            let spawnPos = CGPoint(x: pos.x + CGFloat.random(in: -80...80),
+                                   y: pos.y + CGFloat.random(in: -80...80))
+            let newEnemy = EnemyNode(kind: kind)
+            newEnemy.position     = spawnPos
+            newEnemy.patrolOrigin = spawnPos
+            self.worldRoot.addChild(newEnemy)
+            self.enemies.append(newEnemy)
+        }
     }
 
     // MARK: - Battle callbacks

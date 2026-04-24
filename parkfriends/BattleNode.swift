@@ -925,44 +925,96 @@ final class BattleNode: SKNode {
     // MARK: - Item use
 
     private func useFirstAvailableItem(in state: GameState, memberIndex idx: Int) -> Bool {
+        // Priority 1 — cure status if poisoned
+        if state.party[idx].isPoisoned || state.party[idx].isBadlyPoisoned,
+           let count = state.inventory[.antidote], count > 0 {
+            consumeItem(.antidote, from: state)
+            state.party[idx].clearStatus(.poison)
+            state.party[idx].clearStatus(.strongPoison)
+            logLabel.text = "Used an Antidote! 🧴\nPoison cleared."
+            return true
+        }
+
+        // Priority 2 — energy drink (PP restore) if PP is low
+        if state.party[idx].pp < state.party[idx].maxPP / 3,
+           let count = state.inventory[.energyDrink], count > 0 {
+            consumeItem(.energyDrink, from: state)
+            let ppGain = min(state.party[idx].maxPP - state.party[idx].pp, 20)
+            state.party[idx].pp += ppGain
+            let hpGain = min(state.party[idx].maxHP - state.party[idx].hp, 10)
+            state.party[idx].hp += hpGain
+            logLabel.text = "Used an Energy Drink! 🥤\nRestored \(ppGain) PP and \(hpGain) HP."
+            return true
+        }
+
+        // Priority 3 — HP restoration (from weakest to strongest)
         let healingOrder: [(ItemKind, Int, String)] = [
-            (.berry,         18, "Used a Berry! 🫐"),
-            (.granolaBar,    22, "Used a Granola Bar!"),
-            (.staleChip,      8, "Used a Stale Chip. It tastes bad. You know where this has been."),
-            (.juiceBox,      30, "Used a Juice Box! 🧃"),
-            (.warmCola,      20, "Used a Warm Cola!"),
-            (.comfortSnack,  35, "Used a Comfort Snack! 🍪"),
-            (.superBerry,    45, "Used a Super Berry!"),
-            (.parkWater,      8, "Used Park Water! You made a choice."),
-            (.megaBerry,     state.party[idx].maxHP, "Used a Mega Berry! ✨")
+            (.parkWater,      8,  "Used Park Water!\nYou know what you did."),
+            (.staleChip,      8,  "Used a Stale Chip.\nIt tastes bad. Still healed \(0) HP."),
+            (.berry,         18,  "Used a Berry! 🫐"),
+            (.warmCola,      20,  "Used a Warm Cola!"),
+            (.granolaBar,    22,  "Used a Granola Bar!"),
+            (.juiceBox,      30,  "Used a Juice Box! 🧃"),
+            (.comfortSnack,  35,  "Used a Comfort Snack! 🍪"),
+            (.superBerry,    45,  "Used a Super Berry!"),
+            (.megaBerry,     state.party[idx].maxHP, "Used a Mega Berry! ✨ Full heal!"),
         ]
 
         for (kind, value, headline) in healingOrder {
             guard let count = state.inventory[kind], count > 0 else { continue }
-            state.inventory[kind] = count - 1
-            if state.inventory[kind] == 0 { state.inventory.removeValue(forKey: kind) }
-            let gain = min(state.party[idx].maxHP - state.party[idx].hp, value)
+            // Don't waste strong heals when HP is high
+            let hpMissing = state.party[idx].maxHP - state.party[idx].hp
+            if value > 25 && hpMissing < 12 { continue }
+            consumeItem(kind, from: state)
+            let gain = min(hpMissing, value)
             state.party[idx].hp += gain
             if kind == .juiceBox {
-                state.party[idx].pp = min(state.party[idx].maxPP, state.party[idx].pp + 6)
-                logLabel.text = "\(headline)\nRestored \(gain) HP and 6 PP."
+                let ppGain = min(state.party[idx].maxPP - state.party[idx].pp, 8)
+                state.party[idx].pp += ppGain
+                logLabel.text = "\(headline)\nRestored \(gain) HP and \(ppGain) PP."
             } else {
                 logLabel.text = "\(headline)\nRestored \(gain) HP."
             }
             return true
         }
 
-        if let count = state.inventory[.antidote], count > 0,
-           (state.party[idx].isPoisoned || state.party[idx].isBadlyPoisoned) {
-            state.inventory[.antidote] = count - 1
-            if state.inventory[.antidote] == 0 { state.inventory.removeValue(forKey: .antidote) }
-            state.party[idx].clearStatus(.poison)
-            state.party[idx].clearStatus(.strongPoison)
-            logLabel.text = "Used an Antidote!\nPoison cleared."
-            return true
+        // Priority 4 — mystery bag (random effect)
+        if let count = state.inventory[.mysteryBag], count > 0 {
+            consumeItem(.mysteryBag, from: state)
+            return useMysteryBag(state: state, idx: idx)
         }
 
         return false
+    }
+
+    private func consumeItem(_ kind: ItemKind, from state: GameState) {
+        guard let count = state.inventory[kind], count > 0 else { return }
+        state.inventory[kind] = count - 1
+        if state.inventory[kind] == 0 { state.inventory.removeValue(forKey: kind) }
+    }
+
+    private func useMysteryBag(state: GameState, idx: Int) -> Bool {
+        let roll = Int.random(in: 0...3)
+        switch roll {
+        case 0:
+            let gain = min(state.party[idx].maxHP - state.party[idx].hp, 40)
+            state.party[idx].hp += gain
+            logLabel.text = "Mystery Bag! 🛍️\nSomething tasty. +\(gain) HP."
+        case 1:
+            let gain = min(state.party[idx].maxPP - state.party[idx].pp, 15)
+            state.party[idx].pp += gain
+            state.healParty(hp: 8)
+            logLabel.text = "Mystery Bag! 🛍️\nFizzy feeling. +\(gain) PP, party +8 HP."
+        case 2:
+            // Temp ATK boost
+            playerBonusATK = max(playerBonusATK, state.activeMember.atk / 3)
+            logLabel.text = "Mystery Bag! 🛍️\nEnergized! ATK boosted this battle."
+        default:
+            // Heal party small amount
+            state.healParty(hp: 12)
+            logLabel.text = "Mystery Bag! 🛍️\nSmells like sunscreen. Everyone +12 HP."
+        }
+        return true
     }
 
     // MARK: - Chaos Toss (Pip §7.1)
