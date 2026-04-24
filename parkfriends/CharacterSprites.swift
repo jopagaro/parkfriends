@@ -21,7 +21,7 @@ enum CharacterSprites {
         if let t = cache[key] { return t }
         let image = render(species: species, frame: frame)
         let tex = SKTexture(image: image)
-        tex.filteringMode = .linear
+        tex.filteringMode = .nearest
         cache[key] = tex
         return tex
     }
@@ -59,8 +59,8 @@ enum CharacterSprites {
     // MARK: - Dispatch
 
     private static func paint(species: Species, frame: WalkFrame, ctx: CGContext) {
-        ctx.setAllowsAntialiasing(true)
-        ctx.setShouldAntialias(true)
+        ctx.setAllowsAntialiasing(false)
+        ctx.setShouldAntialias(false)
         // Walk bob: frame B shifts body up 3 px, legs alternate
         let bob: CGFloat     = frame == .b ? -3 : 0
         let legSwing: CGFloat = frame == .b ?  5 : -5

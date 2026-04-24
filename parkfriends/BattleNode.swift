@@ -925,61 +925,64 @@ final class BattleNode: SKNode {
     // MARK: - Item use
 
     private func useFirstAvailableItem(in state: GameState, memberIndex idx: Int) -> Bool {
-        // Priority 1 — cure status if poisoned
-        if state.party[idx].isPoisoned || state.party[idx].isBadlyPoisoned,
-           let count = state.inventory[.antidote], count > 0 {
+        let member = state.party[idx]
+
+        // Priority 1 — antidote if poisoned (cure before anything else)
+        if (member.isPoisoned || member.isBadlyPoisoned),
+           (state.inventory[.antidote] ?? 0) > 0 {
             consumeItem(.antidote, from: state)
             state.party[idx].clearStatus(.poison)
             state.party[idx].clearStatus(.strongPoison)
-            logLabel.text = "Used an Antidote! 🧴\nPoison cleared."
+            logLabel.text = "Used an Antidote! 🧴\nPoison cured."
             return true
         }
 
-        // Priority 2 — energy drink (PP restore) if PP is low
-        if state.party[idx].pp < state.party[idx].maxPP / 3,
-           let count = state.inventory[.energyDrink], count > 0 {
+        // Priority 2 — energy drink if PP is critically low (< 1/3 max)
+        if member.pp < member.maxPP / 3,
+           (state.inventory[.energyDrink] ?? 0) > 0 {
             consumeItem(.energyDrink, from: state)
-            let ppGain = min(state.party[idx].maxPP - state.party[idx].pp, 20)
+            let ppGain = min(member.maxPP - member.pp, ItemKind.energyDrink.healPP)
+            let hpGain = min(member.maxHP - member.hp, ItemKind.energyDrink.healHP)
             state.party[idx].pp += ppGain
-            let hpGain = min(state.party[idx].maxHP - state.party[idx].hp, 10)
             state.party[idx].hp += hpGain
-            logLabel.text = "Used an Energy Drink! 🥤\nRestored \(ppGain) PP and \(hpGain) HP."
+            logLabel.text = "Used an Energy Drink! 🥤\n+\(ppGain) PP and +\(hpGain) HP."
             return true
         }
 
-        // Priority 3 — HP restoration (from weakest to strongest)
-        let healingOrder: [(ItemKind, Int, String)] = [
-            (.parkWater,      8,  "Used Park Water!\nYou know what you did."),
-            (.staleChip,      8,  "Used a Stale Chip.\nIt tastes bad. Still healed \(0) HP."),
-            (.berry,         18,  "Used a Berry! 🫐"),
-            (.warmCola,      20,  "Used a Warm Cola!"),
-            (.granolaBar,    22,  "Used a Granola Bar!"),
-            (.juiceBox,      30,  "Used a Juice Box! 🧃"),
-            (.comfortSnack,  35,  "Used a Comfort Snack! 🍪"),
-            (.superBerry,    45,  "Used a Super Berry!"),
-            (.megaBerry,     state.party[idx].maxHP, "Used a Mega Berry! ✨ Full heal!"),
+        // Priority 3 — HP restoration via ItemKind.healHP (single source of truth)
+        // Order from weakest to strongest so we don't waste premium items.
+        let hpHealers: [ItemKind] = [
+            .parkWater, .staleChip, .warmCola, .berry,
+            .granolaBar, .juiceBox, .comfortSnack, .superBerry, .megaBerry
         ]
+        let hpMissing = member.maxHP - member.hp
 
-        for (kind, value, headline) in healingOrder {
-            guard let count = state.inventory[kind], count > 0 else { continue }
-            // Don't waste strong heals when HP is high
-            let hpMissing = state.party[idx].maxHP - state.party[idx].hp
-            if value > 25 && hpMissing < 12 { continue }
+        for kind in hpHealers {
+            guard (state.inventory[kind] ?? 0) > 0 else { continue }
+            // Don't waste a premium heal (>35 HP) when already near-full
+            if kind.healHP > 35 && hpMissing < 15 { continue }
+            // Don't waste megaBerry if not seriously hurt
+            if kind == .megaBerry && hpMissing < 30 { continue }
+
             consumeItem(kind, from: state)
-            let gain = min(hpMissing, value)
-            state.party[idx].hp += gain
-            if kind == .juiceBox {
-                let ppGain = min(state.party[idx].maxPP - state.party[idx].pp, 8)
+            let hpGain = min(hpMissing, kind.healHP)
+            state.party[idx].hp += hpGain
+
+            var msg = "Used \(kind.emoji) \(kind.displayName)!\n+\(hpGain) HP"
+            if kind.healPP > 0 {
+                let ppGain = min(member.maxPP - member.pp, kind.healPP)
                 state.party[idx].pp += ppGain
-                logLabel.text = "\(headline)\nRestored \(gain) HP and \(ppGain) PP."
-            } else {
-                logLabel.text = "\(headline)\nRestored \(gain) HP."
+                msg += " and +\(ppGain) PP"
             }
+            if kind == .megaBerry && hpMissing >= member.maxHP {
+                msg = "Used a Mega Berry! ✨\nFully restored HP!"
+            }
+            logLabel.text = msg + "."
             return true
         }
 
         // Priority 4 — mystery bag (random effect)
-        if let count = state.inventory[.mysteryBag], count > 0 {
+        if (state.inventory[.mysteryBag] ?? 0) > 0 {
             consumeItem(.mysteryBag, from: state)
             return useMysteryBag(state: state, idx: idx)
         }

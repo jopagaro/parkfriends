@@ -50,7 +50,7 @@ struct GameView: View {
                 .padding(.top, 8)
                 .padding(.horizontal, 12)
 
-                if g.dialogue.activeNPC != nil {
+                if g.dialogue.activeNPC != nil || g.dialogue.activeTitle != nil {
                     DialogueOverlay(dialogue: g.dialogue)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
@@ -65,11 +65,27 @@ struct GameView: View {
                         .transition(.opacity)
                 }
 
+                if g.state.isPaused {
+                    PauseMenuView(state: g.state)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+
                 if g.state.isGameOver {
                     GameOverView(onRestart: {
                         g.restart()
                         withAnimation { showTitle = true }
                     })
+                }
+
+                // Victory: Quack rescued + all 3 bosses beaten
+                let allBossesBeaten = [EnemyKind.grandGooseGerald, .officerGrumble, .foremanRex]
+                    .allSatisfy { g.state.defeatedBosses.contains($0) }
+                if g.state.quackRescued && allBossesBeaten {
+                    VictoryView(state: g.state) {
+                        g.restart()
+                        withAnimation(.easeInOut(duration: 0.6)) { showTitle = true }
+                    }
+                    .transition(.opacity)
                 }
             }
 
@@ -86,9 +102,69 @@ struct GameView: View {
         #if os(iOS)
         .statusBarHidden(true)
         #endif
-        .animation(.easeInOut(duration: 0.2), value: g.dialogue.activeNPC)
+        .animation(.easeInOut(duration: 0.2),  value: g.dialogue.activeNPC)
+        .animation(.easeInOut(duration: 0.2),  value: g.dialogue.activeTitle)
         .animation(.easeInOut(duration: 0.25), value: g.state.shopOpen)
         .animation(.easeInOut(duration: 0.22), value: g.state.statsOpen)
+        .animation(.easeInOut(duration: 0.20), value: g.state.isPaused)
+        .animation(.easeInOut(duration: 0.45), value: g.state.quackRescued)
+        .onChange(of: g.state.queueTitleReturn) { _, triggered in
+            guard triggered else { return }
+            g.restart()                              // resets state (clears flag) + restarts scene
+            withAnimation(.easeInOut(duration: 0.5)) { showTitle = true }
+        }
+    }
+}
+
+private enum RetroUI {
+    static let ink = Color(red: 0.12, green: 0.12, blue: 0.16)
+    static let navy = Color(red: 0.08, green: 0.10, blue: 0.18)
+    static let navyLight = Color(red: 0.17, green: 0.21, blue: 0.34)
+    static let panel = Color(red: 0.93, green: 0.91, blue: 0.82)
+    static let panelShadow = Color(red: 0.76, green: 0.72, blue: 0.61)
+    static let grass = Color(red: 0.36, green: 0.66, blue: 0.20)
+    static let gold = Color(red: 0.83, green: 0.69, blue: 0.19)
+    static let warning = Color(red: 0.78, green: 0.19, blue: 0.19)
+}
+
+private struct RetroPanel<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(8)
+            .background(RetroUI.panel)
+            .overlay(
+                Rectangle()
+                    .stroke(RetroUI.ink, lineWidth: 3)
+                    .padding(1)
+            )
+            .shadow(color: RetroUI.panelShadow, radius: 0, x: 4, y: 4)
+    }
+}
+
+private struct RetroDarkPanel<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(10)
+            .background(RetroUI.navy)
+            .overlay(
+                Rectangle()
+                    .stroke(Color.white.opacity(0.88), lineWidth: 2)
+                    .padding(1)
+            )
+            .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 4))
+            .shadow(color: Color.black.opacity(0.35), radius: 0, x: 4, y: 4)
     }
 }
 
@@ -98,62 +174,169 @@ struct HUDView: View {
     let state: GameState
     let dialogue: DialogueManager
 
+    @State private var storyExpanded = true
+    @State private var collapseToken = UUID()
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            // Party panel
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(Array(state.party.enumerated()), id: \.element.id) { idx, member in
-                    let isActive = idx == state.activeIndex
-                    HStack(spacing: 5) {
-                        Text(member.species.emoji)
-                            .font(.system(size: 18))
-                            .opacity(isActive ? 1.0 : 0.40)
-                            .scaleEffect(isActive ? 1.10 : 1.0)
-                            .animation(.spring(duration: 0.2), value: state.activeIndex)
+            RetroPanel {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("PARTY")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(RetroUI.ink.opacity(0.75))
+                    ForEach(Array(state.party.enumerated()), id: \.element.id) { idx, member in
+                        let isActive = idx == state.activeIndex
+                        HStack(spacing: 6) {
+                            Text(isActive ? "▶" : " ")
+                                .font(.system(size: 12, weight: .black, design: .monospaced))
+                                .foregroundStyle(isActive ? RetroUI.warning : RetroUI.panelShadow)
+                                .frame(width: 10)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 4) {
-                                Text("Lv\(member.level)")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(isActive ? Color.yellow : Color.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(member.species.displayName.uppercased())
+                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                        .foregroundStyle(RetroUI.ink)
+                                    LevelPipsView(isActive: isActive)
+                                    Text("LV \(member.level)")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(isActive ? RetroUI.warning : RetroUI.ink.opacity(0.7))
+                                }
                                 HPBar(hp: member.hp, maxHP: member.maxHP)
-                                    .frame(width: 60, height: 6)
+                                    .frame(width: 74, height: 7)
+                                ExpBar(exp: member.exp, expToNext: member.expToNext)
+                                    .frame(width: 74, height: 3)
+                                    .opacity(isActive ? 1.0 : 0.45)
                             }
-                            // EXP bar
-                            ExpBar(exp: member.exp, expToNext: member.expToNext)
-                                .frame(width: 68, height: 3)
-                                .opacity(isActive ? 1.0 : 0.35)
                         }
                     }
                 }
             }
-            .padding(8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
 
             Spacer()
 
-            // Score + zone + inventory
-            VStack(alignment: .trailing, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(state.currentZone.displayTitle)
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    Text("⭐️ \(state.score)")
-                    Text("🪙 \(state.coins)")
-                    Text("💀 \(state.enemiesDefeated)")
+            StoryPanelView(
+                state: state,
+                dialogue: dialogue,
+                isExpanded: $storyExpanded,
+                collapseToken: $collapseToken
+            )
+        }
+        .onAppear { scheduleCollapse(reset: true) }
+        .onChange(of: state.storyPanelSignature) { _, _ in
+            scheduleCollapse(reset: true)
+        }
+    }
+
+    private func scheduleCollapse(reset: Bool) {
+        if reset {
+            storyExpanded = true
+            collapseToken = UUID()
+        }
+
+        let token = collapseToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.5) {
+            guard token == collapseToken else { return }
+            withAnimation(.easeInOut(duration: 0.22)) {
+                storyExpanded = false
+            }
+        }
+    }
+}
+
+struct StoryPanelView: View {
+    let state: GameState
+    let dialogue: DialogueManager
+    @Binding var isExpanded: Bool
+    @Binding var collapseToken: UUID
+
+    var body: some View {
+        RetroDarkPanel {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.storyArcTitle.uppercased())
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
+                        Text(state.currentZone.displayTitle)
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                    }
+                    Spacer()
+                    Button(isExpanded ? "HIDE" : "OPEN") {
+                        collapseToken = UUID()
+                        withAnimation(.easeInOut(duration: 0.18)) { isExpanded.toggle() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 2))
                 }
-                .font(.headline.monospacedDigit())
-                InventoryStrip(inventory: state.inventory)
-                // Quack side-quest tracker
-                QuackQuestView(clues: state.quackClues)
-                if !dialogue.modelAvailable {
-                    Text("🤖 offline mode")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+
+                if isExpanded {
+                    Text(state.currentZone.zoneSubtitle)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                    Divider().overlay(Color.white.opacity(0.18))
+                    Text(state.currentObjectiveText)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.95))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(state.storyBeatText)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color(red: 0.74, green: 0.83, blue: 0.92))
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 12) {
+                        Text("SCR \(state.score)")
+                        Text("COIN \(state.coins)")
+                        Text("FIGHTS \(state.enemiesDefeated)")
+                    }
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.white)
+                    InventoryStrip(inventory: state.inventory)
+                    QuackQuestView(clues: state.quackClues)
+                    if !dialogue.modelAvailable {
+                        Text("DIALOGUE: OFFLINE")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.52))
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        Text(state.currentObjectiveText.replacingOccurrences(of: "Objective: ", with: "NEXT: "))
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.88))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text("SCR \(state.score)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                    }
                 }
             }
-            .padding(8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+struct LevelPipsView: View {
+    let isActive: Bool
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { idx in
+                Rectangle()
+                    .fill(isActive ? RetroUI.gold : RetroUI.panelShadow)
+                    .frame(width: 3, height: 3 + CGFloat(idx))
+                    .opacity(isActive ? (pulse ? 1.0 : 0.45 + CGFloat(idx) * 0.12) : 0.45)
+            }
+        }
+        .onAppear {
+            guard isActive else { return }
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
         }
     }
 }
@@ -166,19 +349,20 @@ struct HPBar: View {
         GeometryReader { geo in
             let frac = maxHP > 0 ? CGFloat(hp) / CGFloat(maxHP) : 0
             ZStack(alignment: .leading) {
-                Capsule().fill(.black.opacity(0.3))
-                Capsule()
+                Rectangle().fill(RetroUI.ink.opacity(0.24))
+                Rectangle()
                     .fill(barColor(frac))
                     .frame(width: geo.size.width * max(frac, 0))
                     .animation(.easeInOut(duration: 0.3), value: frac)
             }
+            .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 1))
         }
     }
 
     private func barColor(_ frac: CGFloat) -> Color {
-        if frac > 0.5 { return .green }
-        if frac > 0.2 { return .yellow }
-        return .red
+        if frac > 0.5 { return RetroUI.grass }
+        if frac > 0.2 { return Color(red: 0.83, green: 0.69, blue: 0.19) }
+        return RetroUI.warning
     }
 }
 
@@ -190,12 +374,13 @@ struct ExpBar: View {
         GeometryReader { geo in
             let frac = expToNext > 0 ? CGFloat(exp) / CGFloat(expToNext) : 0
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.15))
-                Capsule()
-                    .fill(Color.blue.opacity(0.80))
+                Rectangle().fill(Color.white.opacity(0.12))
+                Rectangle()
+                    .fill(Color(red: 0.29, green: 0.56, blue: 0.77))
                     .frame(width: geo.size.width * max(min(frac, 1), 0))
                     .animation(.easeInOut(duration: 0.4), value: frac)
             }
+            .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 1))
         }
     }
 }
@@ -208,16 +393,18 @@ struct InventoryStrip: View {
             ForEach(ItemKind.allCases, id: \.self) { kind in
                 if let count = inventory[kind], count > 0 {
                     HStack(spacing: 2) {
-                        Text(kind.emoji)
-                        Text("×\(count)")
-                            .font(.caption.monospacedDigit())
+                        Text(kind.hudLabel)
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                        Text("x\(count)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                     }
+                    .foregroundStyle(.white)
                 }
             }
             if inventory.isEmpty {
-                Text("bag empty")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text("BAG EMPTY")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.58))
             }
         }
     }
@@ -233,28 +420,28 @@ struct QuackQuestView: View {
         .foundFeather,
         .childSawChase,
         .joggerSawCity,
-        .raccoonDroppedTag
+        .raccoonDroppedTag,
+        .pigeonCityClue,
+        .workerSawDuck
     ]
 
     var body: some View {
         if clues.contains(.quackRescued) {
             HStack(spacing: 4) {
-                Text("🦆 Quack: RESCUED!")
-                    .font(.caption.bold())
-                    .foregroundStyle(Color.yellow)
+                Text("QUACK SAFE")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
             }
         } else if !clues.isEmpty {
             HStack(spacing: 3) {
-                Text("🦆")
-                    .font(.caption)
                 ForEach(storyClues, id: \.self) { clue in
-                    Circle()
+                    Rectangle()
                         .fill(clues.contains(clue) ? Color.yellow : Color.white.opacity(0.3))
                         .frame(width: 6, height: 6)
                 }
-                Text("\(clues.subtracting([.quackRescued]).count)/5")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                Text("TRACK \(clues.subtracting([.quackRescued]).count)/7")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.72))
             }
         }
         // No clues yet — don't show the tracker (keeps HUD clean)
@@ -271,64 +458,99 @@ struct DialogueOverlay: View {
     var body: some View {
         VStack {
             Spacer()
-            VStack(alignment: .leading, spacing: 8) {
-                // Header
-                HStack {
-                    Text(dialogue.activeNPC?.emoji ?? "")
-                        .font(.system(size: 28))
-                    Text(dialogue.activeNPC?.displayName ?? "")
-                        .font(.headline)
-                    Spacer()
-                    Button {
-                        dialogue.endConversation()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
+            RetroDarkPanel {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text((dialogue.activeTitle ?? dialogue.activeNPC?.displayName ?? "").uppercased())
+                                .font(.system(size: 12, weight: .black, design: .monospaced))
+                                .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
+                            Text(dialogue.allowsInput ? "Press `END` to leave. Type to start the conversation." : "Scripted scene")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+                        Spacer()
+                        Button("END") {
+                            dialogue.endConversation()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
                     }
-                }
 
-                // Transcript
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(dialogue.lines) { line in
-                                DialogueLineView(line: line, npc: dialogue.activeNPC)
-                                    .id(line.id)
+                    if dialogue.allowsInput && dialogue.lines.isEmpty {
+                        DialogueEmptyStateView(npc: dialogue.activeNPC) { prompt in
+                            draft = prompt
+                            sendMessage()
+                        }
+                    } else {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    ForEach(dialogue.lines) { line in
+                                        DialogueLineView(line: line)
+                                            .id(line.id)
+                                    }
+                                    if dialogue.isResponding {
+                                        HStack(spacing: 8) {
+                                            Text("...")
+                                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                                .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
+                                            Text("Thinking")
+                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(.white.opacity(0.72))
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 10)
+                                        .background(Color.white.opacity(0.06))
+                                        .overlay(Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 2))
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            if dialogue.isResponding {
-                                HStack(spacing: 4) {
-                                    ProgressView().controlSize(.mini)
-                                    Text("thinking…")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                            .frame(maxHeight: 220)
+                            .onChange(of: dialogue.lines.count) { _, _ in
+                                if let last = dialogue.lines.last {
+                                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxHeight: 180)
-                    .onChange(of: dialogue.lines.count) { _, _ in
-                        if let last = dialogue.lines.last {
-                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+
+                    if dialogue.allowsInput {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("SAY")
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.58))
+                            HStack(spacing: 8) {
+                                Text(">")
+                                    .font(.system(size: 16, weight: .black, design: .monospaced))
+                                    .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
+                                    .padding(.leading, 10)
+                                TextField("Ask about the park, the animals, or what they saw.", text: $draft)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .focused($focused)
+                                    .onSubmit(sendMessage)
+                                Button("SEND", action: sendMessage)
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(RetroUI.ink)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(Color(red: 0.96, green: 0.89, blue: 0.55))
+                                    .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 2))
+                                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty
+                                              || dialogue.isResponding)
+                            }
+                            .padding(.vertical, 4)
+                            .background(Color(red: 0.08, green: 0.10, blue: 0.18))
+                            .overlay(Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 2))
                         }
                     }
                 }
-
-                // Input row
-                HStack {
-                    TextField("Say something…", text: $draft)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($focused)
-                        .onSubmit(sendMessage)
-                    Button("Send", action: sendMessage)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty
-                                  || dialogue.isResponding)
-                }
             }
-            .padding()
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
             .padding()
         }
     }
@@ -341,27 +563,84 @@ struct DialogueOverlay: View {
     }
 }
 
+struct DialogueEmptyStateView: View {
+    let npc: NPCKind?
+    let onSelectPrompt: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Start the conversation.")
+                .font(.system(size: 15, weight: .black, design: .monospaced))
+                .foregroundStyle(.white)
+            Text("The NPC will wait until you ask something.")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.68))
+
+            HStack(spacing: 8) {
+                ForEach(promptOptions, id: \.self) { prompt in
+                    Button(prompt.uppercased()) {
+                        onSelectPrompt(prompt)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(RetroUI.ink)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color(red: 0.96, green: 0.89, blue: 0.55))
+                    .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 2))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.white.opacity(0.06))
+        .overlay(Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 2))
+    }
+
+    private var promptOptions: [String] {
+        switch npc {
+        case .rangerGuide:
+            return ["What's going on?", "Why the fountain?"]
+        case .hazel:
+            return ["What happened?", "What did the pigeons take?"]
+        case .child:
+            return ["What did you see?", "Any weird animals?"]
+        case .jogger:
+            return ["Seen anything strange?", "Where were the birds?"]
+        default:
+            return ["What's going on?", "Seen anything strange?"]
+        }
+    }
+}
+
 struct DialogueLineView: View {
     let line: DialogueManager.Line
-    let npc: NPCKind?
 
     var body: some View {
         let isPlayer = line.speaker == "You"
-        HStack(alignment: .top, spacing: 6) {
-            if !isPlayer {
-                Text(npc?.emoji ?? "🧑")
-                    .font(.system(size: 20))
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(line.speaker)
-                    .font(.caption.bold())
-                    .foregroundStyle(isPlayer ? Color.blue : Color.orange)
+        HStack {
+            if isPlayer { Spacer(minLength: 36) }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(line.speaker.uppercased())
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(isPlayer ? Color(red: 0.56, green: 0.80, blue: 0.96) : Color(red: 0.96, green: 0.89, blue: 0.55))
                 Text(line.text)
-                    .font(.subheadline)
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .lineSpacing(3)
+                    .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: 720, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(isPlayer ? Color(red: 0.12, green: 0.20, blue: 0.31) : Color.white.opacity(0.06))
+            .overlay(
+                Rectangle()
+                    .stroke(isPlayer ? Color(red: 0.56, green: 0.80, blue: 0.96).opacity(0.55) : Color.white.opacity(0.14),
+                            lineWidth: 2)
+            )
+            if !isPlayer { Spacer(minLength: 36) }
         }
-        .padding(.vertical, 1)
     }
 }
 
@@ -373,11 +652,10 @@ struct TitleView: View {
 
     var body: some View {
         ZStack {
-            // Dark park gradient
             LinearGradient(
                 colors: [
-                    Color(red: 0.05, green: 0.16, blue: 0.05),
-                    Color(red: 0.02, green: 0.08, blue: 0.02)
+                    Color(red: 0.10, green: 0.16, blue: 0.07),
+                    Color(red: 0.05, green: 0.08, blue: 0.04)
                 ],
                 startPoint: .top, endPoint: .bottom
             )
@@ -386,45 +664,37 @@ struct TitleView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                // Animated bouncing characters
-                TimelineView(.animation) { ctx in
-                    let t = ctx.date.timeIntervalSinceReferenceDate
-                    HStack(spacing: 22) {
-                        ForEach(Array(Species.allCases.enumerated()), id: \.element) { i, s in
-                            VStack(spacing: 5) {
-                                Text(s.emoji)
-                                    .font(.system(size: 54))
-                                    .offset(y: sin(t * 1.9 + Double(i) * 0.9) * 9)
-                                Text(s.displayName)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(Color.white.opacity(0.45))
+                RetroPanel {
+                    HStack(spacing: 12) {
+                        ForEach(Species.allCases, id: \.self) { s in
+                            VStack(spacing: 4) {
+                                Text(s.displayName.uppercased())
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(RetroUI.ink)
+                                Rectangle()
+                                    .fill(RetroUI.grass)
+                                    .frame(width: 44, height: 10)
+                                    .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 2))
                             }
                         }
                     }
                 }
                 .padding(.bottom, 30)
 
-                // Game logo
                 VStack(spacing: 2) {
                     Text("PARK")
-                        .font(.system(size: 70, weight: .black, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color(red: 0.52, green: 1.0, blue: 0.42),
-                                         Color(red: 0.30, green: 0.85, blue: 0.30)],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
+                        .font(.system(size: 58, weight: .black, design: .monospaced))
+                        .foregroundStyle(Color(red: 0.74, green: 0.91, blue: 0.38))
                     Text("FRIENDS")
-                        .font(.system(size: 70, weight: .black, design: .rounded))
+                        .font(.system(size: 58, weight: .black, design: .monospaced))
                         .foregroundStyle(.white)
                 }
-                .shadow(color: Color(red: 0.3, green: 0.8, blue: 0.3, opacity: 0.45), radius: 24)
+                .shadow(color: Color.black.opacity(0.45), radius: 0, x: 5, y: 5)
                 .padding(.bottom, 10)
 
-                Text("An EarthBound-style park adventure")
-                    .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.32))
+                Text("A strange city park is trying to talk back.")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.46))
                     .padding(.bottom, 44)
 
                 // Action buttons
@@ -442,8 +712,8 @@ struct TitleView: View {
 
                 Spacer()
 
-                Text("🌳  Walk  ·  Talk  ·  Battle  🌳")
-                    .font(.system(size: 11))
+                Text("WALK  TALK  BATTLE  INVESTIGATE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.18))
                     .padding(.bottom, 24)
             }
@@ -456,18 +726,17 @@ struct TitleButtonStyle: ButtonStyle {
     let accent: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.title3.bold())
-            .foregroundStyle(accent ? Color.black : Color.white)
+            .font(.system(size: 16, weight: .black, design: .monospaced))
+            .foregroundStyle(accent ? RetroUI.ink : Color.white)
             .frame(width: 240, height: 52)
             .background(
                 accent
-                    ? Color(red: 0.52, green: 0.95, blue: 0.42)
-                    : Color.white.opacity(0.10)
+                    ? RetroUI.gold
+                    : RetroUI.navyLight
             )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(accent ? Color.clear : Color.white.opacity(0.22), lineWidth: 1)
+                Rectangle()
+                    .stroke(accent ? RetroUI.ink : Color.white.opacity(0.22), lineWidth: 3)
             )
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .animation(.spring(duration: 0.14), value: configuration.isPressed)
@@ -489,31 +758,33 @@ struct ShopView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack(spacing: 12) {
-                    Text("🏪")
-                        .font(.system(size: 30))
+                    Text(state.shopNarrativeTitle.uppercased())
+                        .font(.system(size: 16, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Corner Store")
-                            .font(.headline.bold())
-                        Text("Open late. No refunds. We don't ask questions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(state.storyArcTitle.uppercased())
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
+                        Text(state.shopNarrativeText)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.70))
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("🪙 \(state.coins)")
-                            .font(.title3.bold().monospacedDigit())
-                            .foregroundStyle(Color.yellow)
-                        Text("your coins")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        Text("COIN \(state.coins)")
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .foregroundStyle(Color(red: 0.96, green: 0.89, blue: 0.55))
+                        Text(state.currentZone.displayTitle.uppercased())
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.55))
                     }
-                    Button { onClose() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 6)
+                    Button("END") { onClose() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .overlay(Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 2))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -530,7 +801,8 @@ struct ShopView: View {
                 }
             }
             .frame(maxWidth: 540, maxHeight: 480)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .background(RetroUI.navy, in: RoundedRectangle(cornerRadius: 0))
+            .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 4))
             .shadow(radius: 24)
             .padding(28)
         }
@@ -547,28 +819,30 @@ struct ShopItemRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(kind.emoji)
-                .font(.title2)
+            Text(kind.hudLabel)
+                .font(.system(size: 11, weight: .black, design: .monospaced))
                 .frame(width: 38)
+                .foregroundStyle(.white)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(kind.displayName)
-                    .font(.subheadline.bold())
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
                 Text(kind.shopDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.62))
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("🪙\(price)")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(canAfford ? Color.primary : Color.red)
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(canAfford ? Color(red: 0.96, green: 0.89, blue: 0.55) : Color.red)
                 if owned > 0 {
-                    Text("have ×\(owned)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Text("HAVE x\(owned)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.52))
                 }
             }
 
@@ -579,19 +853,19 @@ struct ShopItemRow: View {
                 state.save()
             } label: {
                 Text("Buy")
-                    .font(.caption.bold())
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(canAfford ? Color.green.opacity(0.75) : Color.gray.opacity(0.25))
-                    .foregroundStyle(canAfford ? .white : .secondary)
-                    .clipShape(Capsule())
+                    .background(canAfford ? RetroUI.gold : Color.gray.opacity(0.25))
+                    .foregroundStyle(canAfford ? RetroUI.ink : .secondary)
+                    .overlay(Rectangle().stroke(canAfford ? RetroUI.ink : Color.white.opacity(0.18), lineWidth: 2))
             }
             .buttonStyle(.plain)
             .disabled(!canAfford)
         }
         .padding(10)
-        .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(Color.white.opacity(0.04))
+        .overlay(Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1))
     }
 }
 
@@ -672,7 +946,7 @@ struct StatsView: View {
                 ScrollView {
                     switch tab {
                     case .party:     PartyStatsPanel(state: state)
-                    case .inventory: InventoryPanel(inventory: state.inventory)
+                    case .inventory: InventoryPanel(state: state)
                     case .bosses:    BossesPanel(defeated: state.defeatedBosses)
                     }
                 }
@@ -811,7 +1085,9 @@ struct StatCell: View {
 // MARK: Inventory panel
 
 struct InventoryPanel: View {
-    let inventory: [ItemKind: Int]
+    let state: GameState
+
+    private var inventory: [ItemKind: Int] { state.inventory }
 
     private var consumables: [(ItemKind, Int)] {
         ItemKind.allCases.compactMap { k in
@@ -837,13 +1113,13 @@ struct InventoryPanel: View {
             if !consumables.isEmpty {
                 SectionHeader(title: "Consumables")
                 ForEach(consumables, id: \.0) { kind, count in
-                    InventoryRow(kind: kind, count: count)
+                    InventoryRow(kind: kind, count: count, state: state)
                 }
             }
             if !keyItems.isEmpty {
                 SectionHeader(title: "Key Items")
                 ForEach(keyItems, id: \.0) { kind, count in
-                    InventoryRow(kind: kind, count: count)
+                    InventoryRow(kind: kind, count: count, state: nil)
                 }
             }
         }
@@ -854,12 +1130,16 @@ struct InventoryPanel: View {
 struct InventoryRow: View {
     let kind: ItemKind
     let count: Int
+    let state: GameState?    // non-nil → show Use button for usable items
+
+    @State private var usedFlash = false
+
     var body: some View {
         HStack(spacing: 10) {
             Text(kind.emoji).font(.title3).frame(width: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(kind.displayName).font(.subheadline.bold())
-                let desc = kind.shopDescription
+                let desc = kind.itemDescription
                 if !desc.isEmpty {
                     Text(desc).font(.caption).foregroundStyle(.secondary)
                 }
@@ -874,6 +1154,29 @@ struct InventoryRow: View {
                 Text("🪙\(price)")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+            }
+            // "Use" button for usable consumables
+            if let state, kind.isUsable {
+                Button {
+                    if state.useConsumable(kind) != nil {
+                        withAnimation { usedFlash = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            withAnimation { usedFlash = false }
+                        }
+                    }
+                } label: {
+                    Text(usedFlash ? "✓" : "Use")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(usedFlash
+                            ? Color.green.opacity(0.55)
+                            : Color.blue.opacity(0.18))
+                        .foregroundStyle(usedFlash ? .white : Color.blue)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(state.inventory[kind, default: 0] == 0)
             }
         }
         .padding(8)
@@ -938,6 +1241,217 @@ struct BossesPanel: View {
                 .multilineTextAlignment(.center)
         }
         .padding(14)
+    }
+}
+
+// MARK: - Victory Screen
+
+struct VictoryView: View {
+    let state: GameState
+    let onReturn: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.75).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Confetti header
+                TimelineView(.animation) { ctx in
+                    let t = ctx.date.timeIntervalSinceReferenceDate
+                    HStack(spacing: 14) {
+                        ForEach(Array(["🎉","🦆","⭐️","🏆","🎊","✨","🌳"].enumerated()), id: \.offset) { i, e in
+                            Text(e)
+                                .font(.system(size: 38))
+                                .offset(y: sin(t * 2.3 + Double(i) * 0.7) * 10)
+                        }
+                    }
+                    .padding(.top, 30)
+                }
+
+                VStack(spacing: 6) {
+                    Text("YOU DID IT!")
+                        .font(.system(size: 44, weight: .black, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.85, blue: 0.20),
+                                         Color(red: 1.0, green: 0.62, blue: 0.10)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                    Text("The park is safe. Quack is home. 🦆")
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.vertical, 20)
+
+                // Final stats
+                VStack(spacing: 8) {
+                    Divider().padding(.horizontal, 20)
+                    HStack(spacing: 28) {
+                        VictoryStat(label: "Score",    value: "\(state.score)")
+                        VictoryStat(label: "Coins",    value: "🪙\(state.coins)")
+                        VictoryStat(label: "Enemies",  value: "💀\(state.enemiesDefeated)")
+                        VictoryStat(label: "Clues",    value: "\(state.quackClueCount)/7")
+                    }
+                    Divider().padding(.horizontal, 20)
+
+                    // Boss checklist
+                    HStack(spacing: 20) {
+                        ForEach([EnemyKind.grandGooseGerald, .officerGrumble, .foremanRex], id: \.self) { boss in
+                            VStack(spacing: 3) {
+                                Text(boss.bossEmoji).font(.system(size: 28))
+                                Text("✅").font(.caption)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+
+                // Party
+                HStack(spacing: 18) {
+                    ForEach(Array(state.party.enumerated()), id: \.element.id) { _, m in
+                        VStack(spacing: 4) {
+                            Text(m.species.emoji).font(.system(size: 36))
+                            Text("Lv.\(m.level)")
+                                .font(.caption.bold().monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.vertical, 16)
+
+                Button {
+                    onReturn()
+                } label: {
+                    Text("🏠  Return to Title")
+                        .font(.headline.bold())
+                        .foregroundStyle(Color.black)
+                        .frame(width: 220, height: 50)
+                        .background(Color(red: 0.52, green: 0.95, blue: 0.42))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 28)
+            }
+            .frame(maxWidth: 480)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .shadow(radius: 40)
+            .padding(24)
+        }
+    }
+}
+
+private struct VictoryStat: View {
+    let label: String
+    let value: String
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.title3.bold().monospacedDigit())
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Pause Menu
+
+struct PauseMenuView: View {
+    let state: GameState
+
+    @State private var savedFlash = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                Text("⏸  Paused")
+                    .font(.title2.bold())
+                    .padding(.top, 24)
+                    .padding(.bottom, 18)
+
+                Divider()
+
+                VStack(spacing: 10) {
+                    // Resume
+                    PauseButton(
+                        label: "▶  Resume",
+                        accent: true
+                    ) {
+                        state.isPaused = false
+                    }
+
+                    // Save
+                    PauseButton(label: savedFlash ? "✅  Saved!" : "💾  Save Game") {
+                        state.save()
+                        withAnimation { savedFlash = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                            withAnimation { savedFlash = false }
+                        }
+                    }
+
+                    Divider().padding(.vertical, 4)
+
+                    // Back to title
+                    PauseButton(label: "🏠  Back to Title", destructive: true) {
+                        state.isPaused = false
+                        // Signal GameView to fade to title via queueTitleReturn
+                        state.queueTitleReturn = true
+                    }
+                }
+                .padding(18)
+
+                // Tiny stats footer
+                HStack(spacing: 16) {
+                    Text("⭐️ \(state.score)")
+                    Text("🪙 \(state.coins)")
+                    Text("💀 \(state.enemiesDefeated)")
+                    Text(state.currentZone.displayTitle)
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 18)
+            }
+            .frame(width: 280)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .shadow(radius: 32)
+        }
+    }
+}
+
+private struct PauseButton: View {
+    let label: String
+    var accent: Bool       = false
+    var destructive: Bool  = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.subheadline.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(backgroundColor)
+                .foregroundStyle(foregroundColor)
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var backgroundColor: Color {
+        if accent      { return Color(red: 0.52, green: 0.95, blue: 0.42) }
+        if destructive { return Color.red.opacity(0.15) }
+        return Color.primary.opacity(0.07)
+    }
+
+    private var foregroundColor: Color {
+        if accent      { return Color.black }
+        if destructive { return Color.red }
+        return Color.primary
     }
 }
 

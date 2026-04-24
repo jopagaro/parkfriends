@@ -4,17 +4,17 @@ enum GameConstants {
     static let tileSize: CGFloat = 48
 
     /// Legacy full-park height (1A+1B) for chunk tables & canonical coords.
-    static let worldCols: Int = 72
-    static let worldRowsFull: Int = 54
+    static let worldCols: Int = 105
+    static let worldRowsFull: Int = 115
 
     /// Zone 1B — Park Center (south half toward city).
-    static let parkCenterCols: Int = 72
-    static let parkCenterRows: Int = 32
+    static let parkCenterCols: Int = 105
+    static let parkCenterRows: Int = 65
 
     /// Zone 1A — Park North (pond, ruins, meadow). Local row 0 = canonical row `parkNorthCanonicalRow0`.
-    static let parkNorthCols: Int = 72
-    static let parkNorthRows: Int = 22
-    static let parkNorthCanonicalRow0: Int = 32
+    static let parkNorthCols: Int = 105
+    static let parkNorthRows: Int = 50
+    static let parkNorthCanonicalRow0: Int = 65
 
     static var worldSize: CGSize {
         CGSize(width: CGFloat(worldCols) * tileSize, height: CGFloat(worldRowsFull) * tileSize)
@@ -28,12 +28,12 @@ enum GameConstants {
         CGSize(width: CGFloat(parkNorthCols) * tileSize, height: CGFloat(parkNorthRows) * tileSize)
     }
 
-    static let citySouthCols = 60
-    static let citySouthRows = 18
-    static let cityCenterCols = 60
-    static let cityCenterRows = 40
-    static let cityNorthCols = 60
-    static let cityNorthRows = 16
+    static let citySouthCols = 88
+    static let citySouthRows = 42
+    static let cityCenterCols = 88
+    static let cityCenterRows = 65
+    static let cityNorthCols = 88
+    static let cityNorthRows = 48
 
     static var citySouthWorldSize: CGSize {
         CGSize(width: CGFloat(citySouthCols) * tileSize, height: CGFloat(citySouthRows) * tileSize)

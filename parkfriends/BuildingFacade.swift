@@ -73,10 +73,11 @@ enum BuildingFacade {
 
     // MARK: - Renderer
 
-    private static let ink = CGColor(red: 0.08, green: 0.06, blue: 0.04, alpha: 1)
+    private static let ink = CGColor(red: 0.07, green: 0.05, blue: 0.03, alpha: 1)
     private static let gold = CGColor(red: 0.80, green: 0.65, blue: 0.22, alpha: 1)
-    private static let litGlass  = CGColor(red: 0.94, green: 0.91, blue: 0.54, alpha: 1)
-    private static let darkGlass = CGColor(red: 0.16, green: 0.23, blue: 0.29, alpha: 1)
+    // Fully opaque glass — no more see-through windows
+    private static let litGlass  = CGColor(red: 0.95, green: 0.92, blue: 0.62, alpha: 1)
+    private static let darkGlass = CGColor(red: 0.18, green: 0.26, blue: 0.35, alpha: 1)
 
     private static func render(widthTiles: Int, heightTiles: Int,
                                 tile: CGFloat, palette: PaletteKind, seed: UInt64) -> SKTexture {
@@ -96,6 +97,10 @@ enum BuildingFacade {
         ) else { return SKTexture() }
 
         ctx.setAllowsAntialiasing(false)
+
+        // ── 0. Solid background fill — prevents any transparent pixels ────────
+        ctx.setFillColor(pal.wallMain)
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
 
         // ── Layout (y=0 at BOTTOM — standard CGContext Cartesian) ─────────────
         let foundH  = ts * 0.55
@@ -162,9 +167,13 @@ enum BuildingFacade {
                 let glass = glassColor(glassType)
                 fill(ctx, glass, cx, rowY, winW, winH)
 
-                // Lit: bright inner highlight
+                // Lit: bright inner highlight corner glow
                 if glassType == 0 {
-                    fill(ctx, rgba(1, 0.98, 0.7, 0.38), cx + 5, rowY + 5, winW - 10, winH - 10)
+                    fill(ctx, rgba(1, 1, 0.85, 0.55), cx + 3, rowY + winH * 0.62, winW * 0.55, winH * 0.30)
+                }
+                // Unlit: dark interior hint
+                if glassType == 1 {
+                    fill(ctx, rgba(0.05, 0.08, 0.12, 0.45), cx + 3, rowY + 3, winW - 6, winH - 6)
                 }
 
                 // Dividing cross for multi-pane look

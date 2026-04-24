@@ -234,4 +234,5 @@ struct PartyMember: Identifiable, Sendable, Codable {
     // MARK: Defaults
 
     static let defaultParty: [PartyMember] = Species.allCases.map { PartyMember(species: $0) }
+    static let startingParty: [PartyMember] = [PartyMember(species: .turtle)]
 }

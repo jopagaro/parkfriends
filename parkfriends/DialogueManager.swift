@@ -20,10 +20,13 @@ final class DialogueManager {
 
     /// The active conversation, if one is open.
     var activeNPC: NPCKind?
+    var activeTitle: String?
     var activeSpeaker: Species?   // which party member is doing the talking
     var lines: [Line] = []
     var isResponding: Bool = false
     var modelAvailable: Bool = false
+    var allowsInput: Bool = true
+    var onDismiss: (() -> Void)?
 
     #if canImport(FoundationModels)
     private var session: LanguageModelSession?
@@ -51,8 +54,11 @@ final class DialogueManager {
     func startConversation(with npc: NPCKind, asSpecies species: Species,
                            quackClues: Set<QuackClue> = []) {
         activeNPC = npc
+        activeTitle = nil
         activeSpeaker = species
         lines.removeAll()
+        allowsInput = true
+        onDismiss = nil
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *), modelAvailable {
@@ -61,15 +67,31 @@ final class DialogueManager {
             session = LanguageModelSession(instructions: instructions)
         }
         #endif
-
-        // Greeting — either from the model or a canned fallback.
-        Task { await send("*\(species.displayName) the \(species.rawValue) waves and approaches*") }
     }
 
     func endConversation() {
+        let callback = onDismiss
         activeNPC = nil
+        activeTitle = nil
         activeSpeaker = nil
         lines.removeAll()
+        allowsInput = true
+        onDismiss = nil
+        #if canImport(FoundationModels)
+        session = nil
+        #endif
+        callback?()
+    }
+
+    func presentScriptedConversation(title: String, lines scripted: [(speaker: String, text: String)],
+                                     onDismiss: (() -> Void)? = nil) {
+        activeNPC = nil
+        activeTitle = title
+        activeSpeaker = nil
+        lines = scripted.map { Line(speaker: $0.speaker, text: $0.text) }
+        isResponding = false
+        allowsInput = false
+        self.onDismiss = onDismiss
         #if canImport(FoundationModels)
         session = nil
         #endif
@@ -119,6 +141,12 @@ final class DialogueManager {
         let hasFeather = clues.contains(.foundFeather)
 
         switch npc {
+        case .rangerGuide:
+            return "Officially, everything is under control. Unofficially, the animals have started acting like they held a meeting without me."
+
+        case .hazel:
+            return "If pigeons are organized now, that means the park is trying to say something and doing a terrible job of it."
+
         case .jogger:
             if rescued {
                 return "*huff* Heard you found your duck friend! Amazing. *puff* Keep it up, little one."
@@ -164,6 +192,14 @@ final class DialogueManager {
             }
             return "Mind the tulips. You seen anyone stomping through my beds?"
 
+        case .worker:
+            if rescued {
+                return "Yeah, heard you found it. Duck was in the way of our crane all week. Good riddance — I mean, glad it's safe."
+            } else if clues.contains(.workerSawDuck) {
+                return "Like I said — big white duck, near the east warehouse, a few days back. Spooked by the drill press. Haven't seen it since."
+            }
+            return "You lost a duck? …Huh. Actually, yeah. Big white one kept poking around the east warehouse. Seemed real scared. Last I saw it went behind the old crane."
+
         case .shopkeeper:
             return "We're open. Buy something or move along."
         }
@@ -203,6 +239,12 @@ final class DialogueManager {
         if rescued { return "The duck has already been rescued — react with relief and joy." }
 
         switch npc {
+        case .rangerGuide:
+            return "You are trying to keep Bellwether Park calm with official language, even though the animals have started behaving in ways that definitely do not fit the handbook."
+
+        case .hazel:
+            return "You are a sharp squirrel from the fountain plaza. You already believe the animal weirdness is organized, not random, and you want the player to take that seriously."
+
         case .child:
             if clues.contains(.foundFeather) && !clues.contains(.childSawChase) {
                 return "YOU saw the duck being chased toward the city by a loud machine noise two days ago. Tell the player if they ask about the feather or missing duck."
@@ -225,6 +267,9 @@ final class DialogueManager {
                 return "You saw a duck waddling hurriedly through your flower beds toward the city, going south. You're mildly annoyed it trampled your tulips."
             }
             return "You haven't seen the duck."
+
+        case .worker:
+            return "You spotted a large white duck near the east warehouse in City North a few days ago. It seemed panicked by construction noise and ran behind the old crane. Tell the player if they ask about the duck or Quack."
 
         case .shopkeeper:
             return "You run a corner store. You sell snacks and supplies. You don't get involved in duck drama."

@@ -21,7 +21,7 @@ enum WorldSprites {
     private static func tex(_ key: String, draw: (CGContext) -> Void) -> SKTexture {
         if let t = cache[key] { return t }
         let t = SKTexture(image: render(draw))
-        t.filteringMode = .linear
+        t.filteringMode = .nearest
         cache[key] = t
         return t
     }
@@ -164,7 +164,8 @@ enum WorldSprites {
     // MARK: - Enemies
 
     private static func drawEnemy(_ kind: EnemyKind, _ ctx: CGContext) {
-        ctx.setAllowsAntialiasing(true)
+        ctx.setAllowsAntialiasing(false)
+        ctx.setShouldAntialias(false)
         switch kind {
         case .ranger:           drawRanger(ctx)
         case .sternAdult:       drawSternAdult(ctx)
@@ -918,7 +919,8 @@ enum WorldSprites {
 
     /// City-style cast-iron lamppost (city=true) or park-style wooden post (city=false).
     private static func drawLampPost(_ ctx: CGContext, city: Bool) {
-        ctx.setAllowsAntialiasing(true)
+        ctx.setAllowsAntialiasing(false)
+        ctx.setShouldAntialias(false)
 
         let poleColor    = city ? c(0.18, 0.18, 0.20) : c(0.38, 0.28, 0.14)
         let lanternColor = city ? c(0.22, 0.22, 0.28) : c(0.30, 0.22, 0.10)
@@ -977,15 +979,82 @@ enum WorldSprites {
     // MARK: - NPCs
 
     private static func drawNPC(_ kind: NPCKind, _ ctx: CGContext) {
-        ctx.setAllowsAntialiasing(true)
+        ctx.setAllowsAntialiasing(false)
+        ctx.setShouldAntialias(false)
         switch kind {
+        case .rangerGuide: drawRangerGuide(ctx)
+        case .hazel:       drawHazelNPC(ctx)
         case .jogger:      drawJogger(ctx)
         case .child:       drawChild(ctx)
         case .birdwatcher: drawBirdwatcher(ctx)
         case .dogwalker:   drawDogWalker(ctx)
         case .gardener:    drawGardener(ctx)
+        case .worker:      drawWorker(ctx)
         case .shopkeeper:  drawShopkeeper(ctx)
         }
+    }
+
+    private static func drawRangerGuide(_ ctx: CGContext) {
+        shadow(ctx, cx: 64, w: 48)
+        humanBody(ctx, cx: 64,
+                  skin: c(0.89, 0.72, 0.54),
+                  shirt: c(0.34, 0.52, 0.26),
+                  pants: c(0.28, 0.24, 0.18),
+                  shoes: c(0.16, 0.12, 0.08))
+
+        ellipse(ctx, cx: 64, cy: 17, w: 54, h: 16, fill: c(0.46, 0.36, 0.18), stroke: ink, lw: 2.5)
+        ellipse(ctx, cx: 64, cy: 11, w: 34, h: 12, fill: c(0.56, 0.44, 0.22), stroke: ink, lw: 2.5)
+        rect(ctx, x: 50, y: 52, w: 28, h: 20, fill: c(0.28, 0.42, 0.20), stroke: ink, lw: 2, corner: 2)
+        rect(ctx, x: 54, y: 56, w: 8, h: 8, fill: c(0.82, 0.72, 0.34), stroke: ink, lw: 1.5, corner: 1)
+        rect(ctx, x: 72, y: 57, w: 8, h: 20, fill: c(0.22, 0.18, 0.12), stroke: ink, lw: 1.5, corner: 1)
+        rect(ctx, x: 72, y: 72, w: 8, h: 6, fill: c(0.93, 0.88, 0.56), stroke: ink, lw: 1, corner: 1)
+    }
+
+    private static func drawHazelNPC(_ ctx: CGContext) {
+        shadow(ctx, cx: 64, w: 44)
+
+        rect(ctx, x: 48, y: 54, w: 22, h: 30, fill: c(0.86, 0.62, 0.34), stroke: ink, lw: 2, corner: 4)
+        rect(ctx, x: 51, y: 58, w: 8, h: 10, fill: c(0.94, 0.78, 0.50), corner: 2)
+        rect(ctx, x: 52, y: 82, w: 6, h: 16, fill: c(0.72, 0.46, 0.24), stroke: ink, lw: 1.5, corner: 2)
+        rect(ctx, x: 62, y: 82, w: 6, h: 16, fill: c(0.72, 0.46, 0.24), stroke: ink, lw: 1.5, corner: 2)
+        rect(ctx, x: 48, y: 98, w: 6, h: 10, fill: c(0.32, 0.22, 0.14), corner: 2)
+        rect(ctx, x: 64, y: 98, w: 6, h: 10, fill: c(0.32, 0.22, 0.14), corner: 2)
+
+        ellipse(ctx, cx: 58, cy: 38, w: 30, h: 28, fill: c(0.90, 0.68, 0.38), stroke: ink, lw: 2.5)
+        ellipse(ctx, cx: 76, cy: 34, w: 22, h: 46, fill: c(0.68, 0.40, 0.18), stroke: ink, lw: 2.5)
+        ellipse(ctx, cx: 80, cy: 26, w: 12, h: 16, fill: c(0.84, 0.58, 0.26), stroke: ink, lw: 2)
+        ellipse(ctx, cx: 54, cy: 18, w: 12, h: 18, fill: c(0.72, 0.46, 0.22), stroke: ink, lw: 2.5)
+        ellipse(ctx, cx: 66, cy: 18, w: 12, h: 18, fill: c(0.72, 0.46, 0.22), stroke: ink, lw: 2.5)
+        ellipse(ctx, cx: 54, cy: 19, w: 5, h: 8, fill: c(0.96, 0.82, 0.58))
+        ellipse(ctx, cx: 66, cy: 19, w: 5, h: 8, fill: c(0.96, 0.82, 0.58))
+        ellipse(ctx, cx: 53, cy: 36, w: 5, h: 7, fill: c(0.10, 0.08, 0.06))
+        ellipse(ctx, cx: 63, cy: 36, w: 5, h: 7, fill: c(0.10, 0.08, 0.06))
+        ellipse(ctx, cx: 54, cy: 34, w: 2, h: 2, fill: c(1, 1, 1, 0.85))
+        ellipse(ctx, cx: 64, cy: 34, w: 2, h: 2, fill: c(1, 1, 1, 0.85))
+        rect(ctx, x: 56, y: 45, w: 6, h: 4, fill: c(0.54, 0.28, 0.16), corner: 1)
+    }
+
+    // ── Construction Worker ───────────────────────────────────────────────────
+    private static func drawWorker(_ ctx: CGContext) {
+        shadow(ctx, cx: 64, w: 46)
+        humanBody(ctx, cx: 64,
+                  skin:  c(0.88, 0.68, 0.50),
+                  shirt: c(0.98, 0.55, 0.05),   // bright orange hi-vis shirt
+                  pants: c(0.25, 0.25, 0.28),   // dark work trousers
+                  shoes: c(0.18, 0.14, 0.10))   // steel-toe boots
+
+        // Yellow safety vest stripes across torso
+        let vestStripe1 = CGRect(x: 46, y: 66, width: 36, height: 6)
+        let vestStripe2 = CGRect(x: 46, y: 56, width: 36, height: 6)
+        ctx.setFillColor(c(0.95, 0.90, 0.10, 0.80))
+        ctx.fill(vestStripe1)
+        ctx.fill(vestStripe2)
+
+        // Hard hat (yellow, flat top)
+        ellipse(ctx, cx: 64, cy: 16, w: 50, h: 12, fill: c(0.96, 0.82, 0.10), stroke: ink, lw: 2)
+        rect(ctx, x: 41, y: 12, w: 46, h: 10, fill: c(0.96, 0.82, 0.10), stroke: ink, lw: 2, corner: 2)
+        // Brim — front shadow
+        rect(ctx, x: 36, y: 16, w: 56, h: 5, fill: c(0.75, 0.62, 0.06), corner: 2)
     }
 
     // ── Shopkeeper ────────────────────────────────────────────────────────────
@@ -1011,6 +1080,8 @@ enum WorldSprites {
         ellipse(ctx, cx: 64, cy: 11, w: 30, h: 12, fill: c(0.16, 0.34, 0.16), stroke: ink, lw: 2)
         // Cap button on top
         ellipse(ctx, cx: 64, cy:  6, w:  6, h:  6, fill: c(0.12, 0.28, 0.12))
+        rect(ctx, x: 48, y: 58, w: 32, h: 22,
+             fill: c(0.16, 0.42, 0.18), stroke: ink, lw: 2, corner: 2)
     }
 
     // ── Jogger ────────────────────────────────────────────────────────────────
@@ -1030,6 +1101,7 @@ enum WorldSprites {
         // Sweatband on wrists (small bright bands)
         ellipse(ctx, cx: 36, cy: 82, w: 12, h: 6, fill: c(0.95, 0.90, 0.20), stroke: ink, lw: 1.5)
         ellipse(ctx, cx: 92, cy: 82, w: 12, h: 6, fill: c(0.95, 0.90, 0.20), stroke: ink, lw: 1.5)
+        rect(ctx, x: 50, y: 55, w: 28, h: 8, fill: c(0.95, 0.90, 0.20), stroke: ink, lw: 1.5, corner: 1)
 
         // Smile
         ctx.setStrokeColor(c(0.55,0.25,0.15)); ctx.setLineWidth(2)
@@ -1056,6 +1128,7 @@ enum WorldSprites {
             let yy = CGFloat(56 + i * 7) - bob
             rect(ctx, x: 43, y: yy, w: 42, h: 4, fill: c(1.0, 0.65, 0.70), corner: 0)
         }
+        rect(ctx, x: 49, y: 67 - bob, w: 10, h: 10, fill: c(0.98, 0.90, 0.32), stroke: ink, lw: 1.5, corner: 1)
 
         // Pigtails
         ellipse(ctx, cx: 46, cy: 17-bob, w: 14, h: 16,
@@ -1102,6 +1175,7 @@ enum WorldSprites {
         // Binoculars hanging on chest
         ellipse(ctx, cx: 57, cy: 57, w: 12, h: 10, fill: c(0.15,0.15,0.15), stroke: ink, lw: 1.5)
         ellipse(ctx, cx: 71, cy: 57, w: 12, h: 10, fill: c(0.15,0.15,0.15), stroke: ink, lw: 1.5)
+        rect(ctx, x: 50, y: 70, w: 28, h: 14, fill: c(0.58, 0.52, 0.34), stroke: ink, lw: 1.5, corner: 2)
         // Strap
         ctx.setStrokeColor(c(0.30,0.22,0.10)); ctx.setLineWidth(2)
         ctx.move(to: CGPoint(x: 57, y: 50)); ctx.addLine(to: CGPoint(x: 52, y: 44))
@@ -1143,6 +1217,7 @@ enum WorldSprites {
         // Tiny dog at end of leash
         ellipse(ctx, cx: 112, cy: 108, w: 18, h: 12, fill: c(0.75, 0.60, 0.38), stroke: ink, lw: 1.5)
         ellipse(ctx, cx: 106, cy: 103, w: 10, h: 9,  fill: c(0.75, 0.60, 0.38), stroke: ink, lw: 1.5)
+        rect(ctx, x: 50, y: 53, w: 26, h: 16, fill: c(0.16, 0.50, 0.62), stroke: ink, lw: 1.5, corner: 2)
 
         // Friendly grin
         ctx.setStrokeColor(c(0.50,0.22,0.12)); ctx.setLineWidth(2)
@@ -1184,6 +1259,7 @@ enum WorldSprites {
         // Dirt smudges on hands
         ellipse(ctx, cx: 36, cy: 83, w: 13, h: 13, fill: c(0.55, 0.38, 0.18), stroke: ink, lw: 2)
         ellipse(ctx, cx: 92, cy: 83, w: 13, h: 13, fill: c(0.55, 0.38, 0.18), stroke: ink, lw: 2)
+        rect(ctx, x: 47, y: 59, w: 34, h: 16, fill: c(0.48, 0.66, 0.34), stroke: ink, lw: 1.5, corner: 2)
 
         // Grumpy/focused expression
         ctx.setStrokeColor(c(0.45,0.20,0.10)); ctx.setLineWidth(2)

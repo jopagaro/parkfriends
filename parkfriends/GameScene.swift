@@ -36,6 +36,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var joystick:     VirtualJoystick!
     private var talkButton:   ActionButton!
     private var switchButton: ActionButton!
+    private var healButton:   ActionButton!
     private var hintLabel:    SKLabelNode?
     private var battleNode:   BattleNode!
     private var fadeOverlay:  SKSpriteNode?  // zone-transition blackout
@@ -59,7 +60,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // Follower trail
     private var trail:           [CGPoint] = []
-    private let trailSpacing               = 18
+    private let trailSpacing               = 26
 
     // MARK: - Keyboard (macOS)
     private var pressedKeys: Set<UInt16> = []
@@ -131,16 +132,33 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func buildParkCenter() {
         backgroundColor = GamePalette.grassG1
         let result = ParkWorld.buildCenter()
+        let tile = GameConstants.tileSize
+        let storyProgress = gameState?.storyProgress ?? .introCheckFountain
+        let fixedNPCs: [(NPCKind, CGPoint)] = [
+            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8)),
+            (.hazel, CGPoint(x: tile * 44, y: tile * 38))
+        ]
+        let openingEnemySpawns: [(EnemyKind, CGPoint)]
+        switch storyProgress {
+        case .acceptedLostAcorn:
+            openingEnemySpawns = [(.pigeon, CGPoint(x: tile * 57, y: tile * 39))]
+        case .introCheckFountain, .talkedToRanger, .foundLostAcorn:
+            openingEnemySpawns = []
+        case .hazelJoined:
+            openingEnemySpawns = result.enemySpawns
+        }
         finishWorldBuild(
             root: result.root,
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: result.fixedItems,
+            fixedNPCs: fixedNPCs,
             npcSpawns: result.npcSpawns,
-            enemySpawns: result.enemySpawns,
+            enemySpawns: openingEnemySpawns,
             benchPositions: result.benchPositions,
             zoneExitNodes: result.zoneExitNodes
         )
+        updateParkCenterExits()
         pressurePlate = result.pressurePlate
         gate          = result.gate
         chest         = result.chest
@@ -177,12 +195,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         backgroundColor = GamePalette.asphalt1
         let result = CitySouthWorld.build()
         let tile = GameConstants.tileSize
+        // breadcrumbTrail is spawned directly by CitySouthWorld.build() — not in fixedItems here
         finishWorldBuild(
             root: result.root,
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: [],
-            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 20, y: tile * 6))], // corner store keeper
+            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 22, y: tile * 8))],
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
@@ -210,11 +229,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func buildCityNorth() {
         backgroundColor = GamePalette.dirtD3
         let result = CityNorthWorld.build()
+        let tile = GameConstants.tileSize
         finishWorldBuild(
             root: result.root,
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: result.fixedItems,
+            fixedNPCs: [(.worker, CGPoint(x: tile * 36, y: tile * 22))],  // hard hat near center building
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
@@ -243,23 +264,34 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         self.zoneExitNodes  = zoneExitNodes
         addChild(worldRoot)
 
-        // Fixed story items (always same kind + position)
+        // Fixed story items — skip ones whose clue is already found
         for (kind, pos) in fixedItems {
-            // Skip quackFeather if already collected
-            if kind == .quackFeather && (gameState?.inventory[.quackFeather] ?? 0) > 0 { continue }
+            if let clues = gameState?.quackClues {
+                if kind == .quackFeather    && clues.contains(.foundFeather)   { continue }
+                if kind == .breadcrumbTrail && clues.contains(.pigeonCityClue) { continue }
+                if kind == .duckTag         && clues.contains(.raccoonDroppedTag) { continue }
+            }
             let item = ItemNode(kind: kind)
             item.position = pos
             worldRoot.addChild(item)
             items.append(item)
         }
 
-        // Random/rotating items
-        let kinds = ItemKind.allCases
-        for (i, pos) in itemSpawns.enumerated() {
-            let item = ItemNode(kind: kinds[i % kinds.count])
-            item.position = pos
-            worldRoot.addChild(item)
-            items.append(item)
+        let zone = gameState?.currentZone ?? .parkCenter
+        if !(zone == .parkCenter && !(gameState?.hasHazelJoined ?? false)) {
+            let spawnPool: [ItemKind]
+            switch zone {
+            case .parkNorth, .parkCenter: spawnPool = ItemKind.parkSpawnPool
+            case .citySouth, .cityCenter: spawnPool = ItemKind.citySpawnPool
+            case .cityNorth:              spawnPool = ItemKind.cityNorthSpawnPool
+            }
+            for (i, pos) in itemSpawns.enumerated() {
+                let kind = spawnPool[i % spawnPool.count]
+                let item = ItemNode(kind: kind)
+                item.position = pos
+                worldRoot.addChild(item)
+                items.append(item)
+            }
         }
 
         // Fixed NPCs (shopkeeper, quest NPCs) — placed at specific positions
@@ -270,13 +302,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcs.append(npc)
         }
 
-        // Random NPC rotation — shopkeeper excluded from pool
-        let npcKinds = NPCKind.allCases.filter { !$0.isShopkeeper }
-        for (i, pos) in npcSpawns.enumerated() {
-            let npc = NPCNode(kind: npcKinds[i % npcKinds.count])
-            npc.position = pos
-            worldRoot.addChild(npc)
-            npcs.append(npc)
+        // Random NPC rotation — fixed-placement NPCs excluded from pool
+        if !(zone == .parkCenter && !(gameState?.hasHazelJoined ?? false)) {
+            let npcKinds = NPCKind.allCases.filter { !$0.isFixed }
+            for (i, pos) in npcSpawns.enumerated() {
+                let npc = NPCNode(kind: npcKinds[i % npcKinds.count])
+                npc.position = pos
+                worldRoot.addChild(npc)
+                npcs.append(npc)
+            }
         }
 
         for (kind, pos) in enemySpawns {
@@ -295,17 +329,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         player          = PlayerNode(species: state.activeSpecies)
         player.position = pendingSpawn
         worldRoot.addChild(player)
-
-        followerSpecies = state.party.map(\.species).filter { $0 != state.activeSpecies }
-        for spec in followerSpecies {
-            let f = SKSpriteNode(texture: CharacterSprites.texture(species: spec, frame: .a))
-            f.size      = CGSize(width: 48, height: 48)
-            f.zPosition = GameConstants.ZPos.entity - 0.1
-            f.alpha     = 0.88
-            f.position  = pendingSpawn
-            worldRoot.addChild(f)
-            followers.append(f)
-        }
+        rebuildFollowers()
     }
 
     private func buildCameraAndControls() {
@@ -326,6 +350,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         switchButton.onTap = { [weak self] in self?.cycleParty() }
         cam.addChild(switchButton)
 
+        healButton = ActionButton(glyph: "🍎", radius: 26, tint: .green)
+        healButton.onTap = { [weak self] in self?.useQuickItem() }
+        cam.addChild(healButton)
+
         // Battle overlay (always on camera, initially hidden)
         battleNode = BattleNode()
         battleNode.onVictory = { [weak self] kind in self?.handleBattleVictory(kind: kind) }
@@ -340,9 +368,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         joystick.isHidden     = true
         talkButton.isHidden   = true
         switchButton.isHidden = true
+        healButton.isHidden   = true
 
         let hint = SKLabelNode(
-            text: "WASD Move  ·  Space Attack  ·  E Talk/Rest  ·  Tab Switch")
+            text: "WASD · Space Attack · E Talk/Rest · H Heal · Tab Switch · I Stats · Esc Pause")
         hint.fontName                = "Helvetica Neue"
         hint.fontSize                = 12
         hint.fontColor               = SKColor(white: 1, alpha: 0.55)
@@ -367,6 +396,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         joystick.position     = CGPoint(x: -w/2 + 100, y: -h/2 + 100)
         talkButton.position   = CGPoint(x:  w/2 - 65,  y: -h/2 + 148)
         switchButton.position = CGPoint(x:  w/2 - 38,  y:  h/2 - 50)
+        healButton.position   = CGPoint(x:  w/2 - 90,  y:  h/2 - 50)
         chargeBarBg?.parent?.position = CGPoint(x: 0, y: -h/2 + 170)
 #endif
     }
@@ -434,7 +464,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case 48: cycleParty()                              // Tab
         case 49: fireOverworldAttack()                     // Space
         case 34: gameState?.statsOpen.toggle()             // I — stats screen
-        case 53: gameState?.statsOpen = false              // Esc — close stats
+        case  4: useQuickItem()                            // H — quick-use best consumable
+        case 53:                                           // Esc — close overlay or pause
+            if let state = gameState {
+                if state.statsOpen      { state.statsOpen = false }
+                else if state.shopOpen  { state.shopOpen  = false }
+                else                    { state.isPaused.toggle() }
+            }
         default: break
         }
     }
@@ -480,6 +516,99 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         guard let dialogue else { return }
+
+        switch npc.kind {
+        case .rangerGuide:
+            let lines: [(String, String)]
+            let onDismiss: (() -> Void)?
+            switch state.storyProgress {
+            case .introCheckFountain:
+                lines = [
+                    ("Ranger", "Morning. Official park notice: if you see a goose wearing clothing, do not make eye contact."),
+                    ("Shelly", "That feels specific."),
+                    ("Ranger", "It became specific yesterday."),
+                    ("Ranger", "Hazel is by the fountain making this everyone's problem. Start there.")
+                ]
+                onDismiss = { [weak self] in
+                    guard let self, let state = self.gameState else { return }
+                    state.advanceStory(to: .talkedToRanger)
+                    self.showStoryToast("Objective updated: Check the fountain.")
+                }
+            default:
+                lines = [
+                    ("Ranger", "I filed a normal-morning report and the geese made it fiction."),
+                    ("Shelly", "That sounds unhelpful."),
+                    ("Ranger", "It is still the most official thing I have.")
+                ]
+                onDismiss = nil
+            }
+            dialogue.presentScriptedConversation(title: "Prologue", lines: lines, onDismiss: onDismiss)
+            return
+
+        case .hazel:
+            let lines: [(String, String)]
+            let onDismiss: (() -> Void)?
+            switch state.storyProgress {
+            case .introCheckFountain:
+                lines = [
+                    ("Hazel", "You are early. Go get the ranger version first."),
+                    ("Shelly", "There is a ranger version?"),
+                    ("Hazel", "There is always a ranger version. Then there is the useful version.")
+                ]
+                onDismiss = nil
+            case .talkedToRanger:
+                lines = [
+                    ("Hazel", "You. Shell person. Emergency."),
+                    ("Shelly", "My name is Shelly."),
+                    ("Hazel", "Great. Shelly Emergency."),
+                    ("Hazel", "The pigeons stole my reserve acorn and posted up by the trash cans like they pay rent."),
+                    ("Hazel", "Get Steven back and I will stop yelling long enough to join you.")
+                ]
+                onDismiss = { [weak self] in
+                    guard let self, let state = self.gameState else { return }
+                    state.advanceStory(to: .acceptedLostAcorn)
+                    self.rebuildParkCenterOpeningIfNeeded()
+                    self.showStoryToast("Quest started: The Lost Acorn.")
+                }
+            case .acceptedLostAcorn:
+                lines = [
+                    ("Hazel", "Trash cans. Angry pigeon. Steven."),
+                    ("Shelly", "That is a very compact briefing."),
+                    ("Hazel", "It is an urgent squirrel briefing.")
+                ]
+                onDismiss = nil
+            case .foundLostAcorn:
+                lines = [
+                    ("Hazel", "That is my acorn."),
+                    ("Shelly", "You can tell?"),
+                    ("Hazel", "I named it Steven."),
+                    ("Hazel", "All right. I am in. The pond is wrong and I would like witnesses.")
+                ]
+                onDismiss = { [weak self] in
+                    guard let self, let state = self.gameState else { return }
+                    self.consumeStoryItem(.lostAcorn)
+                    state.unlockPartyMember(.squirrel)
+                    state.advanceStory(to: .hazelJoined)
+                    self.refreshPartySprites()
+                    self.rebuildParkCenterOpeningIfNeeded()
+                    self.updateParkCenterExits()
+                    self.showStoryToast("Hazel joined! North path unlocked.")
+                }
+            case .hazelJoined:
+                lines = [
+                    ("Hazel", "Pond first. Then geese. Then whatever is teaching pigeons logistics."),
+                    ("Shelly", "That order feels optimistic."),
+                    ("Hazel", "It is still the order.")
+                ]
+                onDismiss = nil
+            }
+            dialogue.presentScriptedConversation(title: "The Lost Acorn", lines: lines, onDismiss: onDismiss)
+            return
+
+        default:
+            break
+        }
+
         let clues = state.quackClues
         dialogue.activeQuackClues = clues
         dialogue.startConversation(with: npc.kind, asSpecies: state.activeSpecies,
@@ -491,6 +620,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             state.quackClues.insert(.childSawChase)
         case .jogger       where !clues.isEmpty:
             state.quackClues.insert(.joggerSawCity)
+        case .worker:
+            state.quackClues.insert(.workerSawDuck)
+            state.save()
         default: break
         }
     }
@@ -585,11 +717,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let state = gameState else { return }
         player.setSpecies(state.activeSpecies)
         switchButton.setGlyph(state.activeSpecies.emoji)
-
-        followerSpecies = state.party.map(\.species).filter { $0 != state.activeSpecies }
-        for (i, spec) in followerSpecies.enumerated() where i < followers.count {
-            followers[i].texture = CharacterSprites.texture(species: spec, frame: .a)
-        }
+        rebuildFollowers()
     }
 
     // MARK: - Battle trigger
@@ -827,6 +955,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 return
             }
 
+            if kind == .pigeon,
+               let state = gameState,
+               state.currentZone == .parkCenter,
+               state.storyProgress == .acceptedLostAcorn {
+                state.collect(.lostAcorn)
+                drainPendingLevelUps()
+                rebuildParkCenterOpeningIfNeeded()
+                showStoryToast("Found Hazel's Lost Acorn.")
+                return
+            }
+
             drainPendingLevelUps()
 
             // Regular enemies respawn after a delay
@@ -936,6 +1075,63 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         attacks.append(atk)
     }
 
+    private func useQuickItem() {
+        guard let state = gameState,
+              !isTransitioning, !isBossIntro,
+              battleNode.phase == .none,
+              !state.shopOpen, !state.statsOpen, !state.isPaused,
+              dialogue?.activeNPC == nil else { return }
+
+        // Prefer antidote if anyone is poisoned
+        let anyPoisoned = state.party.contains { $0.isAlive && ($0.isPoisoned || $0.isBadlyPoisoned) }
+        let hasAntidote = (state.inventory[.antidote] ?? 0) > 0
+
+        // Pick item: antidote first if needed, then highest HP heal, then PP restorer
+        let best: ItemKind?
+        if anyPoisoned && hasAntidote {
+            best = .antidote
+        } else {
+            best = ItemKind.allCases
+                .filter { state.inventory[$0, default: 0] > 0 && $0.isUsable && !$0.curesPoison }
+                .max { $0.healHP + $0.healPP * 2 < $1.healHP + $1.healPP * 2 }
+        }
+
+        guard let item = best else {
+            DamageLabel.spawn(text: "No items! 🎒",
+                              color: SKColor(white: 0.65, alpha: 1),
+                              at: CGPoint(x: player.position.x, y: player.position.y + 44),
+                              in: worldRoot)
+            return
+        }
+
+        if let result = state.useConsumable(item) {
+            let text: String
+            if item.curesPoison {
+                text = "\(item.emoji) Poison cured! (\(result.name))"
+            } else if item == .mysteryBag {
+                var parts: [String] = []
+                if result.hp > 0 { parts.append("+\(result.hp) HP") }
+                if result.pp > 0 { parts.append("+\(result.pp) PP") }
+                text = "🛍️ Mystery! \(parts.joined(separator: "  "))  (\(result.name))"
+            } else {
+                var parts: [String] = []
+                if result.hp > 0 { parts.append("+\(result.hp) HP") }
+                if result.pp > 0 { parts.append("+\(result.pp) PP") }
+                text = "\(item.emoji) \(parts.joined(separator: "  "))  (\(result.name))"
+            }
+            DamageLabel.spawn(
+                text: text,
+                color: SKColor(red: 0.35, green: 1.0, blue: 0.55, alpha: 1),
+                at: CGPoint(x: player.position.x, y: player.position.y + 50),
+                in: worldRoot)
+        } else {
+            DamageLabel.spawn(text: "Party is already full! 💚",
+                              color: SKColor(white: 0.65, alpha: 1),
+                              at: CGPoint(x: player.position.x, y: player.position.y + 44),
+                              in: worldRoot)
+        }
+    }
+
     private func handleAttackHit(attack: AttackNode, enemy: EnemyNode) {
         guard !enemy.isDead,
               !attack.hitEnemies.contains(ObjectIdentifier(enemy)) else { return }
@@ -960,6 +1156,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private func triggerZoneTransition(to destination: GameZone) {
         guard !isTransitioning, let state = gameState else { return }
+
+        switch destination {
+        case .parkNorth where !state.hasHazelJoined:
+            showStoryToast("Hazel should see the pond with you.")
+            return
+        case .citySouth where !state.defeatedBosses.contains(.grandGooseGerald):
+            showStoryToast("The city can wait. Check the pond first.")
+            return
+        case .cityNorth where !state.defeatedBosses.contains(.officerGrumble):
+            showStoryToast("The subway gate stays locked until Officer Grumble moves.")
+            return
+        default:
+            break
+        }
+
         isTransitioning = true
         state.currentZone = destination
         state.save()   // auto-save when crossing zone borders
@@ -1012,6 +1223,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 self.buildWorld()
                 self.buildPlayerAndFollowers()
                 self.cam.position = self.pendingSpawn
+                self.showZoneArrivalBeat()
             },
             .wait(forDuration: 0.08),
             .fadeOut(withDuration: 0.40),
@@ -1020,54 +1232,76 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         ]))
     }
 
+    private func showZoneArrivalBeat() {
+        guard let state = gameState else { return }
+
+        let title = SKLabelNode(text: state.currentZone.displayTitle.uppercased())
+        title.fontName = "Helvetica Neue Bold"
+        title.fontSize = 16
+        title.fontColor = SKColor(red: 0.96, green: 0.89, blue: 0.55, alpha: 1)
+        title.position = CGPoint(x: 0, y: size.height / 2 - 92)
+        title.horizontalAlignmentMode = .center
+        title.zPosition = GameConstants.ZPos.ui + 25
+        title.alpha = 0
+        cam.addChild(title)
+
+        let beat = SKLabelNode(text: state.zoneArrivalText)
+        beat.fontName = "Helvetica Neue"
+        beat.fontSize = 12
+        beat.fontColor = .white
+        beat.position = CGPoint(x: 0, y: size.height / 2 - 118)
+        beat.horizontalAlignmentMode = .center
+        beat.zPosition = GameConstants.ZPos.ui + 25
+        beat.alpha = 0
+        cam.addChild(beat)
+
+        let show = SKAction.group([.fadeIn(withDuration: 0.2), .moveBy(x: 0, y: -6, duration: 0.2)])
+        let hide = SKAction.group([.fadeOut(withDuration: 0.28), .moveBy(x: 0, y: -4, duration: 0.28)])
+        title.run(.sequence([show, .wait(forDuration: 2.8), hide, .removeFromParent()]))
+        beat.run(.sequence([show, .wait(forDuration: 2.8), hide, .removeFromParent()]))
+    }
+
     // MARK: - Visual polish
 
     private func addVignette() {
-        // Subtle dark vignette on camera edges — gives depth and focus to the play area.
-        let vigSize = CGSize(width: 900, height: 900)
-        let vig = SKShapeNode(rectOf: vigSize)
-        vig.fillColor   = .clear
-        vig.strokeColor = .clear
-        vig.position    = .zero
-        vig.zPosition   = GameConstants.ZPos.ui - 1
+        // Subtle dark vignette on camera edges — size must be large enough to cover any
+        // Mac display so the rectangular edge is never visible on screen.
+        let vigSize = CGSize(width: 4000, height: 4000)
 
-        // Build a radial gradient texture via CGContext
-        let scale = 2
-        let pw = Int(vigSize.width) * scale
-        let ph = Int(vigSize.height) * scale
-        if let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8,
+        // Build a radial gradient texture via CGContext (rendered at half res for speed)
+        let pw = 512, ph = 512
+        guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8,
                                bytesPerRow: pw * 4,
                                space: CGColorSpaceCreateDeviceRGB(),
                                bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue |
-                                           CGImageAlphaInfo.premultipliedFirst.rawValue) {
-            let cx = CGFloat(pw) / 2, cy = CGFloat(ph) / 2
-            let r  = min(cx, cy) * 0.85
-            let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: [
-                    CGColor(red: 0, green: 0, blue: 0, alpha: 0),
-                    CGColor(red: 0, green: 0, blue: 0, alpha: 0.48)
-                ] as CFArray,
-                locations: [0, 1]
+                                           CGImageAlphaInfo.premultipliedFirst.rawValue) else { return }
+
+        let cx = CGFloat(pw) / 2, cy = CGFloat(ph) / 2
+        let r  = min(cx, cy) * 0.95
+        let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [
+                CGColor(red: 0, green: 0, blue: 0, alpha: 0),
+                CGColor(red: 0, green: 0, blue: 0, alpha: 0.52)
+            ] as CFArray,
+            locations: [0.35, 1]
+        )
+        if let gradient {
+            ctx.drawRadialGradient(
+                gradient,
+                startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
+                endCenter:   CGPoint(x: cx, y: cy), endRadius:   r,
+                options: [.drawsAfterEndLocation]
             )
-            if let gradient {
-                ctx.drawRadialGradient(
-                    gradient,
-                    startCenter: CGPoint(x: cx, y: cy), startRadius: r * 0.45,
-                    endCenter:   CGPoint(x: cx, y: cy), endRadius:   r,
-                    options: [.drawsAfterEndLocation]
-                )
-            }
-            if let img = ctx.makeImage() {
-                let tex = SKTexture(cgImage: img)
-                tex.filteringMode = .linear
-                let vigNode = SKSpriteNode(texture: tex, size: vigSize)
-                vigNode.position  = .zero
-                vigNode.zPosition = GameConstants.ZPos.ui - 1
-                vigNode.alpha     = 0.65
-                cam.addChild(vigNode)
-            }
         }
+        guard let img = ctx.makeImage() else { return }
+        let tex = SKTexture(cgImage: img)
+        tex.filteringMode = .linear
+        let vigNode = SKSpriteNode(texture: tex, size: vigSize)
+        vigNode.position  = .zero
+        vigNode.zPosition = GameConstants.ZPos.ui - 1
+        vigNode.alpha     = 0.55
+        cam.addChild(vigNode)
     }
 
     // MARK: - Treasure
@@ -1098,6 +1332,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                   || (battleNode.phase != .none)
                   || (gameState?.statsOpen ?? false)
                   || (gameState?.shopOpen ?? false)
+                  || (gameState?.isPaused ?? false)
         guard !frozen else {
             player?.physicsBody?.velocity = .zero
             enemies.forEach { $0.physicsBody?.velocity = .zero }
@@ -1116,19 +1351,30 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         trail.insert(player.position, at: 0)
         let maxLen = (followers.count + 1) * trailSpacing + 1
         if trail.count > maxLen { trail.removeLast(trail.count - maxLen) }
+        let playerIsMoving = sqrt(dir.dx * dir.dx + dir.dy * dir.dy) > 0.05
         for (i, f) in followers.enumerated() {
-            let idx = min((i+1) * trailSpacing, trail.count - 1)
-            if idx >= 0 {
-                let t = trail[idx]
-                let dx = t.x - f.position.x; let dy = t.y - f.position.y
-                f.position.x += dx * 0.28; f.position.y += dy * 0.28
-                if abs(dx) > 0.5 { f.xScale = dx < 0 ? -1 : 1 }
-                let moving = sqrt(dx*dx + dy*dy) > 1.5
-                if moving {
-                    let spec = i < followerSpecies.count ? followerSpecies[i] : .turtle
-                    let frame: CharacterSprites.WalkFrame = Int(currentTime / 0.18) % 2 == 0 ? .a : .b
-                    f.texture = CharacterSprites.texture(species: spec, frame: frame)
-                }
+            let target: CGPoint
+            if playerIsMoving {
+                let idx = min((i + 1) * trailSpacing, trail.count - 1)
+                target = trail[max(0, idx)]
+            } else {
+                let offset = idleFollowerOffset(index: i, facing: player.facing)
+                target = CGPoint(x: player.position.x + offset.x, y: player.position.y + offset.y)
+            }
+
+            let dx = target.x - f.position.x
+            let dy = target.y - f.position.y
+            f.position.x += dx * (playerIsMoving ? 0.28 : 0.18)
+            f.position.y += dy * (playerIsMoving ? 0.28 : 0.18)
+            if abs(dx) > 0.5 { f.xScale = dx < 0 ? -1 : 1 }
+
+            let spec = i < followerSpecies.count ? followerSpecies[i] : .turtle
+            let moving = sqrt(dx*dx + dy*dy) > (playerIsMoving ? 1.5 : 8.0)
+            if moving && playerIsMoving {
+                let frame: CharacterSprites.WalkFrame = Int(currentTime / 0.18) % 2 == 0 ? .a : .b
+                f.texture = CharacterSprites.texture(species: spec, frame: frame)
+            } else {
+                f.texture = CharacterSprites.texture(species: spec, frame: .a)
             }
         }
 
@@ -1144,6 +1390,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 : SKColor(red: 0.8, green: 0.55 + 0.45 * charge, blue: 0.1, alpha: 1)  // charging: orange→yellow
         }
 
+        // Heal button glyph: show best available item, or 🚫 when empty
+        if let state = gameState {
+            let best = ItemKind.allCases
+                .filter { state.inventory[$0, default: 0] > 0 && $0.isUsable }
+                .max { $0.healHP < $1.healHP }
+            healButton?.setGlyph(best?.emoji ?? "🚫")
+        }
+
         // Projectile range culling
         attacks = attacks.filter { $0.parent != nil }
         attacks.forEach { $0.checkRange() }
@@ -1154,7 +1408,18 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let dy = $0.position.y - player.position.y
             return dx*dx + dy*dy < 70*70
         }
-        if nearNPC !== nearbyNPC { nearbyNPC = nearNPC; showTalkButton(nearNPC != nil) }
+        if nearNPC !== nearbyNPC {
+            nearbyNPC = nearNPC
+            showTalkButton(nearNPC != nil)
+#if canImport(AppKit)
+            if nearNPC != nil {
+                DamageLabel.spawn(text: "Press E to talk",
+                                  color: SKColor(red: 0.96, green: 0.89, blue: 0.55, alpha: 1),
+                                  at: CGPoint(x: player.position.x, y: player.position.y + 48),
+                                  in: worldRoot)
+            }
+#endif
+        }
 
         // Bench proximity (rest/save)
         let oldBench = nearbyBench
@@ -1263,5 +1528,88 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             .removeFromParent()
         ]))
         items.removeAll { $0 === item }
+    }
+
+    private func rebuildFollowers() {
+        followers.forEach { $0.removeFromParent() }
+        followers.removeAll()
+
+        guard let state = gameState, player != nil else { return }
+        followerSpecies = state.party.map(\.species).filter { $0 != state.activeSpecies }
+        for (index, spec) in followerSpecies.enumerated() {
+            let follower = SKSpriteNode(texture: CharacterSprites.texture(species: spec, frame: .a))
+            follower.size = CGSize(width: 48, height: 48)
+            follower.zPosition = GameConstants.ZPos.entity - 0.1
+            follower.alpha = 0.88
+            let offset = idleFollowerOffset(index: index, facing: player.facing)
+            follower.position = CGPoint(x: player.position.x + offset.x, y: player.position.y + offset.y)
+            worldRoot.addChild(follower)
+            followers.append(follower)
+        }
+    }
+
+    private func updateParkCenterExits() {
+        guard gameState?.currentZone == .parkCenter else { return }
+        for exit in zoneExitNodes where exit.destination == .parkNorth {
+            if gameState?.hasHazelJoined == true {
+                if exit.parent == nil { worldRoot.addChild(exit) }
+            } else {
+                exit.removeFromParent()
+            }
+        }
+    }
+
+    private func rebuildParkCenterOpeningIfNeeded() {
+        guard gameState?.currentZone == .parkCenter else { return }
+        let playerPosition = player?.position ?? pendingSpawn
+        tearDownWorld()
+        buildWorld()
+        pendingSpawn = playerPosition
+        buildPlayerAndFollowers()
+        cam.position = playerPosition
+        layoutControls()
+    }
+
+    private func consumeStoryItem(_ kind: ItemKind) {
+        guard let state = gameState, let amount = state.inventory[kind], amount > 0 else { return }
+        let remaining = amount - 1
+        if remaining > 0 {
+            state.inventory[kind] = remaining
+        } else {
+            state.inventory.removeValue(forKey: kind)
+        }
+        state.save()
+    }
+
+    private func showStoryToast(_ text: String) {
+        guard let player else { return }
+        DamageLabel.spawn(text: text,
+                          color: SKColor(red: 0.96, green: 0.89, blue: 0.55, alpha: 1),
+                          at: CGPoint(x: player.position.x, y: player.position.y + 62),
+                          in: worldRoot)
+    }
+
+    private func idleFollowerOffset(index: Int, facing: CGVector) -> CGPoint {
+        let leftRightBias: CGFloat
+        let backBias: CGFloat
+
+        if abs(facing.dx) > abs(facing.dy) {
+            leftRightBias = facing.dx > 0 ? -1 : 1
+            backBias = 1
+        } else {
+            leftRightBias = facing.dy > 0 ? 1 : -1
+            backBias = facing.dy > 0 ? -1 : 1
+        }
+
+        switch index {
+        case 0:
+            return CGPoint(x: 18 * leftRightBias, y: 12 * backBias)
+        case 1:
+            return CGPoint(x: -18 * leftRightBias, y: 12 * backBias)
+        case 2:
+            return CGPoint(x: 0, y: 28 * backBias)
+        default:
+            return CGPoint(x: 0, y: CGFloat(28 + (index - 2) * 10) * backBias)
+        }
     }
 }

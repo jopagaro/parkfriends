@@ -188,55 +188,57 @@ enum ParkMapDesign {
 // MARK: - City chunks (Zone 2A / 2 / 3)
 
 enum CityMapDesign {
-    static let cols = 60
-    static let rows = 40
+    // Matches GameConstants.cityCenterCols / cityCenterRows
+    static let cols = GameConstants.cityCenterCols   // 88
+    static let rows = GameConstants.cityCenterRows   // 65
 
     static let chunks: [MapChunk] = [
         MapChunk(id: "CT-01", name: "Corner Store",
                  narrative: "Open 24h; owner asleep 2–6am.",
-                 col0: 15, row0: 6, width: 14, height: 10),
+                 col0: 22, row0: 10, width: 18, height: 14),
         MapChunk(id: "CT-02", name: "Main Street",
                  narrative: "Pothole older than your cousin.",
-                 col0: 0, row0: 16, width: 60, height: 8),
+                 col0: 0, row0: 27, width: 88, height: 12),
         MapChunk(id: "CT-03", name: "Alley West",
                  narrative: "Raccoon municipal government.",
-                 col0: 13, row0: 6, width: 8, height: 18),
+                 col0: 19, row0: 10, width: 10, height: 24),
         MapChunk(id: "CT-04", name: "Plaza East",
                  narrative: "Food cart stuck since 2019.",
-                 col0: 20, row0: 24, width: 16, height: 14),
+                 col0: 30, row0: 40, width: 24, height: 18),
         MapChunk(id: "CT-05", name: "Apartment Row",
                  narrative: "Building C: do not knock.",
-                 col0: 1, row0: 21, width: 24, height: 12),
+                 col0: 1, row0: 34, width: 32, height: 16),
         MapChunk(id: "CT-06", name: "Subway Entrance",
                  narrative: "Sign says UPTOWN; only goes to construction.",
-                 col0: 24, row0: 1, width: 10, height: 8),
+                 col0: 36, row0: 1, width: 14, height: 10),
     ]
 
     static func chunk(at col: Int, row: Int) -> MapChunk? {
         chunks.first { $0.contains(col: col, row: row) }
     }
 
+    // Scaled up from old 60×40 → new 88×65
     static func isSidewalk(col: Int, row: Int) -> Bool {
-        if (18...19).contains(row) { return true }
-        if (27...32).contains(col) { return true }
-        if (4...5).contains(row) { return true }
-        if (13...14).contains(col), (6...17).contains(row) { return true }
-        if (45...46).contains(col), (6...17).contains(row) { return true }
+        if (30...31).contains(row) { return true }          // main crosswalk sidewalks
+        if (40...49).contains(col) { return true }          // vertical street corridor
+        if (6...7).contains(row) { return true }            // top sidewalk
+        if (19...21).contains(col), (10...28).contains(row) { return true }
+        if (66...68).contains(col), (10...28).contains(row) { return true }
         return false
     }
 
     static func isMainStreetRoad(col: Int, row: Int) -> Bool {
-        guard (16...23).contains(row) else { return false }
+        guard (27...39).contains(row) else { return false }
         return !isSidewalk(col: col, row: row)
     }
 
     static func roadHasCenterLine(col: Int, row: Int) -> Bool {
-        guard row == 21, !((27...32).contains(col)) else { return false }
+        guard row == 33, !((40...49).contains(col)) else { return false }
         return isMainStreetRoad(col: col, row: row) && col % 4 < 2
     }
 
     static func isCrosswalkArea(col: Int, row: Int) -> Bool {
-        (18...19).contains(row) && (26...33).contains(col)
+        (30...31).contains(row) && (39...52).contains(col)
     }
 
     static func isCrosswalkStripe(col: Int, row: Int) -> Bool {
@@ -245,8 +247,8 @@ enum CityMapDesign {
     }
 
     static func isCurbLip(col: Int, row: Int) -> Bool {
-        if row == 17 && isMainStreetRoad(col: col, row: 16) { return true }
-        if row == 20 && isMainStreetRoad(col: col, row: 21) { return true }
+        if row == 26 && isMainStreetRoad(col: col, row: 27) { return true }
+        if row == 38 && isMainStreetRoad(col: col, row: 37) { return true }
         return false
     }
 
