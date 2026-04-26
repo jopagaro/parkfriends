@@ -21,15 +21,19 @@ enum CityWorld {
         let worldW = CGFloat(cols) * tile
         let worldH = CGFloat(rows) * tile
 
-        // Ground layer (CityMapDesign now references correct cols/rows)
+        // Ground layer — real textures via ImportedArt, solid-color fallback.
         let groundLayer = SKNode()
         groundLayer.zPosition = GameConstants.ZPos.ground
         for r in 0..<rows {
             for c in 0..<cols {
-                let color = CityMapDesign.groundColor(col: c, row: r)
-                let n = SKSpriteNode(color: color, size: CGSize(width: tile, height: tile))
-                n.anchorPoint = .zero
-                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+                let n = WorldTerrain.makeCityGroundTile(
+                    col: c, row: r, tile: tile,
+                    isSidewalk:        CityMapDesign.isSidewalk(col: c, row: r),
+                    isRoad:            CityMapDesign.isMainStreetRoad(col: c, row: r),
+                    isCrosswalkArea:   CityMapDesign.isCrosswalkArea(col: c, row: r),
+                    isCrosswalkStripe: CityMapDesign.isCrosswalkStripe(col: c, row: r),
+                    isCurbLip:         CityMapDesign.isCurbLip(col: c, row: r)
+                )
                 groundLayer.addChild(n)
             }
         }

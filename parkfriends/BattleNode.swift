@@ -15,6 +15,7 @@ final class BattleNode: SKNode {
     var onDefeat:  (() -> Void)?
     var onFled:    (() -> Void)?
     var onSaved:   (() -> Void)?
+    var onSwitched: ((Species) -> Void)?
 
     // MARK: Sub-nodes
     private let backdrop              = SKSpriteNode()
@@ -145,7 +146,7 @@ final class BattleNode: SKNode {
         panel.addChild(menuNode)
         buildMenuButtons()
 
-        let hint = label("1 Attack · 2 Special · 3 Defend · 4 Item · 5 Flee",
+        let hint = label("1 Attack · 2 Special · 3 Defend · 4 Item · 5 Switch · 6 Flee",
                          size: 11, color: SKColor(white: 1, alpha: 0.30))
         hint.position = CGPoint(x: 0, y: -panelH/2+20)
         panel.addChild(hint)
@@ -172,9 +173,10 @@ final class BattleNode: SKNode {
             ("✨",  "SPECIAL", SKColor(red: 0.40, green: 0.25, blue: 0.85, alpha: 1)),
             ("🛡️", "DEFEND",  SKColor(red: 0.15, green: 0.50, blue: 0.75, alpha: 1)),
             ("🎒", "ITEM",    SKColor(red: 0.20, green: 0.60, blue: 0.30, alpha: 1)),
+            ("↔",  "SWITCH",  SKColor(red: 0.78, green: 0.55, blue: 0.18, alpha: 1)),
             ("👟", "FLEE",    SKColor(red: 0.50, green: 0.50, blue: 0.50, alpha: 1)),
         ]
-        let bW: CGFloat = 120, bH: CGFloat = 48, gap: CGFloat = 10
+        let bW: CGFloat = 98, bH: CGFloat = 48, gap: CGFloat = 8
         let total = CGFloat(defs.count)*bW + CGFloat(defs.count-1)*gap
         for (i, (g, lbl, tint)) in defs.enumerated() {
             let x = -total/2 + CGFloat(i)*(bW+gap) + bW/2
@@ -187,7 +189,8 @@ final class BattleNode: SKNode {
         menuButtons[1].onTap = { [weak self] in self?.playerSpecial() }
         menuButtons[2].onTap = { [weak self] in self?.playerDefend() }
         menuButtons[3].onTap = { [weak self] in self?.playerItem() }
-        menuButtons[4].onTap = { [weak self] in self?.playerFlee() }
+        menuButtons[4].onTap = { [weak self] in self?.playerSwitch() }
+        menuButtons[5].onTap = { [weak self] in self?.playerFlee() }
     }
 
     private func label(_ text: String, size: CGFloat, color: SKColor = .white) -> SKLabelNode {
@@ -268,6 +271,7 @@ final class BattleNode: SKNode {
         case 19: playerSpecial()
         case 20: playerDefend()
         case 21: playerItem()
+        case 22: playerSwitch()
         case 23: playerFlee()
         default: break
         }
@@ -471,6 +475,40 @@ final class BattleNode: SKNode {
         }
     }
 
+    private func playerSwitch() {
+        guard phase == .playerMenu, let state = gameState else { return }
+        let living = state.party.indices.filter { state.party[$0].isAlive }
+        guard living.count > 1 else {
+            showLog("Nobody else can tag in right now.") {
+                self.phase = .playerMenu
+                self.setMenu(true)
+            }
+            return
+        }
+
+        phase = .animating
+        setMenu(false)
+        isPlayerDefending = false
+        playerBonusDEF = 0
+
+        let start = state.activeIndex
+        for step in 1...state.party.count {
+            let idx = (start + step) % state.party.count
+            if state.party[idx].isAlive {
+                state.activeIndex = idx
+                refreshPartySlots()
+                onSwitched?(state.party[idx].species)
+                showLog("\(state.party[idx].species.displayName) steps in!") {
+                    self.startEnemyTurn()
+                }
+                return
+            }
+        }
+
+        phase = .playerMenu
+        setMenu(true)
+    }
+
     private func playerFlee() {
         guard phase == .playerMenu,
               let state = gameState,
@@ -608,7 +646,6 @@ final class BattleNode: SKNode {
             if isEnemyCharging {
                 isEnemyCharging = false
             }
-            let skipDueWingBeat = (choice.name == "Wing Beat")
             if choice.name == "Wing Beat" { wingBeatLastTurn = battleTurnCount }
 
             let hit = calcHit(
@@ -643,7 +680,7 @@ final class BattleNode: SKNode {
 
         // ── AoE physical ───────────────────────────────────────────────────────
         case .aoeAttack(let mult):
-            var totalMsg = "\(eName) uses \(choice.name)!\n\(choice.message)"
+            let totalMsg = "\(eName) uses \(choice.name)!\n\(choice.message)"
             showLog(totalMsg + preMsg) {
                 self.animateEnemyStrike(heavy: true)
                 for i in state.party.indices where state.party[i].isAlive {
@@ -737,7 +774,7 @@ final class BattleNode: SKNode {
             }
 
         // ── Target debuff ──────────────────────────────────────────────────────
-        case .targetDebuff(let atk, let def, _):
+        case .targetDebuff(let atk, _, _):
             playerBonusATK -= atk
             showLog("\(eName) uses \(choice.name)!\n\(choice.message)\(preMsg)") {
                 self.afterEnemyAction(state: state)
@@ -809,6 +846,7 @@ final class BattleNode: SKNode {
     }
 
     private func afterEnemyAction(state: GameState) {
+        state.ensureActiveMemberAlive()
         refreshPartySlots()
         if state.isGameOver {
             showLog("The party fainted… 💤") {

@@ -32,14 +32,53 @@ enum ParkWorld {
         groundLayer.zPosition = GameConstants.ZPos.ground
         for r in 0..<rows {
             for c in 0..<cols {
-                let color = ParkMapDesign.centerGroundColor(col: c, localRow: r)
-                let n = SKSpriteNode(color: color, size: CGSize(width: tile, height: tile))
+                let surface: TerrainSurface = (c < 8 || c > cols - 9) ? .grassShade : .grass
+                let n = makeParkGroundTile(surface: surface, col: c, row: r, tile: tile)
                 n.anchorPoint = .zero
                 n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 groundLayer.addChild(n)
             }
         }
         root.addChild(groundLayer)
+
+        let terrainLayer = SKNode()
+        terrainLayer.zPosition = GameConstants.ZPos.ground + 0.6
+        root.addChild(terrainLayer)
+
+        paintRectSurface(on: terrainLayer, surface: .road, cols: 0...104, rows: 0...1, tile: tile)
+        paintRectSurface(on: terrainLayer, surface: .sidewalk, cols: 0...104, rows: 2...3, tile: tile)
+        paintDirtRibbon(
+            on: terrainLayer,
+            path: [(52, 4), (52, 6), (52, 8), (52, 10), (51, 12), (50, 14), (49, 16), (48, 18), (47, 20),
+                   (47, 22), (47, 24), (47, 26), (47, 28), (47, 30)],
+            radius: 3,
+            tile: tile
+        )
+        paintRectSurface(on: terrainLayer, surface: .path, cols: 41...63, rows: 30...42, tile: tile)
+        paintRectSurface(on: terrainLayer, surface: .water, cols: 47...56, rows: 33...38, tile: tile)
+        paintDirtRibbon(
+            on: terrainLayer,
+            path: [(47, 30), (42, 28), (36, 26), (30, 24), (24, 23), (18, 22)],
+            radius: 1,
+            tile: tile
+        )
+        paintDirtRibbon(
+            on: terrainLayer,
+            path: [(57, 31), (63, 28), (69, 25), (76, 22), (83, 21)],
+            radius: 1,
+            tile: tile
+        )
+        paintRectSurface(on: terrainLayer, surface: .path, cols: 77...92, rows: 12...18, tile: tile)
+        paintFenceRun(on: terrainLayer, startCol: 77, row: 11, length: 16, tile: tile)
+        paintFenceRun(on: terrainLayer, startCol: 77, row: 19, length: 16, tile: tile)
+        addCliffFace(on: terrainLayer, startCol: 9, startRow: 25, length: 13, horizontal: true, tile: tile)
+        addCliffFace(on: terrainLayer, startCol: 83, startRow: 24, length: 12, horizontal: true, tile: tile)
+        sprinkleGrassTufts(on: terrainLayer,
+                           points: [(32, 7), (36, 8), (41, 10), (24, 13), (67, 13), (72, 15),
+                                    (30, 20), (36, 22), (44, 24), (76, 22), (84, 18), (14, 18),
+                                    (18, 27), (23, 29), (28, 30), (76, 29), (82, 27), (88, 24),
+                                    (46, 46), (56, 46), (64, 49)],
+                           tile: tile)
 
         let border = SKNode()
         border.physicsBody = {
@@ -53,15 +92,16 @@ enum ParkWorld {
 
         // ── Entrance area (rows 2-10) ────────────────────────────────────────
         let entranceDecor: [(String, Int, Int, Bool)] = [
-            ("🚧", 30, 3, true), ("🚧", 35, 3, true), ("🚧", 55, 3, true), ("🚧", 70, 3, true),
-            ("🥀", 33, 4, false), ("🥀", 50, 4, false), ("🥀", 72, 4, false),
-            ("🪧", 52, 2, false),
-            ("🌷", 20, 5, false), ("🌷", 85, 5, false),
-            ("🌸", 28, 5, false), ("🌸", 77, 5, false),
-            ("🪑", 26, 7, false), ("🪑", 78, 7, false),
-            ("🗑️", 40, 6, false), ("🗑️", 65, 6, false),
+            ("🚧", 31, 3, true), ("🚧", 35, 3, true), ("🚧", 69, 3, true), ("🚧", 73, 3, true),
+            ("🪧", 52, 2, false), ("🚫", 58, 3, false),
+            ("🥀", 34, 4, false), ("🥀", 35, 4, false), ("🥀", 36, 4, false),
+            ("🌷", 20, 5, false), ("🌷", 84, 5, false),
+            ("🌸", 22, 6, false), ("🌸", 82, 6, false),
+            ("🪑", 25, 7, false), ("🪑", 79, 7, false),
+            ("🗑️", 29, 7, false), ("🗑️", 75, 7, false),
             ("🌳", 12, 6, true),  ("🌳", 92, 6, true),
-            ("🌳", 5, 8, true),   ("🌳", 99, 8, true),
+            ("🌳", 6, 8, true),   ("🌳", 98, 8, true),
+            ("🌿", 16, 7, false), ("🌿", 88, 7, false),
         ]
         addDecor(decorLayer, spots: entranceDecor, tile: tile)
 
@@ -79,15 +119,18 @@ enum ParkWorld {
         // ── Fountain Plaza (center, rows 28-42) ───────────────────────────────
         let fountainDecor: [(String, Int, Int, Bool)] = [
             ("⛲", 52, 35, true),
+            ("🌳", 42, 40, true), ("🌳", 63, 40, true),
             ("🪑", 45, 33, false), ("🪑", 59, 33, false),
             ("🪑", 44, 38, false), ("🪑", 60, 38, false),
             ("🪑", 52, 42, false),
             ("🐦", 48, 36, false), ("🐦", 54, 34, false), ("🐦", 50, 40, false),
             ("🐦", 57, 39, false), ("🐦", 43, 41, false),
             ("🗑️", 47, 33, false), ("🗑️", 57, 39, false),
+            ("🚫", 59, 37, false), ("🪧", 46, 29, false),
+            ("🌿", 40, 31, false), ("🌿", 41, 31, false), ("🌿", 62, 31, false), ("🌿", 63, 31, false),
             ("🌸", 46, 30, false), ("🌸", 58, 30, false),
             ("🌸", 44, 35, false), ("🌸", 60, 35, false),
-            ("🌻", 42, 42, false), ("🌻", 62, 42, false),
+            ("🌻", 41, 42, false), ("🌻", 63, 42, false),
         ]
         addDecor(decorLayer, spots: fountainDecor, tile: tile)
 
@@ -97,8 +140,11 @@ enum ParkWorld {
             ("🌳", 8, 22, true),  ("🌳", 3, 28, true),  ("🌳", 10, 30, true),
             ("🌲", 5, 35, true),  ("🌲", 10, 38, true), ("🌲", 3, 42, true),
             ("🌲", 8, 46, true),  ("🌳", 4, 50, true),  ("🌳", 12, 52, true),
+            ("🌲", 14, 17, true), ("🌲", 16, 22, true), ("🌲", 14, 27, true),
+            ("🌳", 15, 33, true), ("🌳", 16, 39, true), ("🌲", 15, 45, true),
             ("🌿", 6, 18, false), ("🌿", 4, 25, false), ("🌿", 9, 32, false),
-            ("🌿", 6, 40, false), ("🌿", 11, 47, false),
+            ("🌿", 6, 40, false), ("🌿", 11, 47, false), ("🌿", 14, 24, false),
+            ("🌿", 15, 36, false), ("🌿", 13, 49, false),
             ("🍄", 7, 20, false), ("🍄", 3, 35, false), ("🍄", 9, 48, false),
             ("🪨", 5, 18, true),  ("🪨", 8, 26, true),  ("🪨", 12, 44, true),
             ("🎤", 12, 20, false),
@@ -111,9 +157,13 @@ enum ParkWorld {
             ("🌳", 86, 24, true),  ("🌳", 96, 20, true),  ("🌳", 102, 28, true),
             ("🌲", 84, 30, true),  ("🌲", 90, 35, true),  ("🌲", 98, 40, true),
             ("🌲", 85, 45, true),  ("🌳", 94, 50, true),  ("🌳", 102, 52, true),
+            ("🌲", 78, 17, true),  ("🌲", 80, 24, true),  ("🌳", 79, 31, true),
+            ("🌳", 80, 39, true),  ("🌲", 81, 47, true),
             ("🌺", 83, 18, false), ("🌺", 95, 22, false), ("🌺", 101, 36, false),
             ("🌸", 87, 28, false), ("🌸", 97, 44, false),
             ("🌻", 84, 42, false), ("🌻", 99, 48, false),
+            ("🌿", 82, 20, false), ("🌿", 79, 28, false), ("🌿", 83, 36, false),
+            ("🌿", 81, 44, false), ("🌿", 92, 30, false),
             ("🪑", 88, 20, false), ("🪑", 95, 35, false),
             ("🪑", 83, 50, false),
         ]
@@ -137,8 +187,12 @@ enum ParkWorld {
         let midParkDecor: [(String, Int, Int, Bool)] = [
             ("🌳", 22, 28, true),  ("🌳", 28, 22, true),
             ("🌳", 42, 20, true),  ("🌳", 62, 22, true),  ("🌳", 72, 28, true),
+            ("🌳", 36, 27, true),  ("🌳", 68, 25, true),
             ("🌲", 18, 35, true),  ("🌲", 86, 32, true),
+            ("🌿", 34, 23, false), ("🌿", 38, 25, false), ("🌿", 66, 23, false),
+            ("🌿", 70, 25, false), ("🌸", 34, 30, false), ("🌸", 68, 30, false),
             ("🪑", 95, 42, false), ("🌸", 96, 40, false),
+            ("🗑️", 95, 40, false), ("🌿", 94, 43, false),
             ("🌻", 100, 44, false),
         ]
         addDecor(decorLayer, spots: midParkDecor, tile: tile)
@@ -253,14 +307,45 @@ enum ParkWorld {
         groundLayer.zPosition = GameConstants.ZPos.ground
         for r in 0..<rows {
             for c in 0..<cols {
-                let color = ParkMapDesign.northGroundColor(col: c, localRow: r)
-                let n = SKSpriteNode(color: color, size: CGSize(width: tile, height: tile))
+                let surface: TerrainSurface = (c < 10 || c > cols - 11) ? .grassShade : .grass
+                let n = makeParkGroundTile(surface: surface, col: c, row: r, tile: tile)
                 n.anchorPoint = .zero
                 n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 groundLayer.addChild(n)
             }
         }
         root.addChild(groundLayer)
+
+        let terrainLayer = SKNode()
+        terrainLayer.zPosition = GameConstants.ZPos.ground + 0.6
+        root.addChild(terrainLayer)
+
+        paintDirtRibbon(
+            on: terrainLayer,
+            path: [(52, 4), (50, 6), (46, 8), (41, 10), (36, 12), (31, 14), (26, 16), (21, 18), (17, 19)],
+            radius: 2,
+            tile: tile
+        )
+        paintDirtRibbon(
+            on: terrainLayer,
+            path: [(52, 4), (57, 6), (62, 8), (67, 10), (72, 12), (77, 13)],
+            radius: 1,
+            tile: tile
+        )
+        paintRectSurface(on: terrainLayer, surface: .water, cols: 8...20, rows: 15...24, tile: tile)
+        paintRectSurface(on: terrainLayer, surface: .water, cols: 71...80, rows: 10...15, tile: tile)
+        paintBridgePatch(on: terrainLayer, originCol: 13, originRow: 24, tile: tile)
+        paintRectSurface(on: terrainLayer, surface: .stone, cols: 72...87, rows: 8...23, tile: tile)
+        paintFenceRun(on: terrainLayer, startCol: 10, row: 25, length: 10, tile: tile)
+        paintFenceRun(on: terrainLayer, startCol: 39, row: 12, length: 8, tile: tile)
+        addCliffFace(on: terrainLayer, startCol: 10, startRow: 26, length: 14, horizontal: true, tile: tile)
+        addCliffFace(on: terrainLayer, startCol: 70, startRow: 16, length: 12, horizontal: true, tile: tile)
+        sprinkleGrassTufts(on: terrainLayer,
+                           points: [(18, 18), (22, 19), (27, 17), (33, 15), (40, 14), (47, 15),
+                                    (58, 17), (64, 18), (72, 17), (78, 15), (35, 24), (44, 27),
+                                    (54, 29), (63, 27), (70, 23), (80, 20), (26, 38), (36, 40),
+                                    (48, 42), (60, 42), (72, 39)],
+                           tile: tile)
 
         let border = SKNode()
         border.physicsBody = {
@@ -269,19 +354,6 @@ enum ParkWorld {
             return b
         }()
         root.addChild(border)
-
-        // ── Ponds ──────────────────────────────────────────────────────────────
-        let pondLayer = SKNode(); pondLayer.zPosition = GameConstants.ZPos.ground + 1
-        // Main pond (Gerald's territory) — larger and more prominent
-        pondLayer.addChild(makePond(cx: CGFloat(18) * tile, cy: CGFloat(22) * tile,
-                                    w: tile * 13, h: tile * 9))
-        // East secondary pond
-        pondLayer.addChild(makePond(cx: CGFloat(78) * tile, cy: CGFloat(12) * tile,
-                                    w: tile * 8, h: tile * 5))
-        // Small hidden pond in north forest
-        pondLayer.addChild(makePond(cx: CGFloat(52) * tile, cy: CGFloat(40) * tile,
-                                    w: tile * 5, h: tile * 3.5))
-        root.addChild(pondLayer)
 
         let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
 
@@ -311,32 +383,51 @@ enum ParkWorld {
 
         // ── Dense forest (west side, cols 2-12) ──────────────────────────────
         let westTreeDecor: [(String, Int, Int, Bool)] = [
+            ("🌳", 12, 6, true),  ("🌳", 15, 8, true),  ("🌲", 18, 6, true),
+            ("🌲", 21, 9, true),  ("🌿", 17, 11, false), ("🌿", 20, 13, false),
             ("🌲", 2, 5, true),  ("🌲", 5, 8, true),  ("🌲", 3, 14, true),
             ("🌲", 8, 10, true), ("🌲", 4, 20, true), ("🌲", 7, 28, true),
             ("🌲", 3, 34, true), ("🌲", 9, 38, true), ("🌲", 5, 44, true),
             ("🌳", 2, 30, true), ("🌳", 6, 40, true),
+            ("🌳", 11, 18, true), ("🌳", 13, 24, true), ("🌲", 14, 30, true),
+            ("🌲", 12, 36, true), ("🌲", 11, 42, true),
             ("🌿", 4, 12, false), ("🌿", 6, 22, false), ("🌿", 3, 36, false),
+            ("🌿", 11, 14, false), ("🌿", 12, 28, false), ("🌿", 10, 34, false),
             ("🍄", 5, 16, false), ("🍄", 8, 32, false), ("🍄", 4, 46, false),
         ]
         addDecor(decorLayer, spots: westTreeDecor, tile: tile)
 
         // ── East forest (cols 88-103) ─────────────────────────────────────────
         let eastTreeDecor: [(String, Int, Int, Bool)] = [
+            ("🌳", 66, 6, true),  ("🌳", 72, 6, true),  ("🌲", 78, 7, true),
+            ("🌲", 84, 6, true),  ("🌿", 70, 10, false), ("🌿", 81, 11, false),
             ("🌲", 90, 6, true),  ("🌲", 94, 10, true), ("🌲", 98, 8, true),
             ("🌲", 92, 16, true), ("🌲", 100, 14, true), ("🌳", 96, 20, true),
             ("🌲", 88, 22, true), ("🌲", 102, 22, true), ("🌳", 90, 30, true),
             ("🌲", 96, 34, true), ("🌲", 88, 40, true),  ("🌳", 100, 38, true),
+            ("🌳", 82, 18, true), ("🌳", 84, 26, true), ("🌲", 82, 34, true),
+            ("🌲", 84, 42, true),
             ("🌿", 92, 12, false), ("🌿", 98, 28, false), ("🌿", 91, 44, false),
+            ("🌿", 84, 15, false), ("🌿", 85, 30, false), ("🌿", 82, 40, false),
             ("🍄", 94, 24, false), ("🍄", 99, 40, false),
         ]
         addDecor(decorLayer, spots: eastTreeDecor, tile: tile)
 
         // ── Central meadow / upper reaches ────────────────────────────────────
         let meadowDecor: [(String, Int, Int, Bool)] = [
+            ("🌳", 26, 8, true),   ("🌳", 34, 10, true), ("🌳", 46, 14, true),
+            ("🌳", 58, 16, true),  ("🌳", 68, 18, true),
+            ("🌳", 30, 18, true),  ("🌳", 40, 20, true), ("🌳", 52, 20, true),
+            ("🌳", 64, 22, true),
+            ("🌿", 28, 12, false), ("🌿", 42, 16, false), ("🌿", 62, 18, false),
+            ("🌿", 34, 16, false), ("🌿", 46, 18, false), ("🌿", 56, 20, false),
+            ("🌿", 68, 22, false),
             ("🌳", 36, 30, true),  ("🌳", 52, 28, true), ("🌳", 68, 32, true),
             ("🌳", 40, 42, true),  ("🌳", 60, 44, true),
             ("🌲", 28, 36, true),  ("🌲", 76, 36, true),
             ("🌿", 44, 30, false), ("🌿", 56, 34, false),
+            ("🌿", 36, 26, false), ("🌿", 48, 26, false), ("🌿", 60, 28, false),
+            ("🌿", 72, 30, false), ("🌸", 38, 24, false), ("🌸", 58, 24, false),
             ("🍄", 34, 38, false), ("🍄", 70, 40, false),
             ("🌸", 48, 32, false), ("🌸", 62, 30, false),
             ("🪑", 44, 16, false), // Scenic bench near east pond
@@ -349,6 +440,7 @@ enum ParkWorld {
         let eastPondDecor: [(String, Int, Int, Bool)] = [
             ("⛵", 74, 10, true),
             ("🌲", 72, 8, true), ("🌲", 84, 8, true),
+            ("🪵", 78, 12, true), ("🌿", 80, 15, false), ("🌿", 71, 14, false),
             ("🌿", 75, 14, false),
             ("🪧", 70, 8, false),  // "East pond — no fishing"
         ]
@@ -367,10 +459,10 @@ enum ParkWorld {
 
         // ── Lamp posts ────────────────────────────────────────────────────────
         let lampCoords: [(Int, Int)] = [
-            (28, 5), (52, 5), (76, 5),   // south entry row
-            (16, 18), (28, 18),           // pond west
-            (40, 20), (52, 20),           // central path
-            (76, 18), (88, 18),           // east area
+            (34, 8), (48, 6), (72, 10),
+            (20, 18), (30, 18),
+            (44, 20), (54, 19),
+            (78, 18)
         ]
         for (lc, lr) in lampCoords {
             let lamp = WorldSprites.makeLampPost(city: false)
@@ -444,6 +536,64 @@ enum ParkWorld {
     }
 
     // MARK: - Shared helpers
+
+    private static func makeParkGroundTile(surface: TerrainSurface, col: Int, row: Int, tile: CGFloat) -> SKSpriteNode {
+        let node: SKSpriteNode
+        let variant = abs(((col &* 73) ^ (row &* 151) ^ ((col + row) &* 19)))
+
+        switch surface {
+        case .grass, .grassShade:
+            if let tex = ImportedArt.sproutGrassTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex)
+            } else {
+                node = SKSpriteNode(color: ParkMapDesign.northGroundColor(col: col, localRow: 0), size: CGSize(width: tile, height: tile))
+            }
+        case .path:
+            if let tex = ImportedArt.sproutPathTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex)
+            } else {
+                node = SKSpriteNode(color: GamePalette.dirtD1, size: CGSize(width: tile, height: tile))
+            }
+        case .water:
+            if let tex = ImportedArt.sproutWaterTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex)
+            } else {
+                node = SKSpriteNode(color: GamePalette.waterMid, size: CGSize(width: tile, height: tile))
+            }
+        case .stone:
+            if let tex = ImportedArt.sproutHillTexture(col: variant % 2, row: 2) {
+                node = SKSpriteNode(texture: tex)
+            } else {
+                node = SKSpriteNode(texture: ImportedArt.placeholderTexture())
+            }
+        case .sidewalk:
+            node = SKSpriteNode(texture: ImportedArt.sproutPathTexture(variant: variant))
+        case .road:
+            node = SKSpriteNode(texture: ImportedArt.sproutPathTexture(variant: variant + 1))
+        case .asphalt:
+            node = SKSpriteNode(texture: ImportedArt.sproutPathTexture(variant: variant + 2))
+        }
+
+        node.size = CGSize(width: tile, height: tile)
+        return node
+    }
+
+    private static func paintRectSurface(
+        on layer: SKNode,
+        surface: TerrainSurface,
+        cols: ClosedRange<Int>,
+        rows: ClosedRange<Int>,
+        tile: CGFloat
+    ) {
+        for row in rows {
+            for col in cols {
+                let node = makeParkGroundTile(surface: surface, col: col, row: row, tile: tile)
+                node.anchorPoint = .zero
+                node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
+                layer.addChild(node)
+            }
+        }
+    }
 
     private static func addDecor(_ layer: SKNode, spots: [(String, Int, Int, Bool)], tile: CGFloat) {
         for (glyph, c, r, blocks) in spots {
@@ -519,6 +669,122 @@ enum ParkWorld {
         container.physicsBody = body
 
         return container
+    }
+
+    private static func paintDirtRibbon(
+        on layer: SKNode,
+        path: [(Int, Int)],
+        radius: Int,
+        tile: CGFloat
+    ) {
+        for (step, point) in path.enumerated() {
+            for dx in -radius...radius {
+                for dy in -radius...radius {
+                    let distance = abs(dx) + abs(dy)
+                    guard distance <= radius + (step % 2 == 0 ? 0 : 1) else { continue }
+                    let col = point.0 + dx
+                    let row = point.1 + dy
+                    let variant = abs(col * 19 + row * 11 + step * 7)
+                    let texture = ImportedArt.sproutPathTexture(variant: variant)
+                    let node = texture.map { SKSpriteNode(texture: $0) }
+                        ?? SKSpriteNode(color: GamePalette.dirtD1, size: CGSize(width: tile, height: tile))
+                    node.anchorPoint = .zero
+                    node.size = CGSize(width: tile, height: tile)
+                    node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
+                    layer.addChild(node)
+                }
+            }
+        }
+    }
+
+    private static func addCliffFace(
+        on layer: SKNode,
+        startCol: Int,
+        startRow: Int,
+        length: Int,
+        horizontal: Bool,
+        tile: CGFloat
+    ) {
+        for i in 0..<length {
+            let col = horizontal ? startCol + i : startCol
+            let row = horizontal ? startRow : startRow + i
+            let texCol = horizontal ? (i % 2 == 0 ? 0 : 1) : 3
+            let texRow = horizontal ? 1 : 2
+            let node = ImportedArt.sproutHillTexture(col: texCol, row: texRow)
+                .map { SKSpriteNode(texture: $0) }
+                ?? SKSpriteNode(color: GamePalette.brickWall, size: CGSize(width: tile, height: tile))
+            node.anchorPoint = .zero
+            node.size = CGSize(width: tile, height: tile)
+            node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
+            layer.addChild(node)
+        }
+    }
+
+    private static func paintFenceRun(
+        on layer: SKNode,
+        startCol: Int,
+        row: Int,
+        length: Int,
+        tile: CGFloat
+    ) {
+        for i in 0..<length {
+            let col = startCol + i
+            let texCol = i == 0 ? 0 : (i == length - 1 ? 3 : 1)
+            let tex = ImportedArt.sproutFenceTexture(col: texCol, row: 2)
+            let node = tex.map { SKSpriteNode(texture: $0) }
+                ?? SKSpriteNode(color: GamePalette.woodSiding, size: CGSize(width: tile, height: tile))
+            node.anchorPoint = .zero
+            node.size = CGSize(width: tile, height: tile)
+            node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
+            layer.addChild(node)
+        }
+    }
+
+    private static func paintBridgePatch(
+        on layer: SKNode,
+        originCol: Int,
+        originRow: Int,
+        tile: CGFloat
+    ) {
+        for r in 0..<2 {
+            for c in 0..<3 {
+                guard let tex = ImportedArt.sproutBridgeTexture(col: c, row: r) else { continue }
+                let node = SKSpriteNode(texture: tex)
+                node.anchorPoint = .zero
+                node.size = CGSize(width: tile, height: tile)
+                node.position = CGPoint(x: CGFloat(originCol + c) * tile, y: CGFloat(originRow + r) * tile)
+                layer.addChild(node)
+            }
+        }
+    }
+
+    private static func sprinkleGrassTufts(
+        on layer: SKNode,
+        points: [(Int, Int)],
+        tile: CGFloat
+    ) {
+        for (col, row) in points {
+            let tuft = SKSpriteNode(color: .clear, size: CGSize(width: tile, height: tile))
+            tuft.anchorPoint = .zero
+            tuft.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
+
+            let bladeA = SKSpriteNode(color: GamePalette.grassG3Deep, size: CGSize(width: tile * 0.12, height: tile * 0.28))
+            bladeA.anchorPoint = CGPoint(x: 0.5, y: 0)
+            bladeA.position = CGPoint(x: tile * 0.34, y: tile * 0.30)
+            tuft.addChild(bladeA)
+
+            let bladeB = SKSpriteNode(color: GamePalette.grassG3, size: CGSize(width: tile * 0.10, height: tile * 0.22))
+            bladeB.anchorPoint = CGPoint(x: 0.5, y: 0)
+            bladeB.position = CGPoint(x: tile * 0.52, y: tile * 0.34)
+            tuft.addChild(bladeB)
+
+            let bladeC = SKSpriteNode(color: GamePalette.grassG4Worn, size: CGSize(width: tile * 0.08, height: tile * 0.18))
+            bladeC.anchorPoint = CGPoint(x: 0.5, y: 0)
+            bladeC.position = CGPoint(x: tile * 0.66, y: tile * 0.28)
+            tuft.addChild(bladeC)
+
+            layer.addChild(tuft)
+        }
     }
 
     private static func buildAmphitheater(

@@ -567,6 +567,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
 final class EnemyNode: SKSpriteNode {
     let kind: EnemyKind
     var patrolOrigin: CGPoint = .zero
+    var encounterID: String?
 
     private(set) var hp: Int
     var isDead: Bool { hp <= 0 }
@@ -579,7 +580,7 @@ final class EnemyNode: SKSpriteNode {
         self.kind = kind
         self.hp   = kind.maxHP
 
-        let tex = WorldSprites.texture(enemy: kind)
+        let tex = WorldSprites.overworldTexture(enemy: kind)
         let size = kind.isBoss
             ? CGSize(width: 72, height: 72)
             : CGSize(width: 48, height: 48)

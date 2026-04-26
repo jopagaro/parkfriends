@@ -17,11 +17,12 @@ enum SpriteFactory {
         let key = "\(glyph)@\(Int(size))"
         if let cached = cache[key] { return cached }
 
-        let pixelSize = CGSize(width: size, height: size)
-        let texture = SKTexture(image: renderIcon(glyph, size: pixelSize))
-        texture.filteringMode = .nearest
-        cache[key] = texture
-        return texture
+        if let imported = ImportedArt.textureForGlyph(glyph) ?? ImportedArt.sproutNatureTexture(for: glyph) ?? ImportedArt.placeholderTexture() {
+            imported.filteringMode = .nearest
+            cache[key] = imported
+            return imported
+        }
+        return SKTexture()
     }
 
     // MARK: - Platform rendering
@@ -59,12 +60,17 @@ enum SpriteFactory {
         case "🌲": drawTree(in: ctx, size: size, round: false)
         case "🌿": drawBush(in: ctx, size: size)
         case "🌷", "🌸", "🌺", "🌻": drawFlower(in: ctx, size: size, glyph: glyph)
+        case "🥀": drawWiltedFlower(in: ctx, size: size)
         case "🍄": drawMushroom(in: ctx, size: size)
+        case "👑": drawCrown(in: ctx, size: size)
         case "🪑": drawBench(in: ctx, size: size)
         case "🗑️": drawTrashCan(in: ctx, size: size)
         case "🚧": drawBarricade(in: ctx, size: size)
         case "🪧", "🚫": drawSign(in: ctx, size: size, warning: glyph == "🚫")
         case "🪨": drawRock(in: ctx, size: size)
+        case "🕳️": drawManhole(in: ctx, size: size)
+        case "🎨": drawGraffitiTag(in: ctx, size: size)
+        case "🚲": drawBike(in: ctx, size: size)
         case "🧱": drawBrick(in: ctx, size: size)
         case "⛲": drawFountain(in: ctx, size: size)
         case "🐦": drawBird(in: ctx, size: size)
@@ -80,8 +86,11 @@ enum SpriteFactory {
         case "🏪": drawStorefront(in: ctx, size: size)
         case "📦", "🎁": drawBox(in: ctx, size: size, tied: glyph == "🎁")
         case "💡", "🔦": drawLight(in: ctx, size: size, portable: glyph == "🔦")
+        case "⛽": drawPumpPost(in: ctx, size: size)
         case "🪣": drawBucket(in: ctx, size: size)
         case "🪵": drawPlank(in: ctx, size: size)
+        case "🔩": drawBolt(in: ctx, size: size)
+        case "🪛": drawScrewdriver(in: ctx, size: size)
         case "🫐", "🍓": drawBerry(in: ctx, size: size, large: glyph == "🍓")
         case "🌰": drawAcorn(in: ctx, size: size)
         case "🍫": drawSnackBar(in: ctx, size: size)
@@ -172,6 +181,13 @@ enum SpriteFactory {
         fill(ctx, color: GamePalette.grassG4Worn, CGRect(x: size.width * 0.54, y: size.height * 0.50, width: size.width * 0.10, height: size.height * 0.06))
     }
 
+    private static func drawWiltedFlower(in ctx: CGContext, size: CGSize) {
+        fill(ctx, color: GamePalette.grassG4Worn, CGRect(x: size.width * 0.46, y: size.height * 0.40, width: size.width * 0.08, height: size.height * 0.28))
+        fill(ctx, color: SKColor(hex: "8E6E74") ?? .brown, CGRect(x: size.width * 0.32, y: size.height * 0.24, width: size.width * 0.28, height: size.height * 0.12))
+        fill(ctx, color: SKColor(hex: "70595C") ?? .brown, CGRect(x: size.width * 0.50, y: size.height * 0.22, width: size.width * 0.10, height: size.height * 0.14))
+        fill(ctx, color: GamePalette.dirtShadow, CGRect(x: size.width * 0.34, y: size.height * 0.60, width: size.width * 0.16, height: size.height * 0.05))
+    }
+
     private static func drawMushroom(in ctx: CGContext, size: CGSize) {
         fill(ctx, color: SKColor(hex: "C47A52") ?? .systemRed, CGRect(x: size.width * 0.26, y: size.height * 0.30, width: size.width * 0.48, height: size.height * 0.20))
         fill(ctx, color: paper, CGRect(x: size.width * 0.40, y: size.height * 0.48, width: size.width * 0.18, height: size.height * 0.18))
@@ -215,6 +231,39 @@ enum SpriteFactory {
         shadowBase(in: ctx, size: size, width: 0.40)
         fill(ctx, color: SKColor(hex: "7A7A7A") ?? .gray, CGRect(x: size.width * 0.22, y: size.height * 0.34, width: size.width * 0.50, height: size.height * 0.28))
         fill(ctx, color: SKColor(hex: "B0B0B0") ?? .lightGray, CGRect(x: size.width * 0.28, y: size.height * 0.38, width: size.width * 0.18, height: size.height * 0.08))
+    }
+
+    private static func drawCrown(in ctx: CGContext, size: CGSize) {
+        shadowBase(in: ctx, size: size, width: 0.34)
+        fill(ctx, color: SKColor(hex: "D4B030") ?? .yellow, CGRect(x: size.width * 0.26, y: size.height * 0.42, width: size.width * 0.48, height: size.height * 0.12))
+        fill(ctx, color: SKColor(hex: "E8C94A") ?? .yellow, CGRect(x: size.width * 0.28, y: size.height * 0.32, width: size.width * 0.10, height: size.height * 0.12))
+        fill(ctx, color: SKColor(hex: "E8C94A") ?? .yellow, CGRect(x: size.width * 0.45, y: size.height * 0.24, width: size.width * 0.10, height: size.height * 0.18))
+        fill(ctx, color: SKColor(hex: "E8C94A") ?? .yellow, CGRect(x: size.width * 0.62, y: size.height * 0.32, width: size.width * 0.10, height: size.height * 0.12))
+        fill(ctx, color: paper, CGRect(x: size.width * 0.31, y: size.height * 0.36, width: size.width * 0.04, height: size.height * 0.04))
+        fill(ctx, color: paper, CGRect(x: size.width * 0.48, y: size.height * 0.28, width: size.width * 0.04, height: size.height * 0.04))
+    }
+
+    private static func drawManhole(in ctx: CGContext, size: CGSize) {
+        shadowBase(in: ctx, size: size, width: 0.42)
+        fill(ctx, color: SKColor(hex: "484860") ?? .darkGray, CGRect(x: size.width * 0.24, y: size.height * 0.32, width: size.width * 0.52, height: size.height * 0.20))
+        fill(ctx, color: metal, CGRect(x: size.width * 0.28, y: size.height * 0.36, width: size.width * 0.44, height: size.height * 0.12))
+        fill(ctx, color: SKColor(hex: "5A5A60") ?? .gray, CGRect(x: size.width * 0.34, y: size.height * 0.40, width: size.width * 0.32, height: size.height * 0.04))
+    }
+
+    private static func drawGraffitiTag(in ctx: CGContext, size: CGSize) {
+        fill(ctx, color: SKColor(hex: "2E2E32") ?? .darkGray, CGRect(origin: .zero, size: size))
+        fill(ctx, color: SKColor(hex: "E84040") ?? .red, CGRect(x: size.width * 0.18, y: size.height * 0.36, width: size.width * 0.22, height: size.height * 0.08))
+        fill(ctx, color: SKColor(hex: "40A0E8") ?? .blue, CGRect(x: size.width * 0.38, y: size.height * 0.28, width: size.width * 0.18, height: size.height * 0.16))
+        fill(ctx, color: SKColor(hex: "E8C040") ?? .yellow, CGRect(x: size.width * 0.54, y: size.height * 0.40, width: size.width * 0.18, height: size.height * 0.07))
+    }
+
+    private static func drawBike(in ctx: CGContext, size: CGSize) {
+        shadowBase(in: ctx, size: size, width: 0.58)
+        stroke(ctx, color: metalHi, CGRect(x: size.width * 0.18, y: size.height * 0.48, width: size.width * 0.20, height: size.height * 0.20), lineWidth: 4)
+        stroke(ctx, color: metalHi, CGRect(x: size.width * 0.56, y: size.height * 0.48, width: size.width * 0.20, height: size.height * 0.20), lineWidth: 4)
+        fill(ctx, color: SKColor(hex: "C83030") ?? .red, CGRect(x: size.width * 0.34, y: size.height * 0.42, width: size.width * 0.22, height: size.height * 0.06))
+        fill(ctx, color: metal, CGRect(x: size.width * 0.44, y: size.height * 0.30, width: size.width * 0.04, height: size.height * 0.16))
+        fill(ctx, color: metal, CGRect(x: size.width * 0.58, y: size.height * 0.30, width: size.width * 0.04, height: size.height * 0.16))
     }
 
     private static func drawBrick(in ctx: CGContext, size: CGSize) {
@@ -324,6 +373,13 @@ enum SpriteFactory {
         }
     }
 
+    private static func drawPumpPost(in ctx: CGContext, size: CGSize) {
+        shadowBase(in: ctx, size: size, width: 0.30)
+        fill(ctx, color: SKColor(hex: "C83030") ?? .red, CGRect(x: size.width * 0.34, y: size.height * 0.26, width: size.width * 0.24, height: size.height * 0.42))
+        fill(ctx, color: paper, CGRect(x: size.width * 0.38, y: size.height * 0.34, width: size.width * 0.16, height: size.height * 0.12))
+        fill(ctx, color: metal, CGRect(x: size.width * 0.56, y: size.height * 0.38, width: size.width * 0.06, height: size.height * 0.18))
+    }
+
     private static func drawBucket(in ctx: CGContext, size: CGSize) {
         fill(ctx, color: metal, CGRect(x: size.width * 0.28, y: size.height * 0.30, width: size.width * 0.44, height: size.height * 0.36))
         stroke(ctx, color: metalHi, CGRect(x: size.width * 0.34, y: size.height * 0.20, width: size.width * 0.32, height: size.height * 0.14))
@@ -333,6 +389,17 @@ enum SpriteFactory {
         fill(ctx, color: SKColor(hex: "A07840") ?? .brown, CGRect(x: size.width * 0.18, y: size.height * 0.34, width: size.width * 0.64, height: size.height * 0.18))
         fill(ctx, color: wood, CGRect(x: size.width * 0.24, y: size.height * 0.38, width: size.width * 0.04, height: size.height * 0.10))
         fill(ctx, color: wood, CGRect(x: size.width * 0.66, y: size.height * 0.38, width: size.width * 0.04, height: size.height * 0.10))
+    }
+
+    private static func drawBolt(in ctx: CGContext, size: CGSize) {
+        fill(ctx, color: metalHi, CGRect(x: size.width * 0.34, y: size.height * 0.30, width: size.width * 0.24, height: size.height * 0.24))
+        fill(ctx, color: metal, CGRect(x: size.width * 0.40, y: size.height * 0.20, width: size.width * 0.12, height: size.height * 0.12))
+    }
+
+    private static func drawScrewdriver(in ctx: CGContext, size: CGSize) {
+        fill(ctx, color: SKColor(hex: "D97A2B") ?? .orange, CGRect(x: size.width * 0.24, y: size.height * 0.42, width: size.width * 0.26, height: size.height * 0.10))
+        fill(ctx, color: metalHi, CGRect(x: size.width * 0.50, y: size.height * 0.44, width: size.width * 0.20, height: size.height * 0.06))
+        fill(ctx, color: metal, CGRect(x: size.width * 0.68, y: size.height * 0.42, width: size.width * 0.06, height: size.height * 0.10))
     }
 
     // MARK: - Items
@@ -457,7 +524,7 @@ enum SpriteFactory {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.monospacedBoldSystemFont(ofSize: size.width * 0.42, weight: .bold),
+            .font: UIFont.monospacedSystemFont(ofSize: size.width * 0.42, weight: .bold),
             .foregroundColor: UIColor.white,
             .paragraphStyle: paragraph
         ]

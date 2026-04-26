@@ -58,8 +58,12 @@ enum BuildingFacade {
         if let cached = cache[key] {
             tex = cached
         } else {
-            let t = render(widthTiles: widthTiles, heightTiles: heightTiles,
-                           tile: tile, palette: palette, seed: seed)
+            let t = ImportedArt.buildingTexture(
+                widthTiles: widthTiles,
+                heightTiles: heightTiles,
+                palette: palette.rawValue,
+                seed: seed
+            ) ?? ImportedArt.placeholderTexture() ?? SKTexture()
             t.filteringMode = .nearest
             cache[key] = t
             tex = t
@@ -111,6 +115,11 @@ enum BuildingFacade {
         let overhang = ts * 0.28
 
         var rng = seed
+        let isCommercialFront = heightTiles >= 13 && widthTiles >= 12
+        let hasAwning = isCommercialFront && (seed % 3 != 1)
+        let hasSignBand = isCommercialFront
+        let hasParapet = palette != .wood
+        let shopAccent = [hex("3A5FA0"), hex("B04030"), hex("3E7A44"), hex("7B4FB2")][Int(seed % 4)]
 
         // ── 1. Foundation ─────────────────────────────────────────────────────
         fill(ctx, pal.foundation, 0, 0, w, foundH)
@@ -131,6 +140,15 @@ enum BuildingFacade {
         // Right-side depth shadow
         fill(ctx, withAlpha(pal.wallShadow, 0.45), w - ts * 0.18, wallY, ts * 0.18, wallH)
 
+        // EarthBound-style pilasters help storefronts read as deliberate facades.
+        if isCommercialFront {
+            let pilasterW = ts * 0.34
+            fill(ctx, pal.wallShadow, ts * 0.55, wallY, pilasterW, wallH)
+            fill(ctx, pal.wallShadow, w - ts * 0.55 - pilasterW, wallY, pilasterW, wallH)
+            fill(ctx, withAlpha(pal.wallAlt, 0.75), ts * 0.68, wallY, pilasterW * 0.28, wallH)
+            fill(ctx, withAlpha(pal.wallAlt, 0.75), w - ts * 0.68 - pilasterW * 0.28, wallY, pilasterW * 0.28, wallH)
+        }
+
         // ── 3. Roof ───────────────────────────────────────────────────────────
         fill(ctx, pal.roof, -overhang, roofY, w + overhang * 2, roofH)
 
@@ -143,6 +161,32 @@ enum BuildingFacade {
         // Overhang undersides
         fill(ctx, rgba(0, 0, 0, 0.35), -overhang, roofY, overhang, ts * 0.28)
         fill(ctx, rgba(0, 0, 0, 0.35), w, roofY, overhang, ts * 0.28)
+
+        if hasParapet {
+            fill(ctx, pal.roofDark, 0, roofY + roofH - ts * 0.38, w, ts * 0.38)
+            fill(ctx, rgba(1, 1, 1, 0.10), 0, roofY + roofH - ts * 0.22, w, 3)
+        }
+
+        if hasSignBand {
+            let signY = wallY + wallH * 0.58
+            fill(ctx, ink, ts * 0.9, signY - 5, w - ts * 1.8, ts * 0.82 + 10)
+            fill(ctx, shopAccent, ts * 1.0, signY, w - ts * 2.0, ts * 0.82)
+            fill(ctx, rgba(1, 1, 1, 0.16), ts * 1.1, signY + ts * 0.48, w - ts * 2.2, 4)
+
+            // Pixel letter blocks so the sign reads like a storefront, not a blank banner.
+            let letterY = signY + ts * 0.20
+            var letterX = ts * 1.45
+            let letters = max(4, min(8, widthTiles - 4))
+            for idx in 0..<letters {
+                let lw = (idx % 3 == 0) ? ts * 0.34 : ts * 0.28
+                fill(ctx, litGlass, letterX, letterY, lw, ts * 0.20)
+                fill(ctx, litGlass, letterX, letterY + ts * 0.26, lw, ts * 0.20)
+                if idx % 2 == 0 {
+                    fill(ctx, litGlass, letterX + lw * 0.35, letterY, ts * 0.08, ts * 0.46)
+                }
+                letterX += ts * 0.62
+            }
+        }
 
         // ── 4. Windows ────────────────────────────────────────────────────────
         let numCols = max(2, widthTiles / 3)
@@ -185,6 +229,23 @@ enum BuildingFacade {
             }
         }
 
+        if hasAwning {
+            let awningY = wallY + wallH * 0.42
+            let awningX = ts * 1.2
+            let awningW = w - ts * 2.4
+            let awningH = ts * 0.72
+            fill(ctx, ink, awningX - 4, awningY - 4, awningW + 8, awningH + 8)
+            fill(ctx, hex("E8E0C8"), awningX, awningY, awningW, awningH)
+            let stripeCount = max(4, Int(awningW / (ts * 0.75)))
+            let stripeW = awningW / CGFloat(stripeCount)
+            for stripe in 0..<stripeCount {
+                if stripe % 2 == 0 {
+                    fill(ctx, shopAccent, awningX + CGFloat(stripe) * stripeW, awningY, stripeW, awningH)
+                }
+            }
+            fill(ctx, pal.wallShadow, awningX + 6, awningY - ts * 0.18, awningW - 12, ts * 0.16)
+        }
+
         // ── 5. Door ───────────────────────────────────────────────────────────
         let doorW = ts * 1.1
         let doorH = foundH + wallH * 0.30
@@ -214,6 +275,18 @@ enum BuildingFacade {
         fill(ctx, pal.foundation,
              doorX - ts * 0.22, 0,
              doorW + ts * 0.44, 6)
+
+        if isCommercialFront {
+            let displayW = ts * 1.7
+            let displayH = ts * 1.10
+            let displayY = foundH + ts * 0.22
+            for displayX in [ts * 1.4, w - ts * 1.4 - displayW] {
+                fill(ctx, ink, displayX - 4, displayY - 4, displayW + 8, displayH + 8)
+                fill(ctx, darkGlass, displayX, displayY, displayW, displayH)
+                fill(ctx, rgba(1, 1, 0.88, 0.30), displayX + 5, displayY + displayH * 0.58, displayW - 10, displayH * 0.16)
+                fill(ctx, ink, displayX + displayW / 2 - 1, displayY, 2, displayH)
+            }
+        }
 
         // ── 6. AC unit ────────────────────────────────────────────────────────
         let acW = ts * 0.65, acH = ts * 0.44

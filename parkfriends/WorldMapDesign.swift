@@ -70,19 +70,36 @@ enum ParkMapDesign {
     }
 
     // Canonical coords (full park): row 0 south … 53 north
-    static func isRoadRow(_ row: Int) -> Bool { row == 0 }
-    static func isSidewalkRow(_ row: Int) -> Bool { row == 1 }
+    nonisolated static func isRoadRow(_ row: Int) -> Bool { row == 0 }
+    nonisolated static func isSidewalkRow(_ row: Int) -> Bool { row == 1 }
 
     static func isPathCanonical(col: Int, row: Int) -> Bool {
         guard row >= 2, row < GameConstants.worldRowsFull else { return false }
-        if (34...36).contains(col) { return true }
-        if (25...27).contains(row) { return true }
-        for i in 0..<12 {
-            let c = 52 + i
-            let r = 35 + i / 2
-            if (c...c+1).contains(col), r == row { return true }
+        // Main entrance trail: broad at the city gate, then gently bends toward the fountain.
+        if (33...37).contains(col), (2...17).contains(row) { return true }
+        if (32...36).contains(col), (18...22).contains(row) { return true }
+        if (31...39).contains(col), (23...28).contains(row) { return true }
+
+        // Fountain plaza loop and north trail.
+        if (45...59).contains(col), (32...40).contains(row),
+           !((49...55).contains(col) && (34...38).contains(row)) {
+            return true
         }
-        if (14..<22).contains(row), (10...11).contains(col) { return true }
+        if (33...37).contains(col), (41...53).contains(row) { return true }
+
+        // Dog run spur on the east, slightly worn and narrow.
+        if (37...53).contains(col), (14...17).contains(row) { return true }
+        if (52...55).contains(col), (12...17).contains(row) { return true }
+
+        // Amphitheater / west meadow footpath.
+        if (19...33).contains(col), (25...27).contains(row) { return true }
+        if (18...21).contains(col), (20...27).contains(row) { return true }
+
+        // North pond approach.
+        if (13...16).contains(col), (38...49).contains(row) { return true }
+        if (13...22).contains(col), (48...50).contains(row) { return true }
+
+        // Dog run dirt still counts as traversable pathing area.
         if chunks.first(where: { $0.id == "PK-04" })?.contains(col: col, row: row) == true {
             return true
         }
@@ -126,13 +143,20 @@ enum ParkMapDesign {
     }
 
     static func isWornPathCanonical(col: Int, row: Int) -> Bool {
-        isPathCanonical(col: col, row: row)
-            && ((col == 35 && row >= 20 && row <= 32) || (row == 26 && (28...42).contains(col)))
+        guard isPathCanonical(col: col, row: row) else { return false }
+        if (34...36).contains(col), (6...16).contains(row) { return true }
+        if (33...35).contains(col), (19...24).contains(row) { return true }
+        if (34...40).contains(col), (25...27).contains(row) { return true }
+        if (20...30).contains(col), (25...27).contains(row) { return true }
+        if (13...15).contains(col), (41...48).contains(row) { return true }
+        if (39...52).contains(col), (14...16).contains(row) { return true }
+        return false
     }
 
     static func isBusyPathIntersectionCanonical(col: Int, row: Int) -> Bool {
         guard isPathCanonical(col: col, row: row) else { return false }
-        return (col == 35 && row == 26) || (row == 26 && col == 35)
+        return ((34...36).contains(col) && (25...27).contains(row))
+            || ((33...36).contains(col) && (33...39).contains(row))
     }
 
     /// Map **center** local (0…71, 0…parkCenterRows-1) → canonical row for chunk/path logic.
@@ -144,7 +168,6 @@ enum ParkMapDesign {
     }
 
     static func centerGroundColor(col: Int, localRow: Int) -> SKColor {
-        let cr = canonicalRowForCenter(localRow: localRow)
         return WorldTerrain.parkTileColor(
             col: col, row: localRow, cols: ParkCenterMap.cols, rows: ParkCenterMap.rows,
             isRoadRow: isRoadRow,
@@ -161,7 +184,6 @@ enum ParkMapDesign {
     }
 
     static func northGroundColor(col: Int, localRow: Int) -> SKColor {
-        let canon = canonicalRowForNorth(localRow: localRow)
         return WorldTerrain.parkTileColor(
             col: col, row: localRow, cols: ParkNorthMap.cols, rows: ParkNorthMap.rows,
             isRoadRow: { _ in false },
@@ -218,7 +240,7 @@ enum CityMapDesign {
     }
 
     // Scaled up from old 60×40 → new 88×65
-    static func isSidewalk(col: Int, row: Int) -> Bool {
+    nonisolated static func isSidewalk(col: Int, row: Int) -> Bool {
         if (30...31).contains(row) { return true }          // main crosswalk sidewalks
         if (40...49).contains(col) { return true }          // vertical street corridor
         if (6...7).contains(row) { return true }            // top sidewalk
@@ -227,26 +249,26 @@ enum CityMapDesign {
         return false
     }
 
-    static func isMainStreetRoad(col: Int, row: Int) -> Bool {
+    nonisolated static func isMainStreetRoad(col: Int, row: Int) -> Bool {
         guard (27...39).contains(row) else { return false }
         return !isSidewalk(col: col, row: row)
     }
 
-    static func roadHasCenterLine(col: Int, row: Int) -> Bool {
+    nonisolated static func roadHasCenterLine(col: Int, row: Int) -> Bool {
         guard row == 33, !((40...49).contains(col)) else { return false }
         return isMainStreetRoad(col: col, row: row) && col % 4 < 2
     }
 
-    static func isCrosswalkArea(col: Int, row: Int) -> Bool {
+    nonisolated static func isCrosswalkArea(col: Int, row: Int) -> Bool {
         (30...31).contains(row) && (39...52).contains(col)
     }
 
-    static func isCrosswalkStripe(col: Int, row: Int) -> Bool {
+    nonisolated static func isCrosswalkStripe(col: Int, row: Int) -> Bool {
         guard isCrosswalkArea(col: col, row: row) else { return false }
         return col % 3 != 0
     }
 
-    static func isCurbLip(col: Int, row: Int) -> Bool {
+    nonisolated static func isCurbLip(col: Int, row: Int) -> Bool {
         if row == 26 && isMainStreetRoad(col: col, row: 27) { return true }
         if row == 38 && isMainStreetRoad(col: col, row: 37) { return true }
         return false

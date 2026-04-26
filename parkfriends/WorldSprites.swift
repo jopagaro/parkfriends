@@ -14,9 +14,24 @@ enum WorldSprites {
 
     private static var cache: [String: SKTexture] = [:]
 
-    static func texture(enemy kind: EnemyKind) -> SKTexture  { tex("e_\(kind.rawValue)") { drawEnemy(kind, $0) } }
-    static func texture(npc kind: NPCKind)     -> SKTexture  { tex("n_\(kind.rawValue)") { drawNPC(kind, $0)   } }
+    static func texture(enemy kind: EnemyKind) -> SKTexture  {
+        if let imported = ImportedArt.enemyTexture(kind: kind) ?? ImportedArt.placeholderTexture() {
+            imported.filteringMode = .nearest
+            return imported
+        }
+        return SKTexture()
+    }
+    static func texture(npc kind: NPCKind)     -> SKTexture  {
+        if let imported = ImportedArt.npcTexture(kind: kind) ?? ImportedArt.placeholderTexture() {
+            imported.filteringMode = .nearest
+            return imported
+        }
+        return SKTexture()
+    }
     static func texture(named key: String, draw: (CGContext) -> Void) -> SKTexture { tex(key, draw: draw) }
+    static func overworldTexture(enemy kind: EnemyKind) -> SKTexture {
+        texture(enemy: kind)
+    }
 
     private static func tex(_ key: String, draw: (CGContext) -> Void) -> SKTexture {
         if let t = cache[key] { return t }
@@ -29,8 +44,8 @@ enum WorldSprites {
     static func preload() {
         for k in EnemyKind.allCases { _ = texture(enemy: k) }
         for k in NPCKind.allCases   { _ = texture(npc: k)   }
-        _ = texture(named: "lamp_city") { drawLampPost($0, city: true) }
-        _ = texture(named: "lamp_park") { drawLampPost($0, city: false) }
+        if let lamp = ImportedArt.lampTexture(city: true) { cache["lamp_city"] = lamp }
+        if let lamp = ImportedArt.lampTexture(city: false) { cache["lamp_park"] = lamp }
     }
 
     // MARK: - World object helpers
@@ -39,9 +54,9 @@ enum WorldSprites {
     static func makeLampPost(city: Bool = true) -> SKNode {
         let root = SKNode()
         let key  = city ? "lamp_city" : "lamp_park"
-        let tex  = cache[key] ?? WorldSprites.tex(key) { drawLampPost($0, city: city) }
+        let tex  = cache[key] ?? ImportedArt.lampTexture(city: city) ?? ImportedArt.placeholderTexture() ?? SKTexture()
 
-        let sprite = SKSpriteNode(texture: tex, size: CGSize(width: 48, height: 128))
+        let sprite = SKSpriteNode(texture: tex, size: CGSize(width: 48, height: 96))
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0)
         sprite.zPosition   = GameConstants.ZPos.decor + 1
         root.addChild(sprite)

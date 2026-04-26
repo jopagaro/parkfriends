@@ -80,7 +80,12 @@ enum WorldTerrain {
                 : SKColor(red: 0.58, green: 0.56, blue: 0.52, alpha: 1)
         case .grass, .grassShade:
             var base: SKColor = (me == .grassShade) ? GamePalette.grassG3 : (checker(col, row) ? GamePalette.grassG1 : GamePalette.grassG2)
-            if me == .grass && (col + row * 3) % 17 == 0 { base = GamePalette.grassG4Worn }
+            let tuft = (col * 17 + row * 13) % 29 == 0
+            let deepShade = (col * 9 + row * 5) % 31 == 0
+            let brightPatch = (col * 7 + row * 3) % 23 == 0
+            if me == .grass && brightPatch { base = GamePalette.grassG4Worn }
+            if deepShade { base = GamePalette.grassG3Deep }
+            if me == .grassShade && tuft { base = GamePalette.grassG3Deep }
 
             let nPathW = surf(col - 1, row) == .path
             let nPathE = surf(col + 1, row) == .path
@@ -92,8 +97,12 @@ enum WorldTerrain {
             let nWaterE = surf(col + 1, row) == .water
 
             if me != .grassShade {
+                if nPathW && nPathN { return GamePalette.grassEdgeNorth }
+                if nPathE && nPathS { return GamePalette.grassEdgeSouth }
                 if nPathW { return GamePalette.grassPathWest }
                 if nPathE { return GamePalette.grassPathEast }
+                if nPathN && (col + row) % 2 == 0 { return GamePalette.grassEdgeNorth }
+                if nPathS && (col + row) % 2 == 1 { return GamePalette.grassEdgeSouth }
                 if nWaterN || nWaterS || nWaterW || nWaterE { return GamePalette.waterGrassNorthBlend }
             }
             return base
@@ -109,6 +118,7 @@ enum WorldTerrain {
             let nGrassE = surf(col + 1, row) == .grass || surf(col + 1, row) == .grassShade
             let nGrassN = surf(col, row + 1) == .grass || surf(col, row + 1) == .grassShade
             let nGrassS = surf(col, row - 1) == .grass || surf(col, row - 1) == .grassShade
+            let grassNeighborCount = [nGrassW, nGrassE, nGrassN, nGrassS].filter { $0 }.count
             if nGrassW || nGrassE || nGrassN || nGrassS {
                 base = GamePalette.dirtGrassEdge
             }
@@ -120,14 +130,87 @@ enum WorldTerrain {
                 base = GamePalette.waterDirtEdgeBlend
             }
             if isBusyPathIntersection(col, row) { return GamePalette.dirtFootprints }
+            if grassNeighborCount >= 3 && (col + row) % 2 == 0 {
+                return GamePalette.dirtD1
+            }
             if (nGrassW != nGrassE) && (surf(col, row) == .path) && ((col + row) % 3 == 0) {
                 return GamePalette.dirtPathCrack
+            }
+            if !isWornPath(col, row) && (col * 5 + row * 11) % 19 == 0 {
+                return checker(col, row) ? GamePalette.dirtD2 : GamePalette.dirtD1
             }
             return base
 
         case .asphalt:
             return checker(col, row) ? GamePalette.asphalt1 : GamePalette.asphalt2
         }
+    }
+
+    // MARK: - City ground tile (textured)
+
+    /// Returns a textured (or solid-color fallback) ground tile for city zones.
+    /// The node is positioned at `(col * tile, row * tile)` with `.zero` anchor.
+    @MainActor
+    static func makeCityGroundTile(
+        col: Int, row: Int, tile: CGFloat,
+        isSidewalk: Bool,
+        isRoad: Bool,
+        isCrosswalkArea: Bool,
+        isCrosswalkStripe: Bool,
+        isCurbLip: Bool
+    ) -> SKSpriteNode {
+        let variant = abs(((col &* 73) ^ (row &* 151) ^ ((col + row) &* 19)))
+        let sz = CGSize(width: tile, height: tile)
+        let checker = (col + row) % 2 == 0
+
+        let node: SKSpriteNode
+
+        if isCrosswalkArea {
+            if isCrosswalkStripe {
+                node = SKSpriteNode(
+                    texture: ImportedArt.cityCrosswalkTexture(stripe: true) ?? SKTexture(),
+                    size: sz)
+                if ImportedArt.cityCrosswalkTexture(stripe: true) == nil {
+                    node.color = GamePalette.crosswalkStripe
+                    node.colorBlendFactor = 1
+                }
+            } else {
+                if let tex = ImportedArt.cityRoadTexture(variant: variant) {
+                    node = SKSpriteNode(texture: tex, size: sz)
+                } else {
+                    node = SKSpriteNode(color: GamePalette.roadR1, size: sz)
+                }
+            }
+        } else if isCurbLip {
+            if let tex = ImportedArt.citySidewalkTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex, size: sz)
+            } else {
+                node = SKSpriteNode(color: GamePalette.curbLip, size: sz)
+            }
+        } else if isSidewalk {
+            if let tex = ImportedArt.citySidewalkTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex, size: sz)
+            } else {
+                node = SKSpriteNode(color: checker ? GamePalette.sidewalk1 : GamePalette.sidewalk2, size: sz)
+            }
+        } else if isRoad {
+            if let tex = ImportedArt.cityRoadTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex, size: sz)
+            } else {
+                node = SKSpriteNode(color: checker ? GamePalette.roadR1 : GamePalette.roadR2, size: sz)
+            }
+        } else {
+            // Generic asphalt / plaza ground
+            if let tex = ImportedArt.cityAsphaltTexture(variant: variant) {
+                node = SKSpriteNode(texture: tex, size: sz)
+            } else {
+                node = SKSpriteNode(color: checker ? GamePalette.asphalt1 : GamePalette.asphalt2, size: sz)
+            }
+        }
+
+        node.anchorPoint = .zero
+        node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
+        return node
     }
 
     // MARK: - City

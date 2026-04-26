@@ -280,6 +280,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         let zone = gameState?.currentZone ?? .parkCenter
+        gameState?.pruneExpiredEncounterClears()
         if !(zone == .parkCenter && !(gameState?.hasHazelJoined ?? false)) {
             let spawnPool: [ItemKind]
             switch zone {
@@ -315,12 +316,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
 
-        for (kind, pos) in enemySpawns {
+        for (index, (kind, pos)) in enemySpawns.enumerated() {
             // Bosses that were already beaten don't reappear
             if kind.isBoss && (gameState?.defeatedBosses.contains(kind) ?? false) { continue }
+            let encounterID = makeEncounterID(zone: zone, kind: kind, position: pos, index: index)
+            if !kind.isBoss && (gameState?.isEncounterTemporarilyCleared(encounterID) ?? false) { continue }
             let enemy          = EnemyNode(kind: kind)
             enemy.position     = pos
             enemy.patrolOrigin = pos
+            enemy.encounterID  = encounterID
             worldRoot.addChild(enemy)
             enemies.append(enemy)
         }
@@ -361,6 +365,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         battleNode.onVictory = { [weak self] kind in self?.handleBattleVictory(kind: kind) }
         battleNode.onDefeat  = { [weak self] in self?.handleBattleDefeat() }
         battleNode.onFled    = { [weak self] in self?.handleBattleFled() }
+        battleNode.onSwitched = { [weak self] _ in self?.refreshPartySprites() }
         cam.addChild(battleNode)
 
         addVignette()
@@ -722,6 +727,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         rebuildFollowers()
     }
 
+    private func makeEncounterID(zone: GameZone, kind: EnemyKind, position: CGPoint, index: Int) -> String {
+        let px = Int(position.x.rounded())
+        let py = Int(position.y.rounded())
+        return "\(zone.rawValue)::\(kind.rawValue)::\(index)::\(px)x\(py)"
+    }
+
     // MARK: - Battle trigger
 
     private func triggerBattle(with enemy: EnemyNode) {
@@ -893,6 +904,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Instant-win for trivially weak enemies — flash, award exp/coins, remove enemy.
     private func autoWin(enemy: EnemyNode, state: GameState) {
         lastBattleEndTime = CACurrentMediaTime()
+        if let encounterID = enemy.encounterID, !enemy.kind.isBoss {
+            state.markEncounterCleared(encounterID)
+        }
 
         _ = enemy.takeDamage(enemy.hp + 1)   // drain all HP → isDead becomes true
         let pos = enemy.position
@@ -921,18 +935,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                           at: CGPoint(x: pos.x, y: pos.y + 55),
                           in: worldRoot)
 
-        // Respawn after delay
-        let kind = enemy.kind
-        run(.wait(forDuration: 20)) { [weak self] in
-            guard let self else { return }
-            let spawnPos = CGPoint(x: pos.x + CGFloat.random(in: -80...80),
-                                   y: pos.y + CGFloat.random(in: -80...80))
-            let newEnemy = EnemyNode(kind: kind)
-            newEnemy.position     = spawnPos
-            newEnemy.patrolOrigin = spawnPos
-            self.worldRoot.addChild(newEnemy)
-            self.enemies.append(newEnemy)
-        }
     }
 
     // MARK: - Battle callbacks
@@ -957,6 +959,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 return
             }
 
+            if let encounterID = enemy.encounterID {
+                gameState?.markEncounterCleared(encounterID)
+            }
+
             if kind == .pigeon,
                let state = gameState,
                state.currentZone == .parkCenter,
@@ -969,20 +975,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             }
 
             drainPendingLevelUps()
-
-            // Regular enemies respawn after a delay
-            let spawnPos = CGPoint(
-                x: deathPos.x + CGFloat.random(in: -80...80),
-                y: deathPos.y + CGFloat.random(in: -80...80)
-            )
-            run(.wait(forDuration: 15)) { [weak self] in
-                guard let self else { return }
-                let newEnemy          = EnemyNode(kind: kind)
-                newEnemy.position     = spawnPos
-                newEnemy.patrolOrigin = spawnPos
-                self.worldRoot.addChild(newEnemy)
-                self.enemies.append(newEnemy)
-            }
         }
     }
 
@@ -1047,6 +1039,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private func handleBattleDefeat() {
         lastBattleEndTime = CACurrentMediaTime()
+        guard let state = gameState else { return }
+        state.recoverFromWipe()
+        player.position = pendingSpawn
+        player.physicsBody?.velocity = .zero
+        enemies.forEach { $0.physicsBody?.velocity = .zero }
+        refreshPartySprites()
+        cam.position = pendingSpawn
+        showStoryToast("The party regrouped at the last safe spot.")
     }
 
     private func handleBattleFled() {

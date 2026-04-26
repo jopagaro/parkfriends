@@ -23,22 +23,33 @@ enum CityNorthWorld {
         let worldW = CGFloat(cols) * tile
         let worldH = CGFloat(rows) * tile
 
-        // Ground layer — dirt, gravel, construction site
+        // Ground layer — textured; paved south entrance + dirt/gravel construction zone.
         let groundLayer = SKNode()
         groundLayer.zPosition = GameConstants.ZPos.ground
         for r in 0..<rows {
             for c in 0..<cols {
-                let pave = (r < 8)   // south entrance area is paved
-                let gravel = (c + r * 3) % 7 == 0 && !pave
-                let base: SKColor
+                let pave = r < 8   // south entrance strip is paved asphalt
+                let n: SKSpriteNode
                 if pave {
-                    base = (c + r) % 2 == 0 ? GamePalette.asphalt1 : GamePalette.asphalt2
+                    n = WorldTerrain.makeCityGroundTile(
+                        col: c, row: r, tile: tile,
+                        isSidewalk: false, isRoad: false,
+                        isCrosswalkArea: false, isCrosswalkStripe: false,
+                        isCurbLip: false
+                    )
                 } else {
-                    base = gravel ? GamePalette.dirtD3 : GamePalette.dirtD1
+                    // Dirt / gravel: reuse path texture from ImportedArt, fallback to color.
+                    let variant = abs(((c &* 73) ^ (r &* 151) ^ ((c + r) &* 19)))
+                    let sz = CGSize(width: tile, height: tile)
+                    if let tex = ImportedArt.cityDirtTexture(variant: variant) {
+                        n = SKSpriteNode(texture: tex, size: sz)
+                    } else {
+                        let gravel = (c + r * 3) % 7 == 0
+                        n = SKSpriteNode(color: gravel ? GamePalette.dirtD3 : GamePalette.dirtD1, size: sz)
+                    }
+                    n.anchorPoint = .zero
+                    n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 }
-                let n = SKSpriteNode(color: base, size: CGSize(width: tile, height: tile))
-                n.anchorPoint = .zero
-                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 groundLayer.addChild(n)
             }
         }

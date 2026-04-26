@@ -21,21 +21,60 @@ enum CitySouthWorld {
         let worldW = CGFloat(cols) * tile
         let worldH = CGFloat(rows) * tile
 
-        // Ground layer — cracked asphalt with variation
+        // Ground layer — textured asphalt (ImportedArt), solid-color fallback.
         let groundLayer = SKNode()
         groundLayer.zPosition = GameConstants.ZPos.ground
         for r in 0..<rows {
             for c in 0..<cols {
-                let crack = (c + r * 7) % 11 == 0
-                let base  = (c + r) % 2 == 0 ? GamePalette.asphalt1 : GamePalette.asphalt2
-                let color = crack ? GamePalette.roadR2Deep : base
-                let n = SKSpriteNode(color: color, size: CGSize(width: tile, height: tile))
-                n.anchorPoint = .zero
-                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+                let n = WorldTerrain.makeCityGroundTile(
+                    col: c, row: r, tile: tile,
+                    isSidewalk: false, isRoad: false,
+                    isCrosswalkArea: false, isCrosswalkStripe: false,
+                    isCurbLip: false
+                )
                 groundLayer.addChild(n)
             }
         }
         root.addChild(groundLayer)
+
+        // South park-edge sidewalk band and center plaza paving — textured.
+        let pavingLayer = SKNode()
+        pavingLayer.zPosition = GameConstants.ZPos.ground + 0.4
+
+        for c in 0..<cols {
+            for r in 2..<8 {
+                let n = WorldTerrain.makeCityGroundTile(
+                    col: c, row: r, tile: tile,
+                    isSidewalk: true, isRoad: false,
+                    isCrosswalkArea: false, isCrosswalkStripe: false,
+                    isCurbLip: false
+                )
+                pavingLayer.addChild(n)
+            }
+        }
+
+        for c in 30..<58 {
+            for r in 19..<29 {
+                let n = WorldTerrain.makeCityGroundTile(
+                    col: c, row: r, tile: tile,
+                    isSidewalk: true, isRoad: false,
+                    isCrosswalkArea: false, isCrosswalkStripe: false,
+                    isCurbLip: false
+                )
+                pavingLayer.addChild(n)
+            }
+        }
+
+        for c in [34, 35, 52, 53] {
+            for r in 21..<27 {
+                let planter = SKSpriteNode(color: GamePalette.foundation,
+                                           size: CGSize(width: tile, height: tile))
+                planter.anchorPoint = .zero
+                planter.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+                pavingLayer.addChild(planter)
+            }
+        }
+        root.addChild(pavingLayer)
 
         let border = SKNode()
         border.physicsBody = {
@@ -54,17 +93,18 @@ enum CitySouthWorld {
             let pal: BuildingFacade.PaletteKind; let seed: UInt64
         }
         let specs: [Spec] = [
-            // West cluster
-            Spec(c: 2,  r: 12, w: 14, h: 14, pal: .wood,     seed: 101),
-            Spec(c: 2,  r: 28, w: 12, h: 12, pal: .brick,    seed: 102),
-            // Center commercial
-            Spec(c: 22, r: 10, w: 18, h: 16, pal: .brick,    seed: 202),
-            Spec(c: 22, r: 28, w: 16, h: 12, pal: .concrete, seed: 203),
-            // East cluster
-            Spec(c: 56, r: 12, w: 14, h: 14, pal: .concrete, seed: 303),
-            Spec(c: 74, r: 14, w: 13, h: 13, pal: .brick,    seed: 404),
-            Spec(c: 58, r: 28, w: 12, h: 12, pal: .wood,     seed: 405),
-            Spec(c: 74, r: 30, w: 13, h: 10, pal: .concrete, seed: 406),
+            // West houses facing the park edge
+            Spec(c: 4,  r: 22, w: 11, h: 12, pal: .wood,     seed: 101),
+            Spec(c: 16, r: 22, w: 11, h: 12, pal: .wood,     seed: 102),
+            // Center commercial strip
+            Spec(c: 30, r: 22, w: 14, h: 15, pal: .brick,    seed: 202),
+            Spec(c: 45, r: 22, w: 12, h: 14, pal: .concrete, seed: 203),
+            // East businesses / apartments
+            Spec(c: 60, r: 22, w: 12, h: 14, pal: .brick,    seed: 303),
+            Spec(c: 73, r: 22, w: 11, h: 13, pal: .concrete, seed: 404),
+            // Rear service row
+            Spec(c: 8,  r: 33, w: 12, h: 8, pal: .brick,     seed: 405),
+            Spec(c: 64, r: 33, w: 14, h: 8, pal: .wood,      seed: 406),
         ]
         for s in specs {
             let facade = BuildingFacade.makeNode(
@@ -88,25 +128,23 @@ enum CitySouthWorld {
 
         let decor: [(String, Int, Int)] = [
             // Alley details
-            ("🗑️", 19, 20), ("🗑️", 55, 20),
-            ("📰", 42, 16), ("🕳️", 48, 14),
-            ("🪧", 32, 22), ("📦", 28, 12), ("📦", 60, 12),
-            ("💧", 20, 6),  ("🎨", 18, 14), ("🎨", 70, 14),
-            ("🐦", 38, 26), ("🐦", 50, 26), ("🐦", 44, 20),
-            // Plaza and benches
-            ("🪑", 38, 24), ("🪑", 50, 24),
-            ("🌺", 36, 22), ("🌺", 52, 22),
-            ("🌷", 36, 9),  ("🌷", 52, 9),
-            ("🌳", 30, 38), ("🌳", 58, 38),
+            ("🗑️", 28, 20), ("🗑️", 58, 20), ("📦", 24, 14), ("📦", 66, 15),
+            ("📰", 42, 18), ("🕳️", 48, 13), ("🪧", 44, 21),
+            ("💧", 20, 6),  ("🎨", 10, 28), ("🎨", 78, 28),
+            ("🐦", 38, 20), ("🐦", 52, 20), ("🐦", 68, 20),
+            // Plaza and storefront edge
+            ("🪑", 38, 18), ("🪑", 50, 18),
+            ("🌳", 34, 18), ("🌳", 54, 18),
+            ("🌺", 35, 16), ("🌺", 53, 16), ("🌿", 32, 17), ("🌿", 55, 17),
+            ("🌷", 8, 19),  ("🌷", 22, 19), ("🌷", 62, 19), ("🌷", 76, 19),
+            ("🌳", 30, 38), ("🌳", 58, 38), ("🌳", 8, 6), ("🌳", 80, 6),
             // South park edge — transition zone
-            ("🌿", 14, 6),  ("🌿", 74, 6),
-            ("🌸", 10, 4),  ("🌸", 78, 4),
-            ("🌳", 6, 5),   ("🌳", 82, 5),
-            ("🪑", 20, 10), ("🪑", 68, 10),
+            ("🌸", 10, 4),  ("🌸", 78, 4), ("🌿", 14, 7), ("🌿", 74, 7),
+            ("🪑", 20, 10), ("🪑", 68, 10), ("🌿", 24, 8), ("🌿", 64, 8),
             // Street clutter
-            ("📦", 41, 30), ("📦", 47, 30),
-            ("🪣", 54, 27), ("⛽", 68, 26),
-            ("🚲", 38, 36), ("🚲", 50, 36),
+            ("📦", 12, 31), ("📦", 72, 31),
+            ("🪣", 58, 28), ("⛽", 70, 28),
+            ("🚲", 38, 36), ("🚲", 50, 36), ("🚲", 16, 36),
         ]
         for (g, c, r) in decor {
             guard c >= 0, c < cols, r >= 0, r < rows else { continue }

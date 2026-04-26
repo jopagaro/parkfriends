@@ -96,6 +96,7 @@ private struct SaveData: Codable {
     var storyProgressRaw:   String
     var quackCluesRaw:      [String]        // QuackClue.rawValue set
     var defeatedBossesRaw:  [String]        // EnemyKind.rawValue set
+    var encounterClearsRaw: [String: TimeInterval]
 
     // Custom decoder so old saves missing defeatedBossesRaw still load cleanly.
     init(from decoder: Decoder) throws {
@@ -110,11 +111,12 @@ private struct SaveData: Codable {
         storyProgressRaw = (try? c.decode(String.self,        forKey: .storyProgressRaw)) ?? StoryProgress.introCheckFountain.rawValue
         quackCluesRaw   = try c.decode([String].self,         forKey: .quackCluesRaw)
         defeatedBossesRaw = (try? c.decode([String].self, forKey: .defeatedBossesRaw)) ?? []
+        encounterClearsRaw = (try? c.decode([String: TimeInterval].self, forKey: .encounterClearsRaw)) ?? [:]
     }
 
     init(party: [PartyMember], activeIndex: Int, inventoryRaw: [String: Int],
          score: Int, coins: Int, enemiesDefeated: Int, zone: GameZone, storyProgressRaw: String,
-         quackCluesRaw: [String], defeatedBossesRaw: [String]) {
+         quackCluesRaw: [String], defeatedBossesRaw: [String], encounterClearsRaw: [String: TimeInterval]) {
         self.party              = party
         self.activeIndex        = activeIndex
         self.inventoryRaw       = inventoryRaw
@@ -125,6 +127,7 @@ private struct SaveData: Codable {
         self.storyProgressRaw   = storyProgressRaw
         self.quackCluesRaw      = quackCluesRaw
         self.defeatedBossesRaw  = defeatedBossesRaw
+        self.encounterClearsRaw = encounterClearsRaw
     }
 }
 
@@ -152,6 +155,9 @@ final class GameState {
 
     // MARK: - Defeated bosses (no respawn)
     var defeatedBosses:  Set<EnemyKind>  = []
+    var encounterClears: [String: TimeInterval] = [:]
+
+    static let encounterRespawnInterval: TimeInterval = 180
 
     func defeatBoss(_ kind: EnemyKind) {
         defeatedBosses.insert(kind)
@@ -300,10 +306,11 @@ final class GameState {
     func takeDamage(_ amount: Int) {
         let effective = max(1, amount - party[activeIndex].def / 4)
         party[activeIndex].hp = max(0, party[activeIndex].hp - effective)
-        if party[activeIndex].hp == 0 { autoSwitchActive() }
+        if party[activeIndex].hp == 0 { ensureActiveMemberAlive() }
     }
 
-    private func autoSwitchActive() {
+    func ensureActiveMemberAlive() {
+        guard !party[activeIndex].isAlive else { return }
         for step in 1..<party.count {
             let idx = (activeIndex + step) % party.count
             if party[idx].hp > 0 { activeIndex = idx; return }
@@ -383,6 +390,39 @@ final class GameState {
         }
     }
 
+    func recoverFromWipe() {
+        for i in party.indices {
+            party[i].hp = max(1, party[i].maxHP / 2)
+            party[i].pp = max(0, party[i].maxPP / 2)
+            party[i].statusEffects.removeAll()
+        }
+        activeIndex = party.firstIndex(where: \.isAlive) ?? 0
+        save()
+    }
+
+    func markEncounterCleared(_ id: String, at now: TimeInterval = Date().timeIntervalSince1970) {
+        encounterClears[id] = now
+        save()
+    }
+
+    func isEncounterTemporarilyCleared(_ id: String, at now: TimeInterval = Date().timeIntervalSince1970) -> Bool {
+        guard let clearedAt = encounterClears[id] else { return false }
+        if now - clearedAt < Self.encounterRespawnInterval {
+            return true
+        }
+        encounterClears.removeValue(forKey: id)
+        save()
+        return false
+    }
+
+    func pruneExpiredEncounterClears(at now: TimeInterval = Date().timeIntervalSince1970) {
+        let before = encounterClears.count
+        encounterClears = encounterClears.filter { now - $0.value < Self.encounterRespawnInterval }
+        if encounterClears.count != before {
+            save()
+        }
+    }
+
     var isGameOver: Bool { party.allSatisfy { $0.hp == 0 } }
 
     // MARK: - Reset
@@ -404,6 +444,7 @@ final class GameState {
         pendingLevelUps.removeAll()
         quackClues.removeAll()
         defeatedBosses.removeAll()
+        encounterClears.removeAll()
     }
 
     // MARK: - Save / Load
@@ -422,7 +463,8 @@ final class GameState {
             zone:               currentZone,
             storyProgressRaw:   storyProgress.rawValue,
             quackCluesRaw:      quackClues.map(\.rawValue),
-            defeatedBossesRaw:  defeatedBosses.map(\.rawValue)
+            defeatedBossesRaw:  defeatedBosses.map(\.rawValue),
+            encounterClearsRaw: encounterClears
         )
         if let encoded = try? JSONEncoder().encode(data) {
             UserDefaults.standard.set(encoded, forKey: Self.saveKey)
@@ -444,6 +486,8 @@ final class GameState {
         storyProgress   = StoryProgress(rawValue: data.storyProgressRaw) ?? .introCheckFountain
         quackClues      = Set(data.quackCluesRaw.compactMap { QuackClue(rawValue: $0) })
         defeatedBosses  = Set(data.defeatedBossesRaw.compactMap { EnemyKind(rawValue: $0) })
+        encounterClears = data.encounterClearsRaw
+        pruneExpiredEncounterClears()
     }
 
     var hasSave: Bool {
