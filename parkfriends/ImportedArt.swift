@@ -98,31 +98,41 @@ enum ImportedArt {
         return croppedTexture(relativePath: relativePath, rect: rect)
     }
 
-    static func sproutGrassTexture(variant: Int) -> SKTexture? {
-        let names = [
-            "generic-rpg-tile11.png",
-            "generic-rpg-tile13.png",
-            "generic-rpg-tile15.png",
-            "generic-rpg-tile20.png",
-            "generic-rpg-tile22.png",
-            "generic-rpg-tile40.png",
-            "generic-rpg-tile42.png"
-        ]
-        return fileTexture(
-            relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/tiles/\(names[abs(variant) % names.count])"
-        )
+    static func sheetTextureFromTop(relativePath: String, tileSize: CGSize, col: Int, rowFromTop: Int) -> SKTexture? {
+        guard let image = cgImage(at: relativePath) else { return nil }
+        let rows = Int(CGFloat(image.height) / tileSize.height)
+        let rowFromBottom = max(0, rows - 1 - rowFromTop)
+        return sheetTexture(relativePath: relativePath, tileSize: tileSize, col: col, row: rowFromBottom)
     }
 
+    // MARK: - Sprout Lands terrain (single source of truth for world tiles)
+
+    private static let sproutBase = "textures.downloaded.sprites/Sprout Lands - Sprites - Basic pack/"
+    private static let genericPropsBase = "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/"
+    private static let modernOldBase = "textures.downloaded.sprites/Modern tiles_Free/Old/"
+
+    /// Plain grass — rows 0-1 of Grass.png (11×7 grid of 16×16).
+    /// Cols 0-5 are solid-fill grass; cols 6-10 are lighter variants.
+    static func sproutGrassTexture(variant: Int) -> SKTexture? {
+        let v = abs(variant)
+        let col = v % 6          // solid grass cols
+        let row = (v / 6) % 2   // rows 0-1
+        return sheetTexture(relativePath: "\(sproutBase)Tilesets/Grass.png",
+                            tileSize: CGSize(width: 16, height: 16), col: col, row: row)
+    }
+
+    /// Shade grass — row 2 of Grass.png (darker fill patches).
+    static func sproutShadeGrassTexture(variant: Int) -> SKTexture? {
+        sheetTexture(relativePath: "\(sproutBase)Tilesets/Grass.png",
+                     tileSize: CGSize(width: 16, height: 16),
+                     col: abs(variant) % 6, row: 2)
+    }
+
+    /// Dirt path — row 0 of Paths.png (4×4 grid of 16×16 worn-dirt tiles).
     static func sproutPathTexture(variant: Int) -> SKTexture? {
-        let names = [
-            "generic-rpg-tile09.png",
-            "generic-rpg-tile21.png",
-            "generic-rpg-tile23.png"
-        ]
-        let pick = names[abs(variant) % names.count]
-        return fileTexture(
-            relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/tiles/\(pick)"
-        )
+        sheetTexture(relativePath: "\(sproutBase)Objects/Paths.png",
+                     tileSize: CGSize(width: 16, height: 16),
+                     col: abs(variant) % 4, row: 0)
     }
 
     static func sproutWaterTexture(variant: Int) -> SKTexture? {
@@ -190,164 +200,294 @@ enum ImportedArt {
         )
     }
 
+    static func critterFrontTexture(sheet: String, rowFromTop: Int = 0, frame: Int = 0) -> SKTexture? {
+        sheetTextureFromTop(
+            relativePath: "textures.downloaded.sprites/\(sheet)",
+            tileSize: CGSize(width: 32, height: 32),
+            col: frame,
+            rowFromTop: rowFromTop
+        )
+    }
+
     static func rpgCharTexture(relativePath: String, frame: Int, frameSize: CGSize = CGSize(width: 32, height: 32)) -> SKTexture? {
         sheetTexture(relativePath: relativePath, tileSize: frameSize, col: frame, row: 0)
     }
 
+    // ── Human-character helper paths ────────────────────────────────────────
+    // gabe / mani are 168×24 sheets = 7 cols × 1 row of *24×24* frames.
+    // hat-guy / sensei / vendor are SINGLE-frame sprites — no sub-framing.
+    private static let charBase = "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/"
+    private static func gabeFrame(_ frame: Int) -> SKTexture? {
+        sheetTexture(relativePath: "\(charBase)gabe/gabe-idle-run.png",
+                     tileSize: CGSize(width: 24, height: 24), col: frame % 7, row: 0)
+    }
+    private static func maniFrame(_ frame: Int) -> SKTexture? {
+        sheetTexture(relativePath: "\(charBase)mani/mani-idle-run.png",
+                     tileSize: CGSize(width: 24, height: 24), col: frame % 7, row: 0)
+    }
+    private static func hatGuyTexture() -> SKTexture? {
+        fileTexture(relativePath: "\(charBase)hat-guy/hat-guy.png")
+    }
+    private static func senseiTexture() -> SKTexture? {
+        fileTexture(relativePath: "\(charBase)sensei/sensei.png")
+    }
+    private static func vendorTexture() -> SKTexture? {
+        fileTexture(relativePath: "\(charBase)vendor/generic-rpg-vendor.png")
+    }
+
+    // ── Mana Seed Character Base v1 — char_a_p1_*.png ────────────────────────
+    // 512×512 sheets, 8 cols × 8 rows of 64×64 cells.
+    // 11 variants (v00–v10) used for: Mayor Johnson + pride-parade crowd (Act 3).
+    // Frame indices follow the standard Mana Seed layout
+    // (row 0 col 0 = south-facing idle pose, "frame 0" by convention).
+    private static let manaSeedBase = "textures.downloaded.sprites/animation frames /pride parade charcters/"
+    static func manaSeedCharTexture(variant: Int, frame: Int = 0) -> SKTexture? {
+        let v = String(format: "%02d", abs(variant) % 11)
+        return sheetTexture(relativePath: "\(manaSeedBase)char_a_p1_0bas_humn_v\(v).png",
+                            tileSize: CGSize(width: 64, height: 64),
+                            col: frame % 8, row: frame / 8)
+    }
+
+    // ── Wizard grunts (Act 6) — two variants from generic-rpg-pack ───────────
+    // Both sources are single-frame sprites, so frame param is ignored.
+    static func wizardTexture(variant: Int) -> SKTexture? {
+        (variant % 2 == 0) ? senseiTexture() : hatGuyTexture()
+    }
+
     static func npcTexture(kind: NPCKind) -> SKTexture? {
         switch kind {
-        case .rangerGuide:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/sensei/sensei.png",
-                frame: 0
-            )
-        case .hazel:
-            return critterTexture(sheet: "FOXSPRITESHEET.png", frame: 0)
-        case .jogger:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/gabe/gabe-idle-run.png",
-                frame: 1
-            )
-        case .child:
-            return critterTexture(sheet: "CATSPRITESHEET_Gray.png", frame: 4)
-        case .birdwatcher:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/mani/mani-idle-run.png",
-                frame: 0
-            )
-        case .dogwalker:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/gabe/gabe-idle-run.png",
-                frame: 4
-            )
-        case .gardener:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/hat-guy/hat-guy.png",
-                frame: 0
-            )
-        case .worker:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/hat-guy/hat-guy.png",
-                frame: 2
-            )
-        case .shopkeeper:
-            return fileTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/vendor/generic-rpg-vendor.png"
-            )
+        // ── Animal ambient NPCs — use sprite sheet frame 0 ──────────────────
+        case .cat:     return catFrames(directionRow: 0).first
+        case .dog:     return dogFrames().first
+        case .raccoon: return raccoonFrames(directionRow: 0).first
+        case .bird:    return birdFrames(white: false, directionRow: 0).first
+        case .hazel:   return foxFrames(directionRow: 0).first
+        // ── Human / story NPCs (each gets a distinct visual) ────────────────
+        case .rangerGuide: return hatGuyTexture()         // hat suits a ranger
+        case .jogger:      return gabeFrame(1)            // gabe running pose
+        case .child:       return manaSeedCharTexture(variant: 2, frame: 0)
+        case .birdwatcher: return maniFrame(0)            // mani idle
+        case .dogwalker:   return gabeFrame(4)            // gabe alt pose
+        case .gardener:    return senseiTexture()         // older gardener — sensei OK here
+        case .worker:      return maniFrame(3)            // mani action pose (was broken hat-guy frame 2)
+        case .shopkeeper:  return vendorTexture()
         }
     }
 
     static func enemyTexture(kind: EnemyKind) -> SKTexture? {
         switch kind {
         case .pigeon:
-            return critterTexture(sheet: "BIRDSPRITESHEET_Blue.png", frame: 0)
+            return critterFrontTexture(sheet: "BIRDSPRITESHEET_Blue.png")
         case .goose, .grandGooseGerald:
-            return critterTexture(sheet: "BIRDSPRITESHEET_White.png", frame: 0)
+            return critterFrontTexture(sheet: "BIRDSPRITESHEET_White.png")
         case .raccoon:
-            return critterTexture(sheet: "RACCOONSPRITESHEET.png", frame: 0)
+            return critterFrontTexture(sheet: "RACCOONSPRITESHEET.png")
         case .wasp:
             return fileTexture(
                 relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/mobs/boss_bee.png"
             )
-        case .ranger:
-            return npcTexture(kind: .rangerGuide)
-        case .sternAdult:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/gabe/gabe-idle-run.png",
-                frame: 5
-            )
-        case .flockLeader:
-            return critterTexture(sheet: "BIRDSPRITESHEET_Blue.png", frame: 12)
+        case .ranger:        return npcTexture(kind: .rangerGuide)
+        case .sternAdult:    return gabeFrame(5)
+        case .flockLeader:   return critterTexture(sheet: "BIRDSPRITESHEET_Blue.png", frame: 12)
         case .vendingMachine:
             return fileTexture(
                 relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-house-inn.png"
             )
-        case .skateboardKid:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/mani/mani-idle-run.png",
-                frame: 4
-            )
-        case .officerGrumble:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/sensei/sensei.png",
-                frame: 3
-            )
-        case .foremanRex:
-            return rpgCharTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/hat-guy/hat-guy.png",
-                frame: 4
-            )
+        case .skateboardKid: return maniFrame(4)
+        case .officerGrumble: return senseiTexture()      // single-frame; was broken frame 3
+        case .foremanRex:    return hatGuyTexture()       // single-frame; was broken frame 4
         }
     }
 
     // MARK: - City ground textures (Tiny Pixel Fantasy – CityExterior tiles)
 
     private static let tpfCityBase = "textures.downloaded.sprites/Tiny Pixel Fantasy - Base Pack/Tiles/CityExterior/"
+    private static let tpfCityInteriorBase = "textures.downloaded.sprites/Tiny Pixel Fantasy - Base Pack/Tiles/CityInterior/"
 
-    /// Road / asphalt surface — CityExterior_1_1 is the base city ground tile.
+    private static func modernOldTileTexture(sheet: String, col: Int, row: Int) -> SKTexture? {
+        sheetTexture(
+            relativePath: "\(modernOldBase)\(sheet)",
+            tileSize: CGSize(width: 16, height: 16),
+            col: col,
+            row: row
+        )
+    }
+
+    /// Road / asphalt surface — use a calm tile from the uploaded modern pack.
     static func cityRoadTexture(variant: Int) -> SKTexture? {
-        fileTexture(relativePath: "\(tpfCityBase)CityExterior_1_1.png")
+        let options = [(0, 7), (1, 7), (2, 7)]
+        let pick = options[abs(variant) % options.count]
+        return modernOldTileTexture(sheet: "Tileset_16x16_1.png", col: pick.0, row: pick.1)
     }
 
-    /// Sidewalk paving — three 16×16 CityExterior slabs used for variety.
+    /// Sidewalk paving — use pale uploaded paving tiles instead of noisy city-detail tiles.
     static func citySidewalkTexture(variant: Int) -> SKTexture? {
-        let names = ["CityExterior_2_1.png", "CityExterior_2_2.png", "CityExterior_2_3.png"]
-        return fileTexture(relativePath: "\(tpfCityBase)\(names[abs(variant) % names.count])")
+        let options = [(4, 6), (5, 6), (6, 6)]
+        let pick = options[abs(variant) % options.count]
+        return modernOldTileTexture(sheet: "Tileset_16x16_1.png", col: pick.0, row: pick.1)
     }
 
-    /// Generic city ground / asphalt fill with slight variation.
+    /// Generic city ground / plaza fill — keep it calm and readable.
     static func cityAsphaltTexture(variant: Int) -> SKTexture? {
-        let names = ["CityExterior_16_1.png", "CityExterior_16_2.png", "CityExterior_1_1.png"]
-        return fileTexture(relativePath: "\(tpfCityBase)\(names[abs(variant) % names.count])")
+        let options = [(0, 7), (1, 7), (4, 6)]
+        let pick = options[abs(variant) % options.count]
+        return modernOldTileTexture(sheet: "Tileset_16x16_1.png", col: pick.0, row: pick.1)
     }
 
     /// Crosswalk marking tile; falls back to road when `stripe` is false.
     static func cityCrosswalkTexture(stripe: Bool) -> SKTexture? {
         stripe
-            ? fileTexture(relativePath: "\(tpfCityBase)CityExterior_14_1.png")
+            ? nil
             : cityRoadTexture(variant: 0)
     }
 
-    /// Dirt / gravel ground — used in construction-zone north map.
+    /// Dirt / gravel ground — construction zone uses Sprout Lands path tiles (row 1 = rougher dirt).
     static func cityDirtTexture(variant: Int) -> SKTexture? {
-        let names = ["generic-rpg-tile09.png", "generic-rpg-tile21.png", "generic-rpg-tile23.png"]
-        return fileTexture(
-            relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/tiles/\(names[abs(variant) % names.count])"
-        )
+        sheetTexture(relativePath: "\(sproutBase)Objects/Paths.png",
+                     tileSize: CGSize(width: 16, height: 16),
+                     col: abs(variant) % 4, row: 1)
+    }
+
+    // MARK: - Interior textures
+
+    static func interiorFloorTexture(variant: Int) -> SKTexture? {
+        let names = ["CityInterior_1_1.png", "CityInterior_1_2.png"]
+        return fileTexture(relativePath: "\(tpfCityInteriorBase)\(names[abs(variant) % names.count])")
+    }
+
+    static func interiorWallTexture(variant: Int) -> SKTexture? {
+        let names = ["CityInterior_2_1.png", "CityInterior_2_2.png", "CityInterior_2_3.png", "CityInterior_2_4.png"]
+        return fileTexture(relativePath: "\(tpfCityInteriorBase)\(names[abs(variant) % names.count])")
+    }
+
+    static func interiorFeatureTexture(kind: String, variant: Int = 0) -> SKTexture? {
+        let relativePath: String
+        switch kind {
+        case "window":
+            relativePath = "\(tpfCityInteriorBase)CityInterior_6_1.png"
+        case "banner":
+            relativePath = "\(tpfCityInteriorBase)CityInterior_6_2.png"
+        case "counter":
+            relativePath = "\(tpfCityInteriorBase)CityInterior_11_1.png"
+        case "shelf":
+            relativePath = "\(tpfCityInteriorBase)CityInterior_8_1.png"
+        case "stairs":
+            relativePath = "\(tpfCityInteriorBase)CityInterior_7_1.png"
+        case "hearth":
+            let names = [
+                "CityInterior_9_1.png",
+                "CityInterior_9_2.png",
+                "CityInterior_9_3.png",
+                "CityInterior_9_4.png",
+                "CityInterior_9_5.png"
+            ]
+            relativePath = "\(tpfCityInteriorBase)\(names[abs(variant) % names.count])"
+        default:
+            let names = ["CityInterior_10_1.png", "CityInterior_8_1.png"]
+            relativePath = "\(tpfCityInteriorBase)\(names[abs(variant) % names.count])"
+        }
+        return fileTexture(relativePath: relativePath)
+    }
+
+    // MARK: - Animal walk-cycle animation frames
+    // All 128×416 sheets = 4 cols × 13 rows of 32×32.
+    // Row 0 = walk-south (toward camera) — the "forward-facing" row.
+
+    /// Returns an ordered array of SKTextures for one walk-cycle row.
+    static func animFrames(sheet: String, frameSize: CGSize = CGSize(width: 32, height: 32),
+                           row: Int, count: Int, fromTop: Bool = false) -> [SKTexture] {
+        (0..<count).compactMap {
+            fromTop
+                ? sheetTextureFromTop(relativePath: "textures.downloaded.sprites/\(sheet)",
+                                      tileSize: frameSize, col: $0, rowFromTop: row)
+                : sheetTexture(relativePath: "textures.downloaded.sprites/\(sheet)",
+                               tileSize: frameSize, col: $0, row: row)
+        }
+    }
+
+    /// Cat walk-south frames (gray cat, 4-frame cycle).
+    static func catFrames(directionRow: Int = 0) -> [SKTexture] {
+        animFrames(sheet: "CATSPRITESHEET_Gray.png", row: directionRow, count: 4, fromTop: true)
+    }
+
+    /// Raccoon walk-south frames (4-frame cycle).
+    static func raccoonFrames(directionRow: Int = 0) -> [SKTexture] {
+        animFrames(sheet: "RACCOONSPRITESHEET.png", row: directionRow, count: 4, fromTop: true)
+    }
+
+    /// One static dog sprite — 48DogSpriteSheet has 8 different breeds in a
+    /// single row (NOT walk frames). Pass a per-NPC variant (0-7) to pick breed.
+    /// Used for static icons / glyphs only; live NPCs use `dogFrames` (56Dogs walk cycle).
+    static func dogTexture(variant: Int) -> SKTexture? {
+        sheetTexture(relativePath: "textures.downloaded.sprites/48DogSpriteSheet.png",
+                     tileSize: CGSize(width: 32, height: 48),
+                     col: abs(variant) % 8, row: 0)
+    }
+
+    /// Dog walk cycle — 56Dogs.png is 7 cols × 8 rows of 16×16 frames.
+    /// Each row = a breed; cols 0-6 = a 7-frame walk cycle. `variant` picks the breed.
+    static func dogFrames(variant: Int = 0) -> [SKTexture] {
+        let breed = abs(variant) % 8
+        return (0..<7).compactMap {
+            sheetTexture(relativePath: "textures.downloaded.sprites/56Dogs.png",
+                         tileSize: CGSize(width: 16, height: 16),
+                         col: $0, row: breed)
+        }
+    }
+
+    /// Bird walk frames — BIRDSPRITESHEET is 4 cols × 13 rows of 32×32.
+    /// Row 0 = south-facing walk (toward camera), matching the cat/fox/raccoon layout.
+    static func birdFrames(white: Bool = false, directionRow: Int = 0) -> [SKTexture] {
+        let sheet = white ? "BIRDSPRITESHEET_White.png" : "BIRDSPRITESHEET_Blue.png"
+        return animFrames(sheet: sheet, row: directionRow, count: 4, fromTop: true)
+    }
+
+    /// Fox frames (used for Hazel NPC).
+    static func foxFrames(directionRow: Int = 0) -> [SKTexture] {
+        animFrames(sheet: "FOXSPRITESHEET.png", row: directionRow, count: 4, fromTop: true)
     }
 
     static func lampTexture(city: Bool) -> SKTexture? {
-        fileTexture(relativePath: "textures.downloaded.sprites/torch.png")
+        fileTexture(relativePath: "textures.downloaded.sprites/SKTiled-master/Demo/Assets/sticker-knight/torch.png")
+    }
+
+    static func suburbHouseTexture(variant: Int) -> SKTexture? {
+        let options = [
+            "\(sproutBase)Objects/Free_Chicken_House.png",
+            "\(genericPropsBase)generic-rpg-house-inn.png"
+        ]
+        return fileTexture(relativePath: options[abs(variant) % options.count])
+    }
+
+    static func storefrontTexture(variant: Int) -> SKTexture? {
+        let options = [
+            "\(genericPropsBase)generic-rpg-house-inn.png",
+            "\(sproutBase)Objects/Free_Chicken_House.png"
+        ]
+        return fileTexture(relativePath: options[abs(variant) % options.count])
     }
 
     static func buildingTexture(widthTiles: Int, heightTiles: Int, palette: String, seed: UInt64) -> SKTexture? {
-        if seed % 3 == 0 {
-            return fileTexture(
-                relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-house-inn.png"
-            )
+        switch palette {
+        case "wood":
+            return suburbHouseTexture(variant: Int(seed))
+        case "brick", "concrete":
+            return storefrontTexture(variant: Int(seed + UInt64(widthTiles + heightTiles)))
+        default:
+            return storefrontTexture(variant: Int(seed))
         }
-        return fileTexture(
-            relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/chars/vendor/generic-rpg-vendor.png"
-        )
     }
 
     static func placeholderTexture() -> SKTexture? {
         fileTexture(
-            relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-crate01.png"
+            relativePath: "\(genericPropsBase)generic-rpg-crate01.png"
         )
     }
 
     static func textureForGlyph(_ glyph: String) -> SKTexture? {
         switch glyph {
-        case "🌳":
-            return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-tree01.png")
-        case "🌲":
-            return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-tree02.png")
-        case "🌿":
-            return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-grass01.png")
-        case "🌷", "🌸", "🌺", "🌻":
-            return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-flowers.png")
-        case "🍄":
+        case "🌳", "🌲", "🌿", "🌷", "🌸", "🌺", "🌻", "🍄":
+            // Use Sprout Lands for park nature — lighter, friendlier palette.
             return sproutNatureTexture(for: glyph)
         case "🪑":
             return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-board01.png")
@@ -364,9 +504,9 @@ enum ImportedArt {
         case "⛲":
             return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-mini-lake.png")
         case "🐦":
-            return critterTexture(sheet: "BIRDSPRITESHEET_Blue.png", frame: 0)
+            return critterFrontTexture(sheet: "BIRDSPRITESHEET_Blue.png")
         case "🐕":
-            return sheetTexture(relativePath: "textures.downloaded.sprites/48DogSpriteSheet.png", tileSize: CGSize(width: 48, height: 48), col: 0, row: 0)
+            return dogTexture(variant: 0)
         case "🎤":
             return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-board04.png")
         case "⛵":
@@ -394,7 +534,7 @@ enum ImportedArt {
         case "🪶":
             return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-loot04.png")
         case "🦆":
-            return critterTexture(sheet: "BIRDSPRITESHEET_White.png", frame: 4)
+            return critterFrontTexture(sheet: "BIRDSPRITESHEET_White.png")
         default:
             return nil
         }

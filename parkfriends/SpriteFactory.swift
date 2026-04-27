@@ -13,6 +13,38 @@ import AppKit
 enum SpriteFactory {
     private static var cache: [String: SKTexture] = [:]
 
+    /// Glyphs that should block player movement (benches, signs, trash, fountain,
+    /// crates, machinery, etc). Decor loops use this to attach a static physics body.
+    static func glyphBlocks(_ glyph: String) -> Bool {
+        switch glyph {
+        case "🪑", "🪧", "🚫", "🗑️", "⛲", "🗿", "🪦",
+             "📦", "🎁", "🏗️", "🏪", "🛒", "🚇",
+             "💡", "⛽", "🪣", "🪵", "🚲", "🚧",
+             "🍕", "☕", "🥣", "🎤", "🪨":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Apply a static physics body sized for the given glyph, if it blocks.
+    static func applyBlockingBody(to node: SKSpriteNode, glyph: String, tile: CGFloat) {
+        guard glyphBlocks(glyph) else { return }
+        // Slightly tighter than visual so the player can walk close without snagging.
+        let radius: CGFloat
+        switch glyph {
+        case "🪑":              radius = tile * 0.32   // bench is wide+short, but tile-square works
+        case "⛲":              radius = tile * 0.45
+        case "🏗️", "🚇", "🏪": radius = tile * 0.46
+        default:                radius = tile * 0.36
+        }
+        let b = SKPhysicsBody(circleOfRadius: radius)
+        b.isDynamic = false
+        b.categoryBitMask = GameConstants.Category.wall
+        b.collisionBitMask = 0xFFFFFFFF
+        node.physicsBody = b
+    }
+
     static func emojiTexture(_ glyph: String, size: CGFloat = 64) -> SKTexture {
         let key = "\(glyph)@\(Int(size))"
         if let cached = cache[key] { return cached }

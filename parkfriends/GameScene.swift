@@ -135,7 +135,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let tile = GameConstants.tileSize
         let storyProgress = gameState?.storyProgress ?? .introCheckFountain
         var fixedNPCs: [(NPCKind, CGPoint)] = [
-            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8))
+            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8)),
+            (.bird, CGPoint(x: tile * 49, y: tile * 36)),
+            (.bird, CGPoint(x: tile * 55, y: tile * 34)),
+            (.bird, CGPoint(x: tile * 55, y: tile * 39))
         ]
         if !(gameState?.hasHazelJoined ?? false) {
             fixedNPCs.append((.hazel, CGPoint(x: tile * 44, y: tile * 38)))
@@ -170,11 +173,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func buildParkNorth() {
         backgroundColor = GamePalette.grassG1
         let result = ParkWorld.buildNorth()
+        let tile = GameConstants.tileSize
         finishWorldBuild(
             root: result.root,
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: result.fixedItems,
+            fixedNPCs: [
+                (.bird, CGPoint(x: tile * 18, y: tile * 16)),
+                (.bird, CGPoint(x: tile * 78, y: tile * 13))
+            ],
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
@@ -306,10 +314,19 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         // Random NPC rotation — fixed-placement NPCs excluded from pool
+        // Dogs excluded until a working walk-cycle sheet is available
         if !(zone == .parkCenter && !(gameState?.hasHazelJoined ?? false)) {
-            let npcKinds = NPCKind.allCases.filter { !$0.isFixed }
+            let npcKinds: [NPCKind]
+            switch zone {
+            case .parkCenter, .parkNorth:
+                npcKinds = [.bird, .cat, .birdwatcher, .gardener, .child, .jogger, .raccoon, .dogwalker]
+            case .citySouth, .cityCenter:
+                npcKinds = [.jogger, .child, .birdwatcher, .dogwalker, .gardener, .cat, .raccoon, .bird]
+            case .cityNorth:
+                npcKinds = [.worker, .gardener, .cat, .raccoon, .bird]
+            }
             for (i, pos) in npcSpawns.enumerated() {
-                let npc = NPCNode(kind: npcKinds[i % npcKinds.count])
+                let npc = NPCNode(kind: npcKinds[i % npcKinds.count], variant: i)
                 npc.position = pos
                 worldRoot.addChild(npc)
                 npcs.append(npc)
@@ -378,7 +395,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         healButton.isHidden   = true
 
         let hint = SKLabelNode(
-            text: "WASD · Space Attack · E Talk/Rest · H Heal · Tab Switch · I Stats · Esc Pause")
+            text: "WASD · Space Attack · E Talk/Rest · H Heal · Tab Switch · I Stats · M Map · Esc Pause")
         hint.fontName                = "Helvetica Neue"
         hint.fontSize                = 12
         hint.fontColor               = SKColor(white: 1, alpha: 0.55)
@@ -461,6 +478,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !event.isARepeat else { return }
         pressedKeys.insert(event.keyCode)
 
+        if gameState?.mapOverviewOpen == true {
+            switch event.keyCode {
+            case 46, 53: gameState?.mapOverviewOpen = false   // M / Esc
+            default: break
+            }
+            return
+        }
+
         if battleNode.phase == .playerMenu {
             battleNode.handleKey(event.keyCode)
             return
@@ -471,11 +496,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case 48: cycleParty()                              // Tab
         case 49: fireOverworldAttack()                     // Space
         case 34: gameState?.statsOpen.toggle()             // I — stats screen
+        case 46: gameState?.mapOverviewOpen.toggle()       // M — world overview
         case  4: useQuickItem()                            // H — quick-use best consumable
         case 53:                                           // Esc — close overlay or pause
             if let state = gameState {
-                if state.statsOpen      { state.statsOpen = false }
-                else if state.shopOpen  { state.shopOpen  = false }
+                if state.mapOverviewOpen { state.mapOverviewOpen = false }
+                else if state.statsOpen  { state.statsOpen = false }
+                else if state.shopOpen   { state.shopOpen  = false }
                 else                    { state.isPaused.toggle() }
             }
         default: break
@@ -1332,6 +1359,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                   || isBossIntro
                   || (dialogue?.activeNPC != nil)
                   || (battleNode.phase != .none)
+                  || (gameState?.mapOverviewOpen ?? false)
                   || (gameState?.statsOpen ?? false)
                   || (gameState?.shopOpen ?? false)
                   || (gameState?.isPaused ?? false)

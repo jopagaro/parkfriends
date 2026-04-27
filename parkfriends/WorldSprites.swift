@@ -1006,7 +1006,18 @@ enum WorldSprites {
         case .gardener:    drawGardener(ctx)
         case .worker:      drawWorker(ctx)
         case .shopkeeper:  drawShopkeeper(ctx)
+        // Animal NPCs use sprite-sheet textures — fallback draws a simple silhouette
+        case .cat:         drawAnimalSilhouette(ctx, color: c(0.55, 0.55, 0.55))
+        case .dog:         drawAnimalSilhouette(ctx, color: c(0.72, 0.52, 0.28))
+        case .raccoon:     drawAnimalSilhouette(ctx, color: c(0.35, 0.35, 0.35))
+        case .bird:        drawAnimalSilhouette(ctx, color: c(0.45, 0.55, 0.75))
         }
+    }
+
+    private static func drawAnimalSilhouette(_ ctx: CGContext, color: CGColor) {
+        shadow(ctx, cx: 64, w: 40)
+        ellipse(ctx, cx: 64, cy: 48, w: 38, h: 28, fill: color, stroke: ink, lw: 2)
+        ellipse(ctx, cx: 64, cy: 68, w: 22, h: 22, fill: color, stroke: ink, lw: 2)
     }
 
     private static func drawRangerGuide(_ ctx: CGContext) {

@@ -64,7 +64,9 @@ final class DialogueManager {
         if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *), modelAvailable {
             let instructions = Self.buildInstructions(npc: npc, species: species,
                                                       quackClues: quackClues)
-            session = LanguageModelSession(instructions: instructions)
+            let s = LanguageModelSession(instructions: instructions)
+            s.prewarm()
+            session = s
         }
         #endif
     }
@@ -99,7 +101,6 @@ final class DialogueManager {
 
     func send(_ message: String) async {
         guard let npc = activeNPC else { return }
-        // Don't show the stage-direction greeting as a player line.
         let isGreeting = message.hasPrefix("*")
         if !isGreeting {
             lines.append(Line(speaker: "You", text: message))
@@ -108,29 +109,45 @@ final class DialogueManager {
         isResponding = true
         defer { isResponding = false }
 
-        let reply = await generateReply(to: message, from: npc)
-        lines.append(Line(speaker: npc.displayName, text: reply))
+        // Append a placeholder line we'll fill in as tokens stream.
+        let placeholder = Line(speaker: npc.displayName, text: "…")
+        lines.append(placeholder)
+        let replyIndex = lines.count - 1
+
+        await streamReply(to: message, from: npc, into: replyIndex)
     }
 
-    private func generateReply(to message: String, from npc: NPCKind) async -> String {
+    private func streamReply(to message: String, from npc: NPCKind, into index: Int) async {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *),
            modelAvailable,
            let session {
             do {
-                let response = try await session.respond(to: message)
-                return response.content
+                let stream = session.streamResponse(to: message)
+                for try await partial in stream {
+                    // ResponseStream yields cumulative snapshots, not raw Strings.
+                    let mirror = Mirror(reflecting: partial)
+                    let text = mirror.children.first(where: { $0.label == "content" })
+                        .flatMap { $0.value as? String }
+                        ?? String(describing: partial)
+                    guard index < lines.count else { return }
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    lines[index] = Line(speaker: npc.displayName, text: trimmed.isEmpty ? "…" : trimmed)
+                }
+                return
             } catch {
-                return fallbackReply(for: npc, to: message) +
-                    "\n(model error: \(error.localizedDescription))"
+                if index < lines.count {
+                    lines[index] = Line(speaker: npc.displayName,
+                                        text: fallbackReply(for: npc, clues: activeQuackClues))
+                }
+                return
             }
         }
         #endif
-        return fallbackReply(for: npc, to: message)
-    }
-
-    private func fallbackReply(for npc: NPCKind, to message: String) -> String {
-        fallbackReply(for: npc, clues: activeQuackClues)
+        if index < lines.count {
+            lines[index] = Line(speaker: npc.displayName,
+                                text: fallbackReply(for: npc, clues: activeQuackClues))
+        }
     }
 
     /// Quack clues at the time the conversation started (injected by GameScene).
@@ -202,6 +219,27 @@ final class DialogueManager {
 
         case .shopkeeper:
             return "We're open. Buy something or move along."
+
+        case .cat:
+            if clues.contains(.foundFeather) {
+                return "…I saw the duck. South gate, moving fast, didn't look back. That's all I'll say."
+            }
+            return "…"
+        case .dog:
+            if clues.contains(.foundFeather) {
+                return "DUCK!! I SMELLED DUCK!! Near the south fence!! Did you find the duck?! I can help find the duck!!"
+            }
+            return "HELLO!! You smell interesting!! Are we friends now?!"
+        case .raccoon:
+            if clues.contains(.raccoonDroppedTag) {
+                return "Look, I found that tag near the drain, alright? Something big came through here real fast. Smelled like pond."
+            }
+            return "I don't know nothin'. *moves bin lid suspiciously*"
+        case .bird:
+            if rescued {
+                return "Cooo. Glad the duck's back. Cooo."
+            }
+            return "Coo. Coo. *pecks ground* Yeah, it left. *pecks* Not my business."
         }
     }
 
@@ -209,28 +247,13 @@ final class DialogueManager {
                                           quackClues: Set<QuackClue>) -> String {
         let storyContext = Self.storyContext(npc: npc, clues: quackClues)
         return """
-        You are roleplaying as an NPC in a cozy park-adventure game.
+        Roleplay an NPC in Bellwether Park. Stay in character; never break the fourth wall.
 
-        YOUR CHARACTER: \(npc.persona)
+        YOU: \(npc.persona)
+        PLAYER: a talking \(species.displayName) approaches you — react with mild surprise but roll with it.
+        QUEST: a duck named Quack is missing from the north pond. \(storyContext)
 
-        THE PLAYER: A small talking \(species.rawValue) named \(species.displayName) \
-        has just approached you. \(species.personalityPrompt)
-
-        CURRENT SIDE-QUEST — "FIND QUACK":
-        A duck named Quack has gone missing from the pond in Park North. \
-        The player's party is investigating. \(storyContext)
-
-        RULES:
-        - Stay in character at all times.
-        - Keep replies to 1-3 short sentences.
-        - Never break the fourth wall.
-        - React with mild surprise that an animal is talking, but go with it.
-        - If asked about the park, invent vivid local details (paths, benches, \
-          a pond, rangers patrolling).
-        - You may give the player hints about Quack's whereabouts based on \
-          the story context above.
-        - If you have clue information relevant to this NPC, weave it naturally \
-          into conversation when asked about the duck.
+        Reply in 1–2 short sentences. Weave clue info in naturally only if asked about the duck.
         """
     }
 
@@ -273,6 +296,15 @@ final class DialogueManager {
 
         case .shopkeeper:
             return "You run a corner store. You sell snacks and supplies. You don't get involved in duck drama."
+
+        case .cat:
+            return "You are an independent cat who prowls the park. You've seen a large white duck rushing south. You'll share this only if the player seems serious."
+        case .dog:
+            return "You are an excited dog who has sniffed everywhere! You definitely smelled duck near the south fence. You want to tell everyone!"
+        case .raccoon:
+            return "You forage near the bins. You've seen and heard things. A panicked duck, a loud rumbling from the city — you know more than you let on."
+        case .bird:
+            return "You are a chill park pigeon. You saw the duck leave. You don't get involved. But you'll confirm it happened if pressed."
         }
     }
 }
