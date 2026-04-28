@@ -265,34 +265,31 @@ enum ItemKind: String, CaseIterable {
 
     /// Items that may appear as random pickups in Park zones (easy tier).
     static let parkSpawnPool: [ItemKind] = [
-        .parkWater, .parkWater,          // most common
+        .parkWater, .parkWater,
         .berry, .berry,
         .staleChip,
-        .mysteryBag,
-        .warmCola,
         .parkToken, .parkToken,
+        .granolaBar,
     ]
 
     /// Items that may appear as random pickups in City South / City Center (mid tier).
     static let citySpawnPool: [ItemKind] = [
-        .warmCola, .warmCola,
+        .warmCola,
         .berry, .granolaBar,
         .juiceBox,
         .energyDrink,
-        .antidote,
-        .mysteryBag,
         .comfortSnack,
-        .parkToken,
+        .parkToken, .parkToken,
     ]
 
     /// Items that may appear in City North (hard / final tier).
     static let cityNorthSpawnPool: [ItemKind] = [
         .granolaBar, .juiceBox,
-        .comfortSnack, .comfortSnack,
+        .comfortSnack,
         .superBerry,
         .energyDrink,
         .antidote,
-        .mysteryBag,
+        .warmCola,
     ]
 
     var isConsumable: Bool {

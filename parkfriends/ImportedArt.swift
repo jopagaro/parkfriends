@@ -14,9 +14,10 @@ enum ImportedArt {
 
     private static var projectRootURL: URL {
         // #filePath = .../parkfriends/parkfriends/ImportedArt.swift
-        // One level up = .../parkfriends/parkfriends/  ← same dir as textures.downloaded.sprites
+        // Two levels up = .../parkfriends/  ← project root where textures.downloaded.sprites lives
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
+            .deletingLastPathComponent()  // → .../parkfriends/parkfriends/
+            .deletingLastPathComponent()  // → .../parkfriends/
     }
 
     private static func cgImage(at relativePath: String) -> CGImage? {
@@ -180,6 +181,91 @@ enum ImportedArt {
             col: col,
             row: row
         )
+    }
+
+    // MARK: - World park terrain (world.park/)
+
+    private static let worldParkBase  = "textures.downloaded.sprites/world.park/"
+    private static let worldSuburbBase = "textures.downloaded.sprites/world.suburb/"
+
+    /// Pebbled dirt path fill tile (interior of golden cross-paths).
+    /// Sheet is 64×64 = 4 cols × 4 rows of 16×16.
+    /// col 1, row 1 = interior fill; col 0/3, row 0/3 = corners/edges.
+    static func parkPathTile(col: Int = 1, row: Int = 1) -> SKTexture? {
+        sheetTexture(relativePath: "\(worldParkBase)pixel-art-pebbled-brown-dirt-path-corner-and-edge-tileset-64x64.png",
+                     tileSize: CGSize(width: 16, height: 16), col: col, row: row)
+    }
+
+    /// Solid blue pond water (32×32 single tile).
+    static func pondWaterTile() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-solid-blue-water-pond-square-tile-32x32.png")
+    }
+
+    /// Pond shore / border tileset (64×64 = 4×4 grid of 16×16).
+    static func pondShoreTile(col: Int, row: Int) -> SKTexture? {
+        sheetTexture(relativePath: "\(worldParkBase)pixel-art-blue-pond-water-border-corners-and-edges-tileset-64x64.png",
+                     tileSize: CGSize(width: 16, height: 16), col: col, row: row)
+    }
+
+    /// Gray stone ground (single 16×16 tile). Pass cracked/mottled variant.
+    static func parkStoneTile(variant: Int = 0) -> SKTexture? {
+        switch variant % 3 {
+        case 1:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-with-cracks-tile-16x16.png")
+        case 2:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-with-mottled-texture-tile-16x16.png")
+        default: return fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-tile-16x16.png")
+        }
+    }
+
+    /// Dark forest floor grass (single 16×16 tiles, 3 variants).
+    static func darkGrassTile(variant: Int = 0) -> SKTexture? {
+        switch variant % 3 {
+        case 1:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-bottom-sprouts-tile-16x16.png")
+        case 2:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-corner-sprouts-tile-16x16.png")
+        default: return fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-small-sprouts-tile-16x16.png")
+        }
+    }
+
+    /// Biom things sheet (144×80, 16×16 = 9 cols × 5 rows).
+    /// Row 0: stones/crystals, logs; row 1-2: flowers, mushrooms; row 3-4: bushes/plants.
+    static func parkBiomSprite(col: Int, row: Int) -> SKTexture? {
+        sheetTexture(relativePath: "\(worldParkBase)pixel-art-basic-grass-biome-props-flowers-rocks-bushes-mushrooms-and-plants-tileset-144x80.png",
+                     tileSize: CGSize(width: 16, height: 16), col: col, row: row)
+    }
+
+    /// Large round green tree sprite (48×48 standalone PNG).
+    static func parkLargeTree() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-large-round-green-tree-sprite-48x48.png")
+    }
+
+    /// Medium round green tree sprite (32×32 standalone PNG).
+    static func parkMediumTree() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-medium-round-green-tree-sprite-32x32.png")
+    }
+
+    /// Wide medium round tree (32×32).
+    static func parkWideTree() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-medium-wide-round-green-tree-sprite-32x32.png")
+    }
+
+    /// Tall conifer / pine sprite (32×48).
+    static func parkTallConifer() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-tall-conical-green-tree-sprite-32x48.png")
+    }
+
+    /// Small conifer sprite (16×32).
+    static func parkSmallConifer() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-small-conical-green-tree-sprite-16x32.png")
+    }
+
+    /// Complete suburban house exterior sprite (112×80).
+    static func suburbHouseExterior() -> SKTexture? {
+        fileTexture(relativePath: "\(worldSuburbBase)pixel-art-complete-small-wooden-house-exterior-sprite-112x80.png")
+    }
+
+    /// Wood post-and-rail fence tileset (64×64 = 4 cols × 4 rows of 16×16).
+    static func woodFenceTile(col: Int, row: Int) -> SKTexture? {
+        sheetTexture(relativePath: "\(worldSuburbBase)pixel-art-wood-post-and-rail-fence-corners-and-segments-tileset-64x64.png",
+                     tileSize: CGSize(width: 16, height: 16), col: col, row: row)
     }
 
     static func sproutBridgeTexture(col: Int, row: Int) -> SKTexture? {
@@ -486,9 +572,14 @@ enum ImportedArt {
 
     static func textureForGlyph(_ glyph: String) -> SKTexture? {
         switch glyph {
-        case "🌳", "🌲", "🌿", "🌷", "🌸", "🌺", "🌻", "🍄":
-            // Use Sprout Lands for park nature — lighter, friendlier palette.
-            return sproutNatureTexture(for: glyph)
+        case "🌳":
+            return parkLargeTree() ?? sproutNatureTexture(for: glyph)
+        case "🌲":
+            return parkTallConifer() ?? sproutNatureTexture(for: glyph)
+        case "🌿", "🌷", "🌸", "🌺", "🌻":
+            return parkBiomSprite(col: 3, row: 1) ?? sproutNatureTexture(for: glyph)
+        case "🍄":
+            return parkBiomSprite(col: 5, row: 1) ?? sproutNatureTexture(for: glyph)
         case "🪑":
             return fileTexture(relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-board01.png")
         case "🗑️":

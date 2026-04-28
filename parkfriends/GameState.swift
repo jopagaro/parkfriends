@@ -146,6 +146,7 @@ final class GameState {
     var isPaused:        Bool            = false
     var shopOpen:        Bool            = false   // corner store overlay
     var statsOpen:       Bool            = false   // party stats / inventory screen
+    var mapOverviewOpen: Bool            = false   // whole-world debug overview
     var queueTitleReturn: Bool           = false   // signal GameView to fade back to title
     var currentZone:     GameZone        = .parkCenter
     var storyProgress:   StoryProgress   = .introCheckFountain
@@ -437,6 +438,7 @@ final class GameState {
         isPaused          = false
         shopOpen          = false
         statsOpen         = false
+        mapOverviewOpen   = false
         queueTitleReturn  = false
         lastAttackTime.removeAll()
         currentZone = .parkCenter

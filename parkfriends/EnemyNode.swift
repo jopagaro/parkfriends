@@ -575,6 +575,7 @@ final class EnemyNode: SKSpriteNode {
     private var nextMoveTime: TimeInterval = 0
     private var hpBarBg:   SKSpriteNode!
     private var hpBarFill: SKSpriteNode!
+    private var currentDirectionRow = 0
 
     init(kind: EnemyKind) {
         self.kind = kind
@@ -659,6 +660,50 @@ final class EnemyNode: SKSpriteNode {
 
     // MARK: - Overworld AI
 
+    private func directionalFrames() -> [SKTexture] {
+        switch kind {
+        case .pigeon:
+            return ImportedArt.birdFrames(white: false, directionRow: currentDirectionRow)
+        case .goose, .grandGooseGerald:
+            return ImportedArt.birdFrames(white: true, directionRow: currentDirectionRow)
+        case .raccoon:
+            return ImportedArt.raccoonFrames(directionRow: currentDirectionRow)
+        default:
+            return []
+        }
+    }
+
+    private func updateDirectionalTexture(dx: CGFloat, dy: CGFloat) {
+        let row: Int
+        if abs(dx) < 0.001 && abs(dy) < 0.001 {
+            row = currentDirectionRow
+        } else {
+            let angle = atan2(dy, dx)
+            let octant = Int(round(angle / (.pi / 4)))
+            switch octant {
+            case 0: row = 6
+            case 1: row = 5
+            case 2: row = 4
+            case 3: row = 3
+            case 4, -4: row = 2
+            case -3: row = 1
+            case -2: row = 0
+            case -1: row = 7
+            default: row = 0
+            }
+        }
+        if row != currentDirectionRow {
+            currentDirectionRow = row
+        }
+        let frames = directionalFrames()
+        if let first = frames.first {
+            texture = first
+            xScale = abs(xScale)
+        } else {
+            xScale = dx < 0 ? -1 : 1
+        }
+    }
+
     func tick(now: TimeInterval, playerPos: CGPoint) {
         guard !isDead, let body = physicsBody else { return }
 
@@ -669,18 +714,20 @@ final class EnemyNode: SKSpriteNode {
         if dist < kind.visionRadius {
             let len = max(dist, 0.001)
             body.velocity = CGVector(dx: dx/len * kind.speed, dy: dy/len * kind.speed)
-            xScale = dx < 0 ? -1 : 1
+            updateDirectionalTexture(dx: dx, dy: dy)
         } else {
             if now >= nextMoveTime {
                 nextMoveTime = now + Double.random(in: 1.5...3.5)
                 let angle = CGFloat.random(in: 0 ..< 2 * .pi)
                 body.velocity = CGVector(dx: cos(angle)*kind.speed*0.4,
                                          dy: sin(angle)*kind.speed*0.4)
+                updateDirectionalTexture(dx: body.velocity.dx, dy: body.velocity.dy)
             }
             let homeDx = position.x - patrolOrigin.x
             let homeDy = position.y - patrolOrigin.y
             if homeDx*homeDx + homeDy*homeDy > 200*200 {
                 body.velocity = CGVector(dx: -homeDx*0.5, dy: -homeDy*0.5)
+                updateDirectionalTexture(dx: -homeDx, dy: -homeDy)
             }
         }
     }

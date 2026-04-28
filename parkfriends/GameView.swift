@@ -65,6 +65,11 @@ struct GameView: View {
                         .transition(.opacity)
                 }
 
+                if g.state.mapOverviewOpen {
+                    WorldOverviewModal(state: g.state) { g.state.mapOverviewOpen = false }
+                        .transition(.opacity)
+                }
+
                 if g.state.isPaused {
                     PauseMenuView(state: g.state)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -106,6 +111,7 @@ struct GameView: View {
         .animation(.easeInOut(duration: 0.2),  value: g.dialogue.activeTitle)
         .animation(.easeInOut(duration: 0.25), value: g.state.shopOpen)
         .animation(.easeInOut(duration: 0.22), value: g.state.statsOpen)
+        .animation(.easeInOut(duration: 0.22), value: g.state.mapOverviewOpen)
         .animation(.easeInOut(duration: 0.20), value: g.state.isPaused)
         .animation(.easeInOut(duration: 0.45), value: g.state.quackRescued)
         .onChange(of: g.state.queueTitleReturn) { _, triggered in
@@ -263,16 +269,28 @@ struct StoryPanelView: View {
                             .foregroundStyle(.white)
                     }
                     Spacer()
-                    Button(isExpanded ? "HIDE" : "OPEN") {
-                        collapseToken = UUID()
-                        withAnimation(.easeInOut(duration: 0.18)) { isExpanded.toggle() }
+                    HStack(spacing: 6) {
+                        Button("MAP") {
+                            state.mapOverviewOpen = true
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .overlay(Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 2))
+
+                        Button(isExpanded ? "HIDE" : "OPEN") {
+                            collapseToken = UUID()
+                            withAnimation(.easeInOut(duration: 0.18)) { isExpanded.toggle() }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .overlay(Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 2))
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.72))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .overlay(Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 2))
                 }
 
                 if isExpanded {
@@ -315,6 +333,56 @@ struct StoryPanelView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+struct WorldOverviewModal: View {
+    let state: GameState
+    let onClose: () -> Void
+    @State private var scene: WorldOverviewScene
+
+    init(state: GameState, onClose: @escaping () -> Void) {
+        self.state = state
+        self.onClose = onClose
+        _scene = State(initialValue: WorldOverviewScene(currentZone: state.currentZone))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+
+            VStack(spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("WORLD OVERVIEW")
+                            .font(.system(size: 16, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                        Text("Assembled zone layout for screenshot reference")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.7))
+                    }
+                    Spacer()
+                    Button("CLOSE") { onClose() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .overlay(Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 2))
+                }
+
+                SpriteView(scene: scene, options: [.ignoresSiblingOrder])
+                    .frame(maxWidth: 1260, maxHeight: 820)
+                    .aspectRatio(1680.0 / 1180.0, contentMode: .fit)
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 2))
+            }
+            .padding(18)
+            .frame(maxWidth: 1320)
+            .background(RetroUI.navy)
+            .overlay(Rectangle().stroke(RetroUI.ink, lineWidth: 4))
+            .shadow(radius: 24)
+            .padding(24)
         }
     }
 }
