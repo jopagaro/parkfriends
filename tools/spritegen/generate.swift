@@ -461,44 +461,70 @@ func shellyBattleHurt() -> Grid {
     return g
 }
 
-// MARK: - SPIKE (hedgehog, attacker) — bible §4.2
-// Spine cluster = 40% of silhouette. Compact round body, lighter snout,
-// left-shifted belly, 9-11 uneven spines with light tips.
+// MARK: - SPIKE (hedgehog, attacker) — bible §4.2, redesigned
+// Classic hedgehog silhouette: the spine coat is a full cape covering the
+// crown-to-rump mass; the face emerges from underneath at the lower front.
 
-let spikeSpineAngles: [(Double, Double)] = [   // (angle degrees, length)
-    (-170, 15), (-152, 20), (-136, 17), (-118, 22), (-100, 18),
-    (-84, 21), (-66, 17), (-50, 22), (-32, 16), (-14, 19), (-124, 12)
-]
-
-func spikeSpineLayer(sweptBack: Bool = false) -> Grid {
-    var g = emptyGrid(w: SW, h: SH)
-    for (deg, len) in spikeSpineAngles {
-        let a = (deg + (sweptBack ? 10 : 0)) * .pi / 180
-        drawSpike(&g, baseX: 32, baseY: 46, angle: a, len: len + 12,
-                  baseR: 2.6, body: "D", tip: "L")
+/// Spine cape: solid quill mass with a serrated (zigzag) silhouette and
+/// internal quill-row texture — reference pixel hedgehogs draw the coat as
+/// one dark mass with teeth, not sparse needles.
+func spikeCape(w: Int, h: Int, cx: Double, cy: Double, r: Double,
+               sweep: Double = 0, arcFrom: Double = -230, arcTo: Double = 50,
+               tooth: Double = 7, quillBase: Double = 2.6) -> Grid {
+    var g = emptyGrid(w: w, h: h)
+    fillEllipse(&g, cx: cx, cy: cy, rx: r, ry: r * 1.05, "D")
+    // dense short teeth along the arc → contiguous zigzag edge
+    var i = 0
+    for deg in stride(from: arcFrom, through: arcTo, by: 11.0) {
+        let a = (deg + sweep) * .pi / 180
+        let len = tooth + Double((i * 3) % 4)
+        let bx = cx + cos(a) * r * 0.96
+        let by = cy + sin(a) * r * 1.0
+        drawSpike(&g, baseX: bx, baseY: by, angle: a, len: len,
+                  baseR: quillBase, body: "D", tip: "L")
+        i += 1
+    }
+    // internal quill texture: two arc rows of light ticks
+    for (rowR, count) in [(r * 0.72, 9), (r * 0.45, 7)] {
+        for j in 0..<count {
+            let span = (arcTo - arcFrom) * .pi / 180
+            let a = arcFrom * .pi / 180 + span * Double(j) / Double(count - 1)
+                    + (j % 2 == 0 ? 0.05 : -0.04) + sweep * .pi / 180
+            let bx = cx + cos(a) * rowR
+            let by = cy + sin(a) * rowR
+            drawSpike(&g, baseX: bx, baseY: by, angle: a, len: tooth * 0.8,
+                      baseR: quillBase * 0.55, body: "D", tip: "L")
+        }
     }
     return g
 }
 
-func spikeBodyPart(paw: Int = 0) -> Grid {   // paw: 0 both down, 1 left raised
-    var g = emptyGrid(w: SW, h: SH)
-    // feet
-    fillEllipse(&g, cx: 24, cy: 80 - Double(paw == 1 ? 4 : 0), rx: 5, ry: 5, "B")
-    fillEllipse(&g, cx: 40, cy: 80, rx: 5, ry: 5, "B")
-    // body, form-shaded
-    shadeEllipse(&g, cx: 32, cy: 55, rx: 21, ry: 23, main: "B", hi: "h", lo: "b")
-    // belly, slightly left-shifted
-    fillEllipse(&g, cx: 29, cy: 68, rx: 11, ry: 9, "Y")
-    // snout patch, slightly asymmetric
-    fillEllipse(&g, cx: 31, cy: 52, rx: 9, ry: 7, "N")
-    outlineShape(&g, body: ["B", "Y", "N", "h"], outline: "b")
-    // eyes with catchlight upper-right
-    for (ex, ey) in [(22, 42), (37, 42)] {
-        for dy in 0..<4 { for dx in 0..<4 { g[ey + dy][ex + dx] = "E" } }
-        g[ey][ex + 2] = "W"; g[ey][ex + 3] = "W"; g[ey + 1][ex + 3] = "W"
+/// Front face plate: shaded brown face + snout emerging from under the cape.
+func spikeFacePlate(w: Int, h: Int, cx: Double, cy: Double, scale: Double,
+                    hurt: Bool = false) -> Grid {
+    var g = emptyGrid(w: w, h: h)
+    shadeEllipse(&g, cx: cx, cy: cy, rx: 16 * scale, ry: 15 * scale,
+                 main: "N", hi: "Y", lo: "B", loThresh: -0.52)
+    outlineShape(&g, body: ["N", "Y", "B"], outline: "b")
+    let eyeSize = max(3, Int(4 * scale))
+    let eyeOff = Int(8 * scale)
+    let eyeY = Int(cy - 7 * scale)
+    for (ex, ey) in [(Int(cx) - eyeOff - eyeSize, eyeY), (Int(cx) + eyeOff - 1, eyeY + 1)] {
+        if hurt {
+            for k in 0..<eyeSize + 2 {
+                g[ey + k][ex + k] = "E"; g[ey + k][ex + eyeSize + 1 - k] = "E"
+            }
+        } else {
+            for dy in 0..<(eyeSize + 1) { for dx in 0..<eyeSize { g[ey + dy][ex + dx] = "E" } }
+            g[ey][ex + eyeSize - 1] = "W"; g[ey + 1][ex + eyeSize - 1] = "W"
+        }
     }
+    // determined brow ticks (uneven)
+    let browY = eyeY - Int(3 * scale)
+    for dx in 0..<Int(5 * scale) { g[browY][Int(cx) - eyeOff - 2 + dx] = "b" }
+    for dx in 0..<Int(4 * scale) { g[browY + 1][Int(cx) + eyeOff - 1 + dx] = "b" }
     // nose
-    fillEllipse(&g, cx: 31.5, cy: 51, rx: 2.2, ry: 1.6, "E")
+    fillEllipse(&g, cx: cx, cy: cy + 4 * scale, rx: 2.4 * scale, ry: 1.8 * scale, "E")
     return g
 }
 
@@ -507,17 +533,16 @@ func spikeFrame(_ f: Int) -> Grid {
     var sh = emptyGrid(w: SW, h: SH)
     fillEllipse(&sh, cx: 32, cy: 87, rx: 22, ry: 4, "S")
     composite(&g, sh, dx: 0, dy: 0)
-    switch f {
-    case 1:  // lean forward, spines swept back
-        composite(&g, spikeSpineLayer(sweptBack: true), dx: 0, dy: 2)
-        composite(&g, spikeBodyPart(), dx: 0, dy: 2)
-    case 3:  // bounce, one paw up
-        composite(&g, spikeSpineLayer(), dx: 0, dy: -1)
-        composite(&g, spikeBodyPart(paw: 1), dx: 0, dy: -1)
-    default:
-        composite(&g, spikeSpineLayer(), dx: 0, dy: 0)
-        composite(&g, spikeBodyPart(), dx: 0, dy: 0)
-    }
+    let dy = f == 1 ? 2 : (f == 3 ? -1 : 0)
+    var feet = emptyGrid(w: SW, h: SH)
+    fillEllipse(&feet, cx: 24, cy: 74 - Double(f == 3 ? 4 : 0), rx: 5, ry: 5.5, "B")
+    fillEllipse(&feet, cx: 40, cy: 74, rx: 5, ry: 5.5, "B")
+    outlineShape(&feet, body: ["B"], outline: "b")
+    composite(&g, feet, dx: 0, dy: 0)
+    composite(&g, spikeCape(w: SW, h: SH, cx: 32, cy: 44, r: 24,
+                            sweep: f == 1 ? 8 : 0), dx: 0, dy: dy)
+    composite(&g, spikeFacePlate(w: SW, h: SH, cx: 32, cy: 54, scale: 1.0),
+              dx: 0, dy: dy)
     return g
 }
 
@@ -527,28 +552,14 @@ func spikeNorthFrame(_ f: Int) -> Grid {
     fillEllipse(&sh, cx: 32, cy: 87, rx: 22, ry: 4, "S")
     composite(&g, sh, dx: 0, dy: 0)
     let dy = f == 1 ? 2 : (f == 3 ? -1 : 0)
-    // back = mostly spines over a plain body
-    var body = emptyGrid(w: SW, h: SH)
-    fillEllipse(&body, cx: 24, cy: 80, rx: 5, ry: 5, "B")
-    fillEllipse(&body, cx: 40, cy: 80, rx: 5, ry: 5, "B")
-    shadeEllipse(&body, cx: 32, cy: 55, rx: 21, ry: 23, main: "B", hi: "B", lo: "b")
-    outlineShape(&body, body: ["B"], outline: "b")
-    composite(&g, body, dx: 0, dy: dy)
-    var spines = emptyGrid(w: SW, h: SH)
-    for (deg, len) in spikeSpineAngles + [(30, 14), (150, 15), (90, 12)] {
-        let a = deg * .pi / 180
-        drawSpike(&spines, baseX: 32, baseY: 50, angle: a, len: len + 10,
-                  baseR: 2.6, body: "D", tip: "L")
-    }
-    // spine mass: dark disc textured with short overlapping quills
-    fillEllipse(&spines, cx: 32, cy: 50, rx: 16, ry: 15, "D")
-    for i in 0..<12 {
-        let a = Double(i) * (.pi * 2 / 12) + 0.35
-        let bx = 32 + cos(a) * 7, by = 50 + sin(a) * 6.5
-        drawSpike(&spines, baseX: bx, baseY: by, angle: a, len: 9,
-                  baseR: 1.6, body: "D", tip: "L")
-    }
-    composite(&g, spines, dx: 0, dy: dy)
+    var feet = emptyGrid(w: SW, h: SH)
+    fillEllipse(&feet, cx: 24, cy: 74 - Double(f == 3 ? 4 : 0), rx: 5, ry: 5.5, "B")
+    fillEllipse(&feet, cx: 40, cy: 74, rx: 5, ry: 5.5, "B")
+    outlineShape(&feet, body: ["B"], outline: "b")
+    composite(&g, feet, dx: 0, dy: 0)
+    // from behind: cape only, quills all the way around
+    composite(&g, spikeCape(w: SW, h: SH, cx: 32, cy: 48, r: 26,
+                            arcFrom: -260, arcTo: 80), dx: 0, dy: dy)
     return g
 }
 
@@ -559,47 +570,52 @@ func spikeEastFrame(_ f: Int) -> Grid {
     composite(&g, sh, dx: 0, dy: 0)
     let stride: Double = f == 0 ? 5 : (f == 2 ? -5 : 0)
     let dy = f == 1 ? 1 : 0
-    var spines = emptyGrid(w: SW, h: SH)
-    for (deg, len) in [(-180.0, 20.0), (-160, 22), (-140, 21), (-120, 22), (-100, 19), (-80, 16), (-200, 14), (-60, 13)] {
-        drawSpike(&spines, baseX: 28, baseY: 48, angle: deg * .pi / 180,
-                  len: len + 8, baseR: 2.6, body: "D", tip: "L")
-    }
-    composite(&g, spines, dx: 0, dy: dy)
-    var body = emptyGrid(w: SW, h: SH)
-    fillEllipse(&body, cx: 34 + stride, cy: 80, rx: 5, ry: 5.5, "B")
-    fillEllipse(&body, cx: 20 - stride, cy: 80, rx: 5, ry: 5.5, "B")
-    shadeEllipse(&body, cx: 32, cy: 56, rx: 20, ry: 22, main: "B", hi: "h", lo: "b")
-    fillEllipse(&body, cx: 48, cy: 52, rx: 9, ry: 7, "N")     // snout right
-    outlineShape(&body, body: ["B", "N", "h"], outline: "b")
-    for dyE in 0..<4 { for dxE in 0..<4 { body[42 + dyE][38 + dxE] = "E" } }
-    body[42][40] = "W"; body[42][41] = "W"
-    fillEllipse(&body, cx: 54, cy: 50, rx: 2.2, ry: 1.8, "E")
-    composite(&g, body, dx: 0, dy: dy)
+    var feet = emptyGrid(w: SW, h: SH)
+    fillEllipse(&feet, cx: 40 + stride, cy: 78, rx: 5, ry: 5.5, "B")
+    fillEllipse(&feet, cx: 18 - stride, cy: 78, rx: 5, ry: 5.5, "B")
+    outlineShape(&feet, body: ["B"], outline: "b")
+    composite(&g, feet, dx: 0, dy: 0)
+    // teardrop: cape covers the back 2/3, face pokes out front-right
+    composite(&g, spikeCape(w: SW, h: SH, cx: 26, cy: 50, r: 24,
+                            sweep: 0, arcFrom: -250, arcTo: -20), dx: 0, dy: dy)
+    var face = emptyGrid(w: SW, h: SH)
+    shadeEllipse(&face, cx: 44, cy: 58, rx: 13, ry: 12, main: "N", hi: "Y", lo: "B", loThresh: -0.52)
+    fillEllipse(&face, cx: 55, cy: 61, rx: 7, ry: 5, "N")
+    outlineShape(&face, body: ["N", "Y", "B"], outline: "b")
+    for dyE in 0..<5 { for dxE in 0..<4 { face[50 + dyE][44 + dxE] = "E" } }
+    face[50][46] = "W"; face[51][46] = "W"
+    for dxE in 0..<5 { face[46][42 + dxE] = "b" }
+    fillEllipse(&face, cx: 58, cy: 60, rx: 2.2, ry: 1.8, "E")
+    composite(&g, face, dx: 0, dy: dy)
     return g
 }
 
 func spikeBattleIdle(frame: Int) -> Grid {
     var g = emptyGrid(w: BW, h: BH)
     let dy = frame == 1 ? 2 : 0
-    var spines = emptyGrid(w: BW, h: BH)
-    for (deg, len) in spikeSpineAngles {
-        drawSpike(&spines, baseX: 64, baseY: 60, angle: deg * .pi / 180,
-                  len: len * 2.2, baseR: 4.4, body: "D", tip: "L")
-    }
-    composite(&g, spines, dx: 0, dy: dy)
-    var body = emptyGrid(w: BW, h: BH)
-    fillEllipse(&body, cx: 46, cy: 108, rx: 9, ry: 9, "B")
-    fillEllipse(&body, cx: 82, cy: 108, rx: 9, ry: 9, "B")
-    shadeEllipse(&body, cx: 64, cy: 74, rx: 38, ry: 42, main: "B", hi: "h", lo: "b")
-    fillEllipse(&body, cx: 58, cy: 98, rx: 20, ry: 16, "Y")
-    fillEllipse(&body, cx: 62, cy: 68, rx: 16, ry: 12, "N")
-    outlineShape(&body, body: ["B", "Y", "N", "h"], outline: "b")
-    for (ex, ey) in [(44, 52), (74, 52)] {
-        for dyE in 0..<7 { for dxE in 0..<7 { body[ey + dyE][ex + dxE] = "E" } }
-        for dyE in 0..<3 { for dxE in 0..<3 { body[ey + dyE][ex + 4 + dxE] = "W" } }
-    }
-    fillEllipse(&body, cx: 63, cy: 66, rx: 4, ry: 3, "E")
-    composite(&g, body, dx: 0, dy: dy)
+    var feet = emptyGrid(w: BW, h: BH)
+    fillEllipse(&feet, cx: 46, cy: 112, rx: 9, ry: 9, "B")
+    fillEllipse(&feet, cx: 82, cy: 112, rx: 9, ry: 9, "B")
+    outlineShape(&feet, body: ["B"], outline: "b")
+    composite(&g, feet, dx: 0, dy: 0)
+    composite(&g, spikeCape(w: BW, h: BH, cx: 64, cy: 56, r: 44,
+                            tooth: 12, quillBase: 4.2), dx: 0, dy: dy)
+    composite(&g, spikeFacePlate(w: BW, h: BH, cx: 64, cy: 76, scale: 1.9),
+              dx: 0, dy: dy)
+    return g
+}
+
+func spikeBattleHurt() -> Grid {
+    var g = emptyGrid(w: BW, h: BH)
+    var feet = emptyGrid(w: BW, h: BH)
+    fillEllipse(&feet, cx: 46, cy: 112, rx: 9, ry: 9, "B")
+    fillEllipse(&feet, cx: 82, cy: 112, rx: 9, ry: 9, "B")
+    outlineShape(&feet, body: ["B"], outline: "b")
+    composite(&g, feet, dx: 0, dy: 0)
+    composite(&g, spikeCape(w: BW, h: BH, cx: 64, cy: 56, r: 44,
+                            sweep: -10, tooth: 11, quillBase: 4.0), dx: 4, dy: 4)
+    composite(&g, spikeFacePlate(w: BW, h: BH, cx: 64, cy: 76, scale: 1.9,
+                                 hurt: true), dx: 2, dy: 6)
     return g
 }
 
@@ -608,7 +624,6 @@ func spikeBattleAttack() -> Grid {
     var g = emptyGrid(w: BW, h: BH)
     var spines = emptyGrid(w: BW, h: BH)
     fillEllipse(&spines, cx: 64, cy: 72, rx: 34, ry: 34, "D")
-    // quills radiate outward from the disc edge
     for i in 0..<16 {
         let a = Double(i) * (.pi * 2 / 16) + 0.2
         let len = 12.0 + Double((i * 7) % 8)
@@ -616,7 +631,6 @@ func spikeBattleAttack() -> Grid {
         drawSpike(&spines, baseX: bx, baseY: by, angle: a, len: len,
                   baseR: 3.4, body: "D", tip: "L")
     }
-    // interior quill texture
     for i in 0..<10 {
         let a = Double(i) * (.pi * 2 / 10) + 0.5
         let bx = 64 + cos(a) * 14, by = 72 + sin(a) * 14
@@ -626,30 +640,8 @@ func spikeBattleAttack() -> Grid {
     composite(&g, spines, dx: 0, dy: 0)
     var core = emptyGrid(w: BW, h: BH)
     shadeEllipse(&core, cx: 64, cy: 72, rx: 16, ry: 16, main: "B", hi: "h", lo: "b")
-    outlineShape(&core, body: ["B", "h"], outline: "b")
+    outlineShape(&core, body: ["B", "h", "b"], outline: "b")
     composite(&g, core, dx: 0, dy: 0)
-    return g
-}
-
-func spikeBattleHurt() -> Grid {
-    var g = emptyGrid(w: BW, h: BH)
-    var spines = emptyGrid(w: BW, h: BH)
-    for (deg, len) in spikeSpineAngles {
-        drawSpike(&spines, baseX: 64, baseY: 60, angle: (deg - 8) * .pi / 180,
-                  len: len * 2.0, baseR: 4.0, body: "D", tip: "L")
-    }
-    composite(&g, spines, dx: 4, dy: 4)
-    var body = emptyGrid(w: BW, h: BH)
-    fillEllipse(&body, cx: 46, cy: 108, rx: 9, ry: 9, "B")
-    fillEllipse(&body, cx: 82, cy: 108, rx: 9, ry: 9, "B")
-    shadeEllipse(&body, cx: 64, cy: 74, rx: 38, ry: 42, main: "B", hi: "h", lo: "b")
-    fillEllipse(&body, cx: 58, cy: 98, rx: 20, ry: 16, "Y")
-    fillEllipse(&body, cx: 62, cy: 68, rx: 16, ry: 12, "N")
-    outlineShape(&body, body: ["B", "Y", "N"], outline: "b")
-    for (ex, ey) in [(44, 52), (74, 52)] {   // X eyes
-        for i in 0..<8 { body[ey + i][ex + i] = "E"; body[ey + i][ex + 7 - i] = "E" }
-    }
-    composite(&g, body, dx: 4, dy: 4)
     return g
 }
 
@@ -870,9 +862,10 @@ func pipBodyPart(lookLeft: Bool = false, cheekBulge: Int = 0) -> Grid {
     fillEllipse(&g, cx: 44, cy: 26, rx: 5.5, ry: 6.5, "K")
     // near-circular body, form-shaded
     shadeEllipse(&g, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
-    // cheek pouches (bulging, always full)
-    fillEllipse(&g, cx: 11 - Double(cheekBulge), cy: 56, rx: 6.5, ry: 7.5, "K")
-    fillEllipse(&g, cx: 53 + Double(cheekBulge), cy: 56, rx: 6.5, ry: 7.5, "K")
+    // cheek pouches on the lower face — asymmetric, left one fuller
+    // (he is always mid-snack)
+    fillEllipse(&g, cx: 12 - Double(cheekBulge), cy: 54, rx: 8, ry: 8.5, "K")
+    fillEllipse(&g, cx: 52 + Double(cheekBulge), cy: 55, rx: 6.5, ry: 7, "K")
     // chest tuft
     fillEllipse(&g, cx: 30, cy: 66, rx: 7, ry: 6, "Y")
     outlineShape(&g, body: ["K", "k", "Y"], outline: "k")
@@ -889,6 +882,11 @@ func pipBodyPart(lookLeft: Bool = false, cheekBulge: Int = 0) -> Grid {
     g[41][24] = "k"; g[40][25] = "k"; g[40][37] = "k"; g[41][38] = "k"
     // bright pink nose — his defining feature
     fillEllipse(&g, cx: 31.5, cy: 52, rx: 3, ry: 2.2, "O")
+    // tiny nub arms held up against the chest (ringed so they read on-body)
+    for armX in [23.0, 41.0] {
+        fillEllipse(&g, cx: armX, cy: 63, rx: 4.5, ry: 5.5, "k")
+        fillEllipse(&g, cx: armX, cy: 63, rx: 3.0, ry: 4.0, "K")
+    }
     // feet: tiny, barely visible
     g[78][26] = "k"; g[78][27] = "k"; g[78][37] = "k"; g[78][38] = "k"
     return g
@@ -941,6 +939,8 @@ func pipEastFrame(_ f: Int) -> Grid {
     for dy in 0..<5 { for dx in 0..<5 { body[44 + dy][40 + dx] = "E" } }
     body[45][43] = "W"
     fillEllipse(&body, cx: 54, cy: 50, rx: 2.8, ry: 2.2, "O")
+    fillEllipse(&body, cx: 44, cy: 62, rx: 4.5, ry: 5.5, "k")
+    fillEllipse(&body, cx: 44, cy: 62, rx: 3.0, ry: 4.0, "K")
     let dx = f == 0 ? 1 : (f == 2 ? -1 : 0)
     composite(&g, body, dx: dx, dy: f == 1 ? 1 : 0)
     return g
@@ -953,8 +953,8 @@ func pipBattleIdle(frame: Int) -> Grid {
     fillEllipse(&body, cx: 40, cy: 40, rx: 10, ry: 12, "K")
     fillEllipse(&body, cx: 86, cy: 44, rx: 10, ry: 12, "K")
     shadeEllipse(&body, cx: 64, cy: 78, rx: 42, ry: 46, main: "K", hi: "K", lo: "k")
-    fillEllipse(&body, cx: 18 - Double(puff), cy: 84, rx: 12, ry: 14, "K")
-    fillEllipse(&body, cx: 110 + Double(puff), cy: 84, rx: 12, ry: 14, "K")
+    fillEllipse(&body, cx: 17 - Double(puff), cy: 82, rx: 14, ry: 16, "K")
+    fillEllipse(&body, cx: 111 + Double(puff), cy: 84, rx: 11, ry: 13, "K")
     fillEllipse(&body, cx: 60, cy: 100, rx: 13, ry: 11, "Y")
     outlineShape(&body, body: ["K", "k", "Y"], outline: "k")
     fillEllipse(&body, cx: 40, cy: 42, rx: 4.5, ry: 6.5, "P")
@@ -965,6 +965,10 @@ func pipBattleIdle(frame: Int) -> Grid {
     }
     body[55][48] = "k"; body[54][50] = "k"; body[54][74] = "k"; body[55][76] = "k"
     fillEllipse(&body, cx: 62, cy: 76, rx: 6, ry: 4.4, "O")
+    for armX in [44.0, 84.0] {
+        fillEllipse(&body, cx: armX, cy: 96, rx: 8, ry: 10, "k")
+        fillEllipse(&body, cx: armX, cy: 96, rx: 5.5, ry: 7.5, "K")
+    }
     composite(&g, body, dx: 0, dy: 0)
     return g
 }
