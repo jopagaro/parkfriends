@@ -240,6 +240,36 @@ enum ImportedArt {
         fileTexture(relativePath: "\(worldParkBase)pixel-art-plain-bright-grass-fill-piece-70-16x16.png")
     }
 
+    /// Solid grass base — RGB(101,165,32), the exact green baked into the
+    /// pond/stone/hedge tileset borders, so edges blend seamlessly.
+    static func parkGrassBaseTile() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-solid-dark-green-grass-square-tile-16x16.png")
+    }
+
+    /// Furniture sheet (144×96 = 9×6 of 16×16). (6,2) = rounded wood chair.
+    static func parkFurnitureTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-basic-furniture-beds-tables-chairs-rugs-cabinets-tileset-144x96.png",
+                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+    }
+
+    /// Sprout Wood Bridge sheet (80×48): vertical 2×3-tile walkway at left.
+    static func sproutBridgeVertical() -> SKTexture? {
+        sheetTexture(relativePath: "\(sproutBase)Objects/Wood Bridge.png",
+                     tileSize: CGSize(width: 32, height: 48), col: 0, row: 0)
+    }
+
+    /// Horizontal 3×1-tile walkway strip from the same sheet (pier/dock).
+    static func sproutBridgeHorizontal() -> SKTexture? {
+        guard let full = cgImage(at: "\(sproutBase)Objects/Wood Bridge.png"),
+              let crop = full.cropping(to: CGRect(x: 32, y: 0, width: 48, height: 16)) else { return nil }
+        let key = "bridge-horizontal-strip"
+        if let cached = textureCache[key] { return cached }
+        let tex = SKTexture(cgImage: crop)
+        tex.filteringMode = .nearest
+        textureCache[key] = tex
+        return tex
+    }
+
     /// Gray stone block (statue pedestal).
     static func parkStoneBlockTile() -> SKTexture? {
         fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-block-tile-16x16.png")
@@ -351,6 +381,30 @@ enum ImportedArt {
     static func woodFenceTile(col: Int, row: Int) -> SKTexture? {
         sheetTexture(relativePath: "\(worldSuburbBase)pixel-art-wood-post-and-rail-fence-corners-and-segments-tileset-64x64.png",
                      tileSize: CGSize(width: 16, height: 16), col: col, row: row)
+    }
+
+    /// Fence sheet adapter for the standard blob autotiler. The fence sheet's
+    /// own layout is: 3×3 blob at cols 1-3 / rows 0-2, post column at col 0,
+    /// low horizontal rails at row 3.
+    static func suburbFenceBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        let path = "\(worldSuburbBase)pixel-art-wood-post-and-rail-fence-corners-and-segments-tileset-64x64.png"
+        let mapped: (Int, Int)
+        switch (col, rowFromTop) {
+        case (3, 0):          mapped = (0, 3)                    // isolated post
+        case (let c, 0):      mapped = (c < 2 ? 1 : 2, 3)        // horizontal run
+        case (3, let r):      mapped = (0, r - 1)                // vertical run
+        case (let c, let r):  mapped = (c + 1, r - 1)            // blob
+        }
+        return sheetTextureFromTop(relativePath: path,
+                                   tileSize: CGSize(width: 16, height: 16),
+                                   col: mapped.0, rowFromTop: mapped.1)
+    }
+
+    /// Purple-blue brick street pavement (48×32 = 3×2 of 16×16).
+    static func suburbPavementTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldSuburbBase)pixel-art-purple-blue-brick-street-pavement-tile-48x32.png",
+                            tileSize: CGSize(width: 16, height: 16),
+                            col: ((col % 3) + 3) % 3, rowFromTop: ((rowFromTop % 2) + 2) % 2)
     }
 
     static func sproutBridgeTexture(col: Int, row: Int) -> SKTexture? {

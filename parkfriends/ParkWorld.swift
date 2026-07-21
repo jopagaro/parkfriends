@@ -89,10 +89,13 @@ enum ParkWorld {
                          tile: ImportedArt.parkPathBlobTile)
 
         // §4.8 — Wooden bridge where the main N-S path crosses the creek
-        // diagonal. Collision below leaves this band open so it stays walkable.
-        let bridgeTex = ImportedArt.fileTexture(
-            relativePath: "textures.downloaded.sprites/Sprout Lands - Sprites - Basic pack/Objects/Wood Bridge.png")
-        painter.placeSprite(SpecRect(44, 12, 4, 3), texture: bridgeTex, layer: .props)
+        // diagonal: the path funnels onto a 2-wide plank walkway. Collision
+        // below leaves x=45..46 open and rails off the water beside it.
+        painter.placeSprite(SpecRect(45, 12, 2, 3),
+                            texture: ImportedArt.sproutBridgeVertical(),
+                            layer: .props)
+        painter.addBlockingRect(SpecRect(44, 12, 1, 3))
+        painter.addBlockingRect(SpecRect(47, 12, 1, 3))
 
         // §4.4 / §4.5 — Trees with collision.
         painter.placeTree(SpecRect(4, 46, 4, 6),  texture: ImportedArt.parkLargeTree())     // oak landmark
@@ -153,8 +156,10 @@ enum ParkWorld {
                             layer: .props)
         painter.placeRock(SpecRect(70, 42, 2, 2), variant: 6)
 
-        // §4.9 — Pier: wood planks extending east into the pond.
-        painter.placeSprite(SpecRect(26, 18, 4, 3), texture: bridgeTex, layer: .props)
+        // §4.9 — Pier: horizontal plank walkway extending east into the pond.
+        painter.placeSprite(SpecRect(26, 19, 3, 1),
+                            texture: ImportedArt.sproutBridgeHorizontal(),
+                            layer: .props)
 
         // §4.9 — Shore reeds.
         for (xT, yT) in [(9, 22), (11, 28), (26, 26), (14, 18), (22, 28)] {
@@ -181,13 +186,13 @@ enum ParkWorld {
         for (xT, yT) in [(40, 19), (49, 19), (40, 28), (49, 28)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 2), texture: lampTex, layer: .props)
         }
-        let chairTex = ImportedArt.parkBenchChair()
+        let chairTex = ImportedArt.parkFurnitureTile(col: 6, rowFromTop: 2)
         for (xT, yT) in [
-            (44, 19), (45, 19),      // bench facing fountain from north
-            (44, 29), (45, 29),      // south
-            (50, 23), (38, 23)       // east / west singles
+            (44, 20), (45, 20),      // bench facing fountain from north
+            (44, 30), (45, 30),      // south
+            (50, 24), (38, 24)       // east / west singles
         ] {
-            painter.placeSprite(SpecRect(xT, yT, 1, 2), texture: chairTex, layer: .props)
+            painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: chairTex, layer: .props)
         }
 
         // §4.10/§4.11 — Plaza flower beds (textured).
@@ -205,8 +210,8 @@ enum ParkWorld {
             painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: t, layer: .decor)
         }
         // §4.11 — Bench facing the statue.
-        painter.placeSprite(SpecRect(70, 46, 1, 2), texture: chairTex, layer: .props)
-        painter.placeSprite(SpecRect(71, 46, 1, 2), texture: chairTex, layer: .props)
+        painter.placeSprite(SpecRect(70, 47, 1, 1), texture: chairTex, layer: .props)
+        painter.placeSprite(SpecRect(71, 47, 1, 1), texture: chairTex, layer: .props)
 
         // §4.12 — Bushes scattered. Density pass: ~30 sprinkles.
         let bushTextures = [
@@ -233,8 +238,8 @@ enum ParkWorld {
             painter.center(SpecRect($0.0, $0.1, 1, 1))
         }
         for (xT, yT) in benchSpots {
-            painter.placeSprite(SpecRect(xT, yT - 1, 1, 2), texture: chairTex, layer: .props)
-            painter.placeSprite(SpecRect(xT + 1, yT - 1, 1, 2), texture: chairTex, layer: .props)
+            painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: chairTex, layer: .props)
+            painter.placeSprite(SpecRect(xT + 1, yT, 1, 1), texture: chairTex, layer: .props)
         }
 
         // Pond collision: one big rectangular wall covering the pond bounds.
@@ -325,21 +330,203 @@ enum ParkWorld {
         )
     }
 
-    // MARK: - Suburb (Zone 1A) — MAP_SPEC §3 (not yet populated)
+    // MARK: - Suburb (Zone 1A) — MAP_SPEC §3, adapted to the 105×50 canvas
 
     static func buildNorth() -> BuildResult {
         let root = SKNode(); root.name = "world"
-        let cols = GameConstants.parkNorthCols
-        let rows = GameConstants.parkNorthRows
-        let tile = GameConstants.tileSize
-        let spawn = CGPoint(x: CGFloat(cols) * tile / 2, y: CGFloat(rows) * tile / 2)
+        let painter = ScenePainter(
+            root: root,
+            cols: GameConstants.parkNorthCols,
+            rows: GameConstants.parkNorthRows
+        )
+        let cols = painter.cols, rows = painter.rows
+
+        // §3.2 — L0 grass everywhere.
+        painter.fillGrass(rect: SpecRect(0, 0, cols, rows))
+
+        // §3.2 — Road band across the full width, sidewalk curbs above/below.
+        let roadRect = SpecRect(0, 21, cols, 5)
+        for yT in roadRect.y..<(roadRect.y + roadRect.h) {
+            for xT in 0..<cols {
+                painter.place1x1(at: xT, yT,
+                                 texture: ImportedArt.suburbPavementTile(col: xT, rowFromTop: yT),
+                                 z: PaintLayer.ground.z + 0.2)
+            }
+        }
+        for yT in [20, 26] {
+            for xT in 0..<cols {
+                painter.place1x1(at: xT, yT,
+                                 texture: ImportedArt.parkStoneTile(variant: (xT + yT) % 3),
+                                 z: PaintLayer.ground.z + 0.2)
+            }
+        }
+
+        // §3.2 — Dirt path from the road down to the park gap (x=44..47).
+        painter.autotile(painter.tiles([SpecRect(44, 27, 4, 23)]),
+                         z: PaintLayer.ground.z + 0.3,
+                         tile: ImportedArt.parkPathBlobTile)
+
+        // §3.9 — Creek: spring at the east tree line, diagonal SW through the
+        // lower lawn, then straight south to the park scene (x=49..50 there).
+        let creekRects = [
+            SpecRect(97, 28, 6, 2), SpecRect(92, 29, 6, 2), SpecRect(87, 30, 6, 2),
+            SpecRect(82, 31, 6, 2), SpecRect(77, 32, 6, 2), SpecRect(72, 33, 6, 2),
+            SpecRect(67, 34, 6, 2), SpecRect(62, 35, 6, 2), SpecRect(57, 36, 6, 2),
+            SpecRect(52, 37, 6, 2), SpecRect(49, 38, 4, 2), SpecRect(49, 38, 2, 12)
+        ]
+        painter.autotile(painter.tiles(creekRects),
+                         z: PaintLayer.ground.z + 0.1,
+                         tile: ImportedArt.pondBlobTile)
+        for r in creekRects { painter.addBlockingRect(r) }
+
+        // §3.12 — Secret-lab plot (top-left): fenced yard, lab house, trees,
+        // stone driveway to the road with a gate gap.
+        fenceRing(painter, SpecRect(3, 2, 17, 13), gateXs: [10, 11])
+        painter.placeSprite(SpecRect(7, 4, 7, 5),
+                            texture: ImportedArt.suburbHouseExterior(), layer: .props)
+        painter.addBlockingRect(SpecRect(7, 4, 7, 5))
+        painter.placeTree(SpecRect(4, 3, 2, 2),  texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(16, 3, 2, 2), texture: ImportedArt.parkMediumTree())
+        painter.autotile(painter.tiles([SpecRect(10, 9, 2, 12)]),
+                         z: PaintLayer.ground.z + 0.25,
+                         tile: ImportedArt.parkStoneBlobTile)
+
+        // §3.3 — Hedge separator between lab plot and the main suburb row.
+        painter.autotile(painter.tiles([SpecRect(21, 2, 1, 13)]),
+                         z: PaintLayer.props.z,
+                         tile: ImportedArt.parkHedgeBlobTile)
+        painter.addBlockingRect(SpecRect(21, 2, 1, 13))
+
+        // §3.4/§3.5/§3.6/§3.11 — Six row-houses with fenced front yards,
+        // yard trees, flowers, and driveways down to the north sidewalk.
+        let topRowXs = [24, 37, 50, 63, 76, 89]
+        for hx in topRowXs {
+            painter.placeSprite(SpecRect(hx, 6, 7, 5),
+                                texture: ImportedArt.suburbHouseExterior(), layer: .props)
+            painter.addBlockingRect(SpecRect(hx, 6, 7, 5))
+            fenceRing(painter, SpecRect(hx - 1, 11, 9, 5), gateXs: [hx + 3, hx + 4])
+            painter.placeTree(SpecRect(hx, 4, 2, 2),     texture: ImportedArt.parkMediumTree())
+            painter.placeTree(SpecRect(hx + 5, 4, 2, 2), texture: ImportedArt.parkMediumTree())
+            for (fx, tex) in [(hx + 1, ImportedArt.parkBiomSprite(col: 1, row: 1)),
+                              (hx + 6, ImportedArt.parkBiomSprite(col: 3, row: 1))] {
+                painter.placeSprite(SpecRect(fx, 13, 1, 1), texture: tex, layer: .decor)
+            }
+            painter.autotile(painter.tiles([SpecRect(hx + 3, 16, 2, 4)]),
+                             z: PaintLayer.ground.z + 0.25,
+                             tile: ImportedArt.parkStoneBlobTile)
+        }
+
+        // §3.4/§3.15 — Lower suburb: two houses + a small cottage.
+        for hx in [8, 22] {
+            painter.placeSprite(SpecRect(hx, 30, 7, 5),
+                                texture: ImportedArt.suburbHouseExterior(), layer: .props)
+            painter.addBlockingRect(SpecRect(hx, 30, 7, 5))
+            fenceRing(painter, SpecRect(hx - 1, 35, 9, 5), gateXs: [hx + 3, hx + 4])
+            painter.autotile(painter.tiles([SpecRect(hx + 3, 27, 2, 3)]),
+                             z: PaintLayer.ground.z + 0.25,
+                             tile: ImportedArt.parkStoneBlobTile)
+        }
+        painter.placeSprite(SpecRect(4, 42, 5, 4),
+                            texture: ImportedArt.suburbHouseExterior(), layer: .props)
+        painter.addBlockingRect(SpecRect(4, 42, 5, 4))
+
+        // Lawn dressing: scattered trees, bushes, and a bench by the path.
+        painter.placeTree(SpecRect(34, 40, 3, 3), texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(70, 42, 2, 2), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(88, 40, 2, 3), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(58, 44, 2, 2), texture: ImportedArt.parkWideTree())
+        for (bx, by) in [(30, 36), (55, 42), (78, 38), (16, 47), (68, 46)] {
+            painter.placeSprite(SpecRect(bx, by, 1, 1),
+                                texture: ImportedArt.parkBiomSprite(col: 6, row: 4),
+                                layer: .decor)
+        }
+        let chairTex = ImportedArt.parkFurnitureTile(col: 6, rowFromTop: 2)
+        painter.placeSprite(SpecRect(52, 44, 1, 1), texture: chairTex, layer: .props)
+        painter.placeSprite(SpecRect(53, 44, 1, 1), texture: chairTex, layer: .props)
+        let benchPositions = [painter.center(SpecRect(52, 45, 1, 1))]
+
+        // §3.3 — Tree-wall hedge border, 2 thick, gap at the park path (S).
+        var hedgeTiles = painter.tiles([
+            SpecRect(0, 0, cols, 2), SpecRect(0, rows - 2, cols, 2),
+            SpecRect(0, 2, 2, rows - 4), SpecRect(cols - 2, 2, 2, rows - 4)
+        ])
+        hedgeTiles.subtract(painter.tiles([SpecRect(44, rows - 2, 4, 2)]))
+        painter.autotile(hedgeTiles,
+                         z: PaintLayer.props.z,
+                         tile: ImportedArt.parkHedgeBlobTile)
+        for wall in [
+            SpecRect(0, 0, cols, 2),
+            SpecRect(0, rows - 2, 44, 2), SpecRect(48, rows - 2, cols - 48, 2),
+            SpecRect(0, 2, 2, rows - 4), SpecRect(cols - 2, 2, 2, rows - 4)
+        ] {
+            painter.addBlockingRect(wall)
+        }
+        painter.addSceneBoundary()
+
+        // Zone exit: south path gap back into the park.
+        let sExit = ZoneExitNode(
+            destination: .parkCenter,
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "Park"
+        )
+        sExit.position = painter.center(SpecRect(44, rows - 1, 4, 1))
+        root.addChild(sExit)
+
+        let playerSpawn = painter.center(SpecRect(46, 46, 1, 1))
+
+        let npcSpawns: [CGPoint] = [
+            SpecRect(30, 18, 1, 1), SpecRect(70, 18, 1, 1),
+            SpecRect(40, 33, 1, 1), SpecRect(80, 44, 1, 1)
+        ].map(painter.center)
+
+        let itemSpawns: [CGPoint] = [
+            SpecRect(12, 18, 1, 1), SpecRect(58, 18, 1, 1),
+            SpecRect(26, 44, 1, 1), SpecRect(92, 46, 1, 1)
+        ].map(painter.center)
+
+        // Suburban threats: organized pigeons and one profoundly
+        // disappointed adult.
+        let enemySpawns: [(EnemyKind, CGPoint)] = [
+            (.pigeon,     painter.center(SpecRect(56, 28, 1, 1))),
+            (.pigeon,     painter.center(SpecRect(33, 18, 1, 1))),
+            (.sternAdult, painter.center(SpecRect(75, 27, 1, 1)))
+        ]
+
         return BuildResult(
             root: root,
-            npcSpawns: [], itemSpawns: [], fixedItems: [], enemySpawns: [],
-            playerSpawn: spawn,
-            benchPositions: [], zoneExitNodes: [],
+            npcSpawns: npcSpawns,
+            itemSpawns: itemSpawns,
+            fixedItems: [],
+            enemySpawns: enemySpawns,
+            playerSpawn: playerSpawn,
+            benchPositions: benchPositions,
+            zoneExitNodes: [sExit],
             pressurePlate: nil, gate: nil, chest: nil, boulder: nil
         )
+    }
+
+    /// Paints a 1-thick fence ring with gate gaps on the bottom edge, and
+    /// adds matching collision segments.
+    private static func fenceRing(_ painter: ScenePainter, _ rect: SpecRect, gateXs: [Int]) {
+        let x2 = rect.x + rect.w - 1, y2 = rect.y + rect.h - 1
+        var ring = painter.tiles([
+            SpecRect(rect.x, rect.y, rect.w, 1), SpecRect(rect.x, y2, rect.w, 1),
+            SpecRect(rect.x, rect.y, 1, rect.h), SpecRect(x2, rect.y, 1, rect.h)
+        ])
+        for gx in gateXs { ring.remove(TileXY(x: gx, y: y2)) }
+        painter.autotile(ring, z: PaintLayer.decor.z + 0.5,
+                         tile: ImportedArt.suburbFenceBlobTile)
+        let gateMin = gateXs.min() ?? x2 + 1
+        let gateMax = gateXs.max() ?? x2 + 1
+        painter.addBlockingRect(SpecRect(rect.x, rect.y, rect.w, 1))
+        painter.addBlockingRect(SpecRect(rect.x, rect.y, 1, rect.h))
+        painter.addBlockingRect(SpecRect(x2, rect.y, 1, rect.h))
+        if gateMin > rect.x + 1 {
+            painter.addBlockingRect(SpecRect(rect.x, y2, gateMin - rect.x, 1))
+        }
+        if gateMax < x2 - 1 {
+            painter.addBlockingRect(SpecRect(gateMax + 1, y2, x2 - gateMax, 1))
+        }
     }
 }
 
@@ -410,10 +597,15 @@ private final class ScenePainter {
     }
 
     func fillGrass(rect: SpecRect) {
-        let tex = ImportedArt.parkBrightGrassTile()
+        // Solid base in the tilesets' shared green, with a sparse sprout tile
+        // every ~13th cell for texture without noise.
+        let base = ImportedArt.parkGrassBaseTile()
         for yT in rect.y..<(rect.y + rect.h) {
             for xT in rect.x..<(rect.x + rect.w) {
-                place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z)
+                let sprinkle = (xT * 7 + yT * 13) % 13 == 0
+                place1x1(at: xT, yT,
+                         texture: sprinkle ? ImportedArt.darkGrassTile(variant: (xT + yT) % 3) : base,
+                         z: PaintLayer.ground.z)
             }
         }
     }
@@ -585,7 +777,7 @@ private final class ScenePainter {
         }
     }
 
-    private func place1x1(at xT: Int, _ yT: Int, texture: SKTexture?, z: CGFloat) {
+    func place1x1(at xT: Int, _ yT: Int, texture: SKTexture?, z: CGFloat) {
         guard let texture else { return }
         texture.filteringMode = .nearest
         let s = SKSpriteNode(texture: texture, size: CGSize(width: tile, height: tile))
