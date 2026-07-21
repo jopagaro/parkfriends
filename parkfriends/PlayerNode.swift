@@ -14,7 +14,7 @@ final class PlayerNode: SKSpriteNode {
     init(species: Species) {
         self.species = species
         let texture = CharacterSprites.standingTexture(species: species)
-        super.init(texture: texture, color: .clear, size: CGSize(width: 48, height: 72))
+        super.init(texture: texture, color: .clear, size: CGSize(width: 44, height: 66))
         name = "player"
         zPosition = GameConstants.ZPos.entity
 

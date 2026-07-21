@@ -98,9 +98,16 @@ final class NPCNode: SKSpriteNode {
         self.kind = kind
         self.animalVariant = variant
 
-        // All animal NPCs now use square sources (cat/raccoon/bird/fox = 32×32,
-        // dog walk-cycle from 56Dogs = 16×16). Display uniformly at 48×48.
-        let displaySize = CGSize(width: 48, height: 48)
+        // EarthBound-style scale: adult humans stand taller than the animal
+        // party (player is 44×66); ambient critters stay small.
+        let displaySize: CGSize
+        switch kind {
+        case .rangerGuide, .jogger, .child, .birdwatcher, .dogwalker,
+             .gardener, .worker, .shopkeeper:
+            displaySize = CGSize(width: 46, height: 68)
+        default:
+            displaySize = CGSize(width: 40, height: 40)
+        }
 
         let firstFrame = NPCNode.firstFrame(for: kind, variant: variant)
         super.init(texture: firstFrame, color: .clear, size: displaySize)

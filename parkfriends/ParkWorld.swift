@@ -98,15 +98,15 @@ enum ParkWorld {
         painter.addBlockingRect(SpecRect(47, 12, 1, 3))
 
         // §4.4 / §4.5 — Trees with collision.
-        painter.placeTree(SpecRect(4, 46, 4, 6),  texture: ImportedArt.parkLargeTree())     // oak landmark
-        painter.placeTree(SpecRect(12, 4, 3, 3),  texture: ImportedArt.parkLargeTree())
-        painter.placeTree(SpecRect(60, 6, 3, 3),  texture: ImportedArt.parkLargeTree())
-        painter.placeTree(SpecRect(80, 10, 2, 2), texture: ImportedArt.parkMediumTree())
-        painter.placeTree(SpecRect(34, 32, 2, 3), texture: ImportedArt.parkTallConifer())
-        painter.placeTree(SpecRect(56, 50, 2, 2), texture: ImportedArt.parkMediumTree())
-        painter.placeTree(SpecRect(82, 52, 2, 2), texture: ImportedArt.parkWideTree())
-        painter.placeTree(SpecRect(18, 38, 1, 2), texture: ImportedArt.parkSmallConifer())
-        painter.placeTree(SpecRect(28, 56, 2, 2), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(3, 44, 5, 8),  texture: ImportedArt.parkLargeTree())     // oak landmark
+        painter.placeTree(SpecRect(11, 3, 4, 5),  texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(59, 4, 4, 5),  texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(79, 8, 3, 4),  texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(33, 30, 3, 5), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(55, 48, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(81, 50, 3, 4), texture: ImportedArt.parkWideTree())
+        painter.placeTree(SpecRect(17, 36, 2, 4), texture: ImportedArt.parkSmallConifer())
+        painter.placeTree(SpecRect(27, 54, 3, 4), texture: ImportedArt.parkMediumTree())
 
         // Density pass: 16 more medium/small trees scattered in empty grass quadrants.
         // (Avoiding paths, plaza, pond, and the perimeter where the tree-wall sits.)
@@ -385,8 +385,8 @@ enum ParkWorld {
                             texture: ImportedArt.generatedHouse(variant: "dark_purple"),
                             layer: .props)
         painter.addBlockingRect(SpecRect(7, 4, 7, 5))
-        painter.placeTree(SpecRect(4, 3, 2, 2),  texture: ImportedArt.parkMediumTree())
-        painter.placeTree(SpecRect(16, 3, 2, 2), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(4, 2, 3, 4),  texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(15, 2, 3, 4), texture: ImportedArt.parkMediumTree())
         painter.autotile(painter.tiles([SpecRect(10, 9, 2, 12)]),
                          z: PaintLayer.ground.z + 0.25,
                          tile: ImportedArt.parkStoneBlobTile)
@@ -408,8 +408,8 @@ enum ParkWorld {
                                 texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
             painter.addBlockingRect(SpecRect(hx, 6, 7, 5))
             fenceRing(painter, SpecRect(hx - 1, 11, 9, 5), gateXs: [hx + 3, hx + 4])
-            painter.placeTree(SpecRect(hx, 4, 2, 2),     texture: ImportedArt.parkMediumTree())
-            painter.placeTree(SpecRect(hx + 5, 4, 2, 2), texture: ImportedArt.parkMediumTree())
+            painter.placeTree(SpecRect(hx, 2, 3, 4),     texture: ImportedArt.parkMediumTree())
+            painter.placeTree(SpecRect(hx + 4, 2, 3, 4), texture: ImportedArt.parkMediumTree())
             for (fx, tex) in [(hx + 1, ImportedArt.parkBiomSprite(col: 1, row: 1)),
                               (hx + 6, ImportedArt.parkBiomSprite(col: 3, row: 1))] {
                 painter.placeSprite(SpecRect(fx, 13, 1, 1), texture: tex, layer: .decor)
@@ -434,10 +434,10 @@ enum ParkWorld {
         painter.addBlockingRect(SpecRect(4, 42, 5, 4))
 
         // Lawn dressing: scattered trees, bushes, and a bench by the path.
-        painter.placeTree(SpecRect(34, 40, 3, 3), texture: ImportedArt.parkLargeTree())
-        painter.placeTree(SpecRect(70, 42, 2, 2), texture: ImportedArt.parkMediumTree())
-        painter.placeTree(SpecRect(88, 40, 2, 3), texture: ImportedArt.parkTallConifer())
-        painter.placeTree(SpecRect(58, 44, 2, 2), texture: ImportedArt.parkWideTree())
+        painter.placeTree(SpecRect(33, 38, 4, 6), texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(69, 40, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(87, 38, 3, 5), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(57, 42, 3, 4), texture: ImportedArt.parkWideTree())
         for (bx, by) in [(30, 36), (55, 42), (78, 38), (16, 47), (68, 46)] {
             painter.placeSprite(SpecRect(bx, by, 1, 1),
                                 texture: ImportedArt.parkBiomSprite(col: 6, row: 4),
