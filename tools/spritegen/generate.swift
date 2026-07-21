@@ -41,6 +41,8 @@ let palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     // Pip (hamster)
     "K": (0xE0, 0xC0, 0xA0, 255), // cream
     "k": (0xC4, 0xA0, 0x7A, 255), // warm cream shadow
+    "J": (0xE8, 0xA8, 0x55, 255), // hamster golden coat
+    "j": (0xC0, 0x80, 0x38, 255), // golden shadow/outline
     "O": (0xE8, 0x60, 0x60, 255), // bright pink nose
     "Q": (0xD4, 0xB0, 0x30, 255), // gold (chaos star)
 ]
@@ -897,44 +899,54 @@ func hazelBattleHurt() -> Grid {
     return g
 }
 
-// MARK: - PIP (hamster, chaos) — bible §4.2
-// Nearly circular. Cheek pouches always full (60% of body width),
-// bright pink nose, close-set worried eyes, left ear higher.
+// MARK: - PIP (hamster, chaos) — golden two-tone redesign
+// Not-Kirby rules: Syrian-hamster golden coat with cream muzzle + belly
+// patches, big uneven ears (left higher), crown tuft, whiskers, tiny mouth,
+// nub arms, always-full asymmetric cheek pouches.
 
-func pipBodyPart(lookLeft: Bool = false, cheekBulge: Int = 0) -> Grid {
+func pipBodyPart(lookLeft: Bool = false, cheekBulge: Int = 0, hurt: Bool = false) -> Grid {
     var g = emptyGrid(w: SW, h: SH)
-    // ears behind (left ear 2px higher — perpetual confusion)
-    fillEllipse(&g, cx: 20, cy: 24, rx: 5.5, ry: 6.5, "K")
-    fillEllipse(&g, cx: 44, cy: 26, rx: 5.5, ry: 6.5, "K")
-    // near-circular body, form-shaded
-    shadeEllipse(&g, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
-    // cheek pouches on the lower face — asymmetric, left one fuller
-    // (he is always mid-snack)
-    fillEllipse(&g, cx: 12 - Double(cheekBulge), cy: 54, rx: 8, ry: 8.5, "K")
-    fillEllipse(&g, cx: 52 + Double(cheekBulge), cy: 55, rx: 6.5, ry: 7, "K")
-    // chest tuft
-    fillEllipse(&g, cx: 30, cy: 66, rx: 7, ry: 6, "Y")
-    outlineShape(&g, body: ["K", "k", "Y"], outline: "k")
+    // ears first (left 3px higher — perpetual confusion)
+    fillEllipse(&g, cx: 21, cy: 27, rx: 6.5, ry: 7.5, "J")
+    fillEllipse(&g, cx: 43, cy: 29, rx: 6.5, ry: 7.5, "J")
+    // golden body mass
+    shadeEllipse(&g, cx: 32, cy: 54, rx: 23, ry: 25, main: "J", hi: "J", lo: "j")
+    // cheek pouches — asymmetric, left always fuller
+    fillEllipse(&g, cx: 12 - Double(cheekBulge), cy: 54, rx: 8, ry: 8.5, "J")
+    fillEllipse(&g, cx: 52 + Double(cheekBulge), cy: 55, rx: 6.5, ry: 7, "J")
+    // cream muzzle + belly patches (classic hamster markings)
+    fillEllipse(&g, cx: 32, cy: 52, rx: 13, ry: 9, "K")
+    fillEllipse(&g, cx: 32, cy: 72, rx: 12, ry: 9, "K")
+    outlineShape(&g, body: ["J", "j", "K"], outline: "j")
     // inner ears after outline
-    fillEllipse(&g, cx: 20, cy: 25, rx: 2.5, ry: 3.5, "P")
-    fillEllipse(&g, cx: 44, cy: 27, rx: 2.5, ry: 3.5, "P")
+    fillEllipse(&g, cx: 21, cy: 28, rx: 3, ry: 4, "P")
+    fillEllipse(&g, cx: 43, cy: 30, rx: 3, ry: 4, "P")
+    // messy crown tuft
+    drawSpike(&g, baseX: 30, baseY: 31, angle: -1.75, len: 4, baseR: 1.4, body: "J", tip: "J")
+    drawSpike(&g, baseX: 34, baseY: 31, angle: -1.35, len: 4.5, baseR: 1.4, body: "J", tip: "J")
     // close-set worried eyes
     let shift = lookLeft ? -2 : 0
-    for (ex, ey) in [(25, 44), (33, 44)] {
-        for dy in 0..<5 { for dx in 0..<5 { g[ey + dy][ex + dx] = "E" } }
-        g[ey + 1][ex + 3 + shift] = "W"; g[ey + 1][ex + 2 + shift] = "W"
+    for (ex, ey) in [(24, 41), (34, 41)] {
+        if hurt {
+            for i in 0..<6 { g[ey + i][ex + i] = "E"; g[ey + i][ex + 5 - i] = "E" }
+        } else {
+            for dy in 0..<6 { for dx in 0..<5 { g[ey + dy][ex + dx] = "E" } }
+            g[ey + 1][ex + 3 + shift] = "W"; g[ey + 1][ex + 2 + shift] = "W"
+        }
     }
-    // worry brows (tilted outward)
-    g[41][24] = "k"; g[40][25] = "k"; g[40][37] = "k"; g[41][38] = "k"
-    // bright pink nose — his defining feature
-    fillEllipse(&g, cx: 31.5, cy: 52, rx: 3, ry: 2.2, "O")
-    // tiny nub arms held up against the chest (ringed so they read on-body)
+    // worry brows
+    g[38][23] = "j"; g[37][24] = "j"; g[37][38] = "j"; g[38][39] = "j"
+    // bright pink nose, tiny mouth, whisker dots on the muzzle
+    fillEllipse(&g, cx: 32, cy: 50, rx: 3, ry: 2.2, "O")
+    g[54][30] = "j"; g[55][32] = "j"; g[54][34] = "j"
+    for (wx, wy) in [(22, 51), (21, 54), (42, 51), (43, 54)] { g[wy][wx] = "j" }
+    // nub arms held against the belly patch
     for armX in [23.0, 41.0] {
-        fillEllipse(&g, cx: armX, cy: 63, rx: 4.5, ry: 5.5, "k")
-        fillEllipse(&g, cx: armX, cy: 63, rx: 3.0, ry: 4.0, "K")
+        fillEllipse(&g, cx: armX, cy: 65, rx: 4.5, ry: 5.5, "j")
+        fillEllipse(&g, cx: armX, cy: 65, rx: 3.0, ry: 4.0, "J")
     }
-    // feet: tiny, barely visible
-    g[78][26] = "k"; g[78][27] = "k"; g[78][37] = "k"; g[78][38] = "k"
+    // tiny feet
+    g[79][26] = "j"; g[79][27] = "j"; g[79][37] = "j"; g[79][38] = "j"
     return g
 }
 
@@ -958,14 +970,17 @@ func pipNorthFrame(_ f: Int) -> Grid {
     fillEllipse(&sh, cx: 32, cy: 84, rx: 22, ry: 4, "S")
     composite(&g, sh, dx: 0, dy: 0)
     var body = emptyGrid(w: SW, h: SH)
-    fillEllipse(&body, cx: 20, cy: 24, rx: 5.5, ry: 6.5, "K")
-    fillEllipse(&body, cx: 44, cy: 26, rx: 5.5, ry: 6.5, "K")
-    shadeEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
-    fillEllipse(&body, cx: 11, cy: 56, rx: 6.5, ry: 7.5, "K")
-    fillEllipse(&body, cx: 53, cy: 56, rx: 6.5, ry: 7.5, "K")
-    outlineShape(&body, body: ["K", "k"], outline: "k")
-    // tail dot
-    fillEllipse(&body, cx: 32, cy: 74, rx: 2.5, ry: 2, "k")
+    fillEllipse(&body, cx: 21, cy: 27, rx: 6.5, ry: 7.5, "J")
+    fillEllipse(&body, cx: 43, cy: 29, rx: 6.5, ry: 7.5, "J")
+    shadeEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, main: "J", hi: "J", lo: "j")
+    fillEllipse(&body, cx: 12, cy: 54, rx: 8, ry: 8.5, "J")
+    fillEllipse(&body, cx: 52, cy: 55, rx: 6.5, ry: 7, "J")
+    outlineShape(&body, body: ["J", "j"], outline: "j")
+    drawSpike(&body, baseX: 30, baseY: 31, angle: -1.75, len: 4, baseR: 1.4, body: "J", tip: "J")
+    drawSpike(&body, baseX: 34, baseY: 31, angle: -1.35, len: 4.5, baseR: 1.4, body: "J", tip: "J")
+    // cream rump patch + tail nub
+    fillEllipse(&body, cx: 32, cy: 72, rx: 9, ry: 6, "K")
+    fillEllipse(&body, cx: 32, cy: 75, rx: 2.5, ry: 2, "j")
     let dx = f == 0 ? -1 : (f == 2 ? 1 : 0)
     composite(&g, body, dx: dx, dy: 0)
     return g
@@ -977,16 +992,21 @@ func pipEastFrame(_ f: Int) -> Grid {
     fillEllipse(&sh, cx: 32, cy: 84, rx: 22, ry: 4, "S")
     composite(&g, sh, dx: 0, dy: 0)
     var body = emptyGrid(w: SW, h: SH)
-    fillEllipse(&body, cx: 26, cy: 24, rx: 5.5, ry: 6.5, "K")     // ear
-    shadeEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
-    fillEllipse(&body, cx: 50, cy: 56, rx: 7, ry: 8, "K")          // cheek right
-    outlineShape(&body, body: ["K", "k"], outline: "k")
-    fillEllipse(&body, cx: 26, cy: 25, rx: 2.5, ry: 3.5, "P")
-    for dy in 0..<5 { for dx in 0..<5 { body[44 + dy][40 + dx] = "E" } }
-    body[45][43] = "W"
-    fillEllipse(&body, cx: 54, cy: 50, rx: 2.8, ry: 2.2, "O")
-    fillEllipse(&body, cx: 44, cy: 62, rx: 4.5, ry: 5.5, "k")
-    fillEllipse(&body, cx: 44, cy: 62, rx: 3.0, ry: 4.0, "K")
+    fillEllipse(&body, cx: 28, cy: 27, rx: 6, ry: 7, "J")      // ear
+    shadeEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, main: "J", hi: "J", lo: "j")
+    fillEllipse(&body, cx: 50, cy: 56, rx: 7, ry: 8, "J")       // cheek right
+    // cream muzzle sliver + belly sliver
+    fillEllipse(&body, cx: 49, cy: 50, rx: 7, ry: 6, "K")
+    fillEllipse(&body, cx: 36, cy: 74, rx: 10, ry: 6, "K")
+    outlineShape(&body, body: ["J", "j", "K"], outline: "j")
+    fillEllipse(&body, cx: 28, cy: 28, rx: 2.6, ry: 3.6, "P")
+    drawSpike(&body, baseX: 31, baseY: 31, angle: -1.6, len: 4, baseR: 1.3, body: "J", tip: "J")
+    for dy in 0..<6 { for dx in 0..<5 { body[42 + dy][40 + dx] = "E" } }
+    body[43][43] = "W"
+    fillEllipse(&body, cx: 54, cy: 48, rx: 2.8, ry: 2.2, "O")
+    body[52][50] = "j"; body[53][52] = "j"                      // mouth
+    fillEllipse(&body, cx: 44, cy: 64, rx: 4.5, ry: 5.5, "j")
+    fillEllipse(&body, cx: 44, cy: 64, rx: 3.0, ry: 4.0, "J")
     let dx = f == 0 ? 1 : (f == 2 ? -1 : 0)
     composite(&g, body, dx: dx, dy: f == 1 ? 1 : 0)
     return g
@@ -996,24 +1016,32 @@ func pipBattleIdle(frame: Int) -> Grid {
     var g = emptyGrid(w: BW, h: BH)
     let puff = frame == 1 ? 2 : 0
     var body = emptyGrid(w: BW, h: BH)
-    fillEllipse(&body, cx: 40, cy: 40, rx: 10, ry: 12, "K")
-    fillEllipse(&body, cx: 86, cy: 44, rx: 10, ry: 12, "K")
-    shadeEllipse(&body, cx: 64, cy: 78, rx: 42, ry: 46, main: "K", hi: "K", lo: "k")
-    fillEllipse(&body, cx: 17 - Double(puff), cy: 82, rx: 14, ry: 16, "K")
-    fillEllipse(&body, cx: 111 + Double(puff), cy: 84, rx: 11, ry: 13, "K")
-    fillEllipse(&body, cx: 60, cy: 100, rx: 13, ry: 11, "Y")
-    outlineShape(&body, body: ["K", "k", "Y"], outline: "k")
-    fillEllipse(&body, cx: 40, cy: 42, rx: 4.5, ry: 6.5, "P")
-    fillEllipse(&body, cx: 86, cy: 46, rx: 4.5, ry: 6.5, "P")
-    for (ex, ey) in [(50, 60), (66, 60)] {
+    fillEllipse(&body, cx: 38, cy: 38, rx: 12, ry: 14, "J")
+    fillEllipse(&body, cx: 88, cy: 44, rx: 12, ry: 14, "J")
+    shadeEllipse(&body, cx: 64, cy: 78, rx: 42, ry: 46, main: "J", hi: "J", lo: "j")
+    fillEllipse(&body, cx: 17 - Double(puff), cy: 82, rx: 14, ry: 16, "J")
+    fillEllipse(&body, cx: 111 + Double(puff), cy: 84, rx: 11, ry: 13, "J")
+    // cream muzzle + belly patches
+    fillEllipse(&body, cx: 64, cy: 74, rx: 24, ry: 16, "K")
+    fillEllipse(&body, cx: 64, cy: 110, rx: 21, ry: 14, "K")
+    outlineShape(&body, body: ["J", "j", "K"], outline: "j")
+    fillEllipse(&body, cx: 38, cy: 40, rx: 5.5, ry: 7.5, "P")
+    fillEllipse(&body, cx: 88, cy: 46, rx: 5.5, ry: 7.5, "P")
+    for (fx, fl) in [(56.0, 7.0), (64.0, 9.0), (72.0, 7.0)] {
+        drawSpike(&body, baseX: fx, baseY: 34, angle: -.pi / 2, len: fl,
+                  baseR: 2.4, body: "J", tip: "J")
+    }
+    for (ex, ey) in [(48, 56), (68, 56)] {
         for dy in 0..<9 { for dx in 0..<9 { body[ey + dy][ex + dx] = "E" } }
         for dy in 1..<4 { for dx in 4..<8 { body[ey + dy][ex + dx] = "W" } }
     }
-    body[55][48] = "k"; body[54][50] = "k"; body[54][74] = "k"; body[55][76] = "k"
-    fillEllipse(&body, cx: 62, cy: 76, rx: 6, ry: 4.4, "O")
+    body[51][46] = "j"; body[50][48] = "j"; body[50][76] = "j"; body[51][78] = "j"
+    fillEllipse(&body, cx: 63, cy: 72, rx: 6, ry: 4.4, "O")
+    body[82][58] = "j"; body[83][62] = "j"; body[82][66] = "j"
+    for (wx, wy) in [(42, 74), (40, 79), (86, 74), (88, 79)] { body[wy][wx] = "j" }
     for armX in [44.0, 84.0] {
-        fillEllipse(&body, cx: armX, cy: 96, rx: 8, ry: 10, "k")
-        fillEllipse(&body, cx: armX, cy: 96, rx: 5.5, ry: 7.5, "K")
+        fillEllipse(&body, cx: armX, cy: 96, rx: 8, ry: 10, "j")
+        fillEllipse(&body, cx: armX, cy: 96, rx: 5.5, ry: 7.5, "J")
     }
     composite(&g, body, dx: 0, dy: 0)
     return g
@@ -1023,10 +1051,9 @@ func pipBattleIdle(frame: Int) -> Grid {
 func pipBattleAttack() -> Grid {
     var g = pipBattleIdle(frame: 0)
     var arm = emptyGrid(w: BW, h: BH)
-    fillEllipse(&arm, cx: 24, cy: 62, rx: 7, ry: 13, "K")
-    outlineShape(&arm, body: ["K"], outline: "k")
+    fillEllipse(&arm, cx: 24, cy: 62, rx: 7, ry: 13, "J")
+    outlineShape(&arm, body: ["J"], outline: "j")
     composite(&g, arm, dx: 0, dy: 0)
-    // gold chaos star (4-point burst)
     var star = emptyGrid(w: BW, h: BH)
     for i in 0..<8 {
         let a = Double(i) * (.pi / 4)
@@ -1041,17 +1068,19 @@ func pipBattleAttack() -> Grid {
 func pipBattleHurt() -> Grid {
     var g = emptyGrid(w: BW, h: BH)
     var body = emptyGrid(w: BW, h: BH)
-    fillEllipse(&body, cx: 40, cy: 42, rx: 10, ry: 12, "K")
-    fillEllipse(&body, cx: 86, cy: 46, rx: 10, ry: 12, "K")
-    shadeEllipse(&body, cx: 64, cy: 80, rx: 42, ry: 44, main: "K", hi: "K", lo: "k")
-    fillEllipse(&body, cx: 16, cy: 86, rx: 12, ry: 14, "K")
-    fillEllipse(&body, cx: 108, cy: 86, rx: 12, ry: 14, "K")
-    outlineShape(&body, body: ["K", "k"], outline: "k")
-    for (ex, ey) in [(48, 60), (68, 60)] {
+    fillEllipse(&body, cx: 38, cy: 40, rx: 12, ry: 14, "J")
+    fillEllipse(&body, cx: 88, cy: 46, rx: 12, ry: 14, "J")
+    shadeEllipse(&body, cx: 64, cy: 80, rx: 42, ry: 44, main: "J", hi: "J", lo: "j")
+    fillEllipse(&body, cx: 16, cy: 86, rx: 12, ry: 14, "J")
+    fillEllipse(&body, cx: 108, cy: 86, rx: 11, ry: 13, "J")
+    fillEllipse(&body, cx: 64, cy: 76, rx: 24, ry: 16, "K")
+    fillEllipse(&body, cx: 64, cy: 110, rx: 20, ry: 13, "K")
+    outlineShape(&body, body: ["J", "j", "K"], outline: "j")
+    for (ex, ey) in [(46, 58), (66, 58)] {
         for i in 0..<9 { body[ey + i][ex + i] = "E"; body[ey + i][ex + 8 - i] = "E" }
     }
-    fillEllipse(&body, cx: 62, cy: 78, rx: 6, ry: 4.4, "O")
-    for x in 54...72 { body[92][x] = "k" }
+    fillEllipse(&body, cx: 62, cy: 74, rx: 6, ry: 4.4, "O")
+    for x in 54...72 { body[90][x] = "j" }
     composite(&g, body, dx: -3, dy: 5)
     return g
 }
