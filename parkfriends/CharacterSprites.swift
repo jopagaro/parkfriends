@@ -69,16 +69,50 @@ enum CharacterSprites {
         generatedIdleFrames(species: species).first ?? texture(species: species, frame: .a)
     }
 
-    /// Per-species overworld display size. All four are drawn on the same
-    /// 64x96 canvas but fill it differently (Shelly is wide, Hazel slim) —
-    /// these sizes normalize how big each looks on screen.
+    /// Per-species overworld display size, normalized by the sprite's ACTUAL
+    /// visible content. The four share a 64x96 canvas but fill it differently
+    /// (and refills change with every art pass) — so we measure the opaque
+    /// rows of the idle frame once and scale so on-screen content height hits
+    /// each species' target. Art can change freely; sizes stay consistent.
+    private static var overworldSizeCache: [Species: CGSize] = [:]
+
     static func overworldSize(species: Species) -> CGSize {
+        if let cached = overworldSizeCache[species] { return cached }
+        let targetContentHeight: CGFloat
         switch species {
-        case .turtle:   return CGSize(width: 40, height: 58)
-        case .squirrel: return CGSize(width: 46, height: 70)
-        case .hedgehog: return CGSize(width: 44, height: 66)
-        case .hamster:  return CGSize(width: 42, height: 60)
+        case .turtle:   targetContentHeight = 54
+        case .squirrel: targetContentHeight = 62
+        case .hedgehog: targetContentHeight = 58
+        case .hamster:  targetContentHeight = 52
         }
+        let frac = contentHeightFraction(of: standingTexture(species: species))
+        let nodeH = targetContentHeight / max(0.4, frac)
+        let size = CGSize(width: nodeH * (64.0 / 96.0), height: nodeH)
+        overworldSizeCache[species] = size
+        return size
+    }
+
+    /// Fraction of the texture's height occupied by non-transparent pixels.
+    private static func contentHeightFraction(of texture: SKTexture) -> CGFloat {
+        let img = texture.cgImage()
+        let w = img.width, h = img.height
+        guard w > 0, h > 0,
+              let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return 1.0 }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return 1.0 }
+        var top = h, bottom = 0
+        for y in 0..<h {
+            for x in 0..<w where data[(y * w + x) * 4 + 3] > 16 {
+                top = min(top, y); bottom = max(bottom, y)
+                break
+            }
+        }
+        guard bottom >= top else { return 1.0 }
+        return CGFloat(bottom - top + 1) / CGFloat(h)
     }
 
     /// Warm up the cache off the critical path.
