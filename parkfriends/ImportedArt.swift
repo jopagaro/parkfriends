@@ -207,6 +207,62 @@ enum ImportedArt {
                      tileSize: CGSize(width: 16, height: 16), col: col, row: row)
     }
 
+    // ── 4×4 blob autotile sheets (shared layout) ─────────────────────────────
+    // Row 0 (top): 3-wide horizontal capsule + 1×1 single blob at col 3.
+    // Rows 1-3: 3×3 blob (cols 0-2) + vertical capsule at col 3.
+
+    /// Pond border tileset, addressed row-from-top for the autotiler.
+    static func pondBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-blue-pond-water-border-corners-and-edges-tileset-64x64.png",
+                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+    }
+
+    /// Pebbled dirt path blob tileset.
+    static func parkPathBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-pebbled-brown-dirt-path-corner-and-edge-tileset-64x64.png",
+                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+    }
+
+    /// Gray stone path with grass border blob tileset (plazas).
+    static func parkStoneBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-gray-stone-path-with-grass-border-corners-and-edges-tileset-64x64.png",
+                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+    }
+
+    /// Dense leaf hedge blob tileset (tree-wall map border).
+    static func parkHedgeBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-dense-leaf-hedge-border-corner-and-edge-tileset-64x64.png",
+                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+    }
+
+    /// Plain bright grass fill (MAP_SPEC `grass_fill`, piece 70).
+    static func parkBrightGrassTile() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-plain-bright-grass-fill-piece-70-16x16.png")
+    }
+
+    /// Gray stone block (statue pedestal).
+    static func parkStoneBlockTile() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-block-tile-16x16.png")
+    }
+
+    /// Curved grass blade tuft (pond reeds).
+    static func parkGrassBlade() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-small-curved-grass-blade-sprite-13x7.png")
+    }
+
+    /// Water surface shimmer (64×16 = 4 frames of 16×16) — fountain water.
+    static func parkWaterSurfaceFrames() -> [SKTexture] {
+        (0..<4).compactMap {
+            sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-blue-water-surface-animation-strip-64x16.png",
+                                tileSize: CGSize(width: 16, height: 16), col: $0, rowFromTop: 0)
+        }
+    }
+
+    /// Dark wood chair (16×32 front view) — stands in for park bench seats.
+    static func parkBenchChair() -> SKTexture? {
+        fileTexture(relativePath: "\(worldParkBase)pixel-art-chair-dark-wood-simple-backrest-front-view-sprite-16x32.png")
+    }
+
     /// Gray stone ground (single 16×16 tile). Pass cracked/mottled variant.
     static func parkStoneTile(variant: Int = 0) -> SKTexture? {
         switch variant % 3 {
@@ -230,6 +286,35 @@ enum ImportedArt {
     static func parkBiomSprite(col: Int, row: Int) -> SKTexture? {
         sheetTexture(relativePath: "\(worldParkBase)pixel-art-basic-grass-biome-props-flowers-rocks-bushes-mushrooms-and-plants-tileset-144x80.png",
                      tileSize: CGSize(width: 16, height: 16), col: col, row: row)
+    }
+
+    /// White chicken sheet (192×192 = 4 cols × 4 rows of 48×48). Top row = walk-south.
+    static func parkChickenFrames(rowFromTop: Int = 0) -> [SKTexture] {
+        (0..<4).compactMap {
+            sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-white-chicken-yellow-beak-4-direction-walk-idle-spritesheet-192x192.png",
+                                tileSize: CGSize(width: 48, height: 48), col: $0, rowFromTop: rowFromTop)
+        }
+    }
+
+    /// Baby chicks sheet (64×32 of 16×16 cells; top row = 4-frame hop cycle).
+    static func parkChicksFrames() -> [SKTexture] {
+        (0..<4).compactMap {
+            sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-yellow-baby-chicks-5-frame-row-spritesheet-64x32.png",
+                                tileSize: CGSize(width: 16, height: 16), col: $0, rowFromTop: 0)
+        }
+    }
+
+    /// Egg & nest stages (64×16 = 4 frames of 16×16). Stage 0 = nest with egg.
+    static func parkEggNest(stage: Int = 0) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-egg-and-nest-stages-empty-egg-hatched-spritesheet-64x16.png",
+                            tileSize: CGSize(width: 16, height: 16), col: abs(stage) % 4, rowFromTop: 0)
+    }
+
+    /// Brown squirrel idle loop — standalone 90×58 frames 02–08.
+    static func parkSquirrelIdleFrames() -> [SKTexture] {
+        (2...8).compactMap {
+            fileTexture(relativePath: String(format: "%@pixel-art-brown-squirrel-idle-animation-frame-%02d-90x58.png", worldParkBase, $0))
+        }
     }
 
     /// Large round green tree sprite (48×48 standalone PNG).

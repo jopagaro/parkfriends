@@ -42,18 +42,18 @@ extension GameZone {
 
     var displayTitle: String {
         switch self {
-        case .parkNorth:  return "Bellwether Pond"
-        case .parkCenter: return "Bellwether Fountain"
+        case .parkNorth:  return "Green Shire Suburb"
+        case .parkCenter: return "Bellwether Park"
         case .citySouth:  return "City South"
         case .cityCenter: return "City Center"
-        case .cityNorth:  return "Construction Edge"
+        case .cityNorth:  return "Construction Zone"
         }
     }
 
     var zoneSubtitle: String {
         switch self {
-        case .parkNorth:  return "Pond  ·  Meadow  ·  Broken Quiet"
-        case .parkCenter: return "Entrance  ·  Fountain Plaza  ·  Strange Birds"
+        case .parkNorth:  return "Houses  ·  Lab  ·  Quiet Road"
+        case .parkCenter: return "Pond  ·  Fountain  ·  Statue  ·  Oak"
         case .citySouth:  return "Alleys  ·  Corner Store  ·  Spillover"
         case .cityCenter: return "Main Street  ·  Records  ·  Subway Gate"
         case .cityNorth:  return "Construction Zone  ·  Warehouses  ·  Deep Roots"
