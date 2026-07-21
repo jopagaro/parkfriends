@@ -2,7 +2,7 @@ import SpriteKit
 
 // Generated from MAP_SPEC.md.
 // - buildCenter() → §4 (scene `park`): pond, fountain plaza, statue plaza, oak.
-// - buildNorth()  → §3 (scene `suburb_north`): not yet populated.
+// - buildNorth()  → §3 (scene `suburb_north`): lab, row houses, road, creek.
 enum ParkWorld {
 
     struct BuildResult {
@@ -368,12 +368,11 @@ enum ParkWorld {
 
         // §3.9 — Creek: spring at the east tree line, diagonal SW through the
         // lower lawn, then straight south to the park scene (x=49..50 there).
-        let creekRects = [
-            SpecRect(97, 28, 6, 2), SpecRect(92, 29, 6, 2), SpecRect(87, 30, 6, 2),
-            SpecRect(82, 31, 6, 2), SpecRect(77, 32, 6, 2), SpecRect(72, 33, 6, 2),
-            SpecRect(67, 34, 6, 2), SpecRect(62, 35, 6, 2), SpecRect(57, 36, 6, 2),
-            SpecRect(52, 37, 6, 2), SpecRect(49, 38, 4, 2), SpecRect(49, 38, 2, 12)
-        ]
+        // Small 3-tile steps keep the diagonal smooth instead of staircased.
+        var creekRects: [SpecRect] = (0..<17).map { i in
+            SpecRect(97 - 3 * i, 28 + i, 5, 2)
+        }
+        creekRects.append(SpecRect(49, 44, 2, 6))
         painter.autotile(painter.tiles(creekRects),
                          z: PaintLayer.ground.z + 0.1,
                          tile: ImportedArt.pondBlobTile)
@@ -383,7 +382,8 @@ enum ParkWorld {
         // stone driveway to the road with a gate gap.
         fenceRing(painter, SpecRect(3, 2, 17, 13), gateXs: [10, 11])
         painter.placeSprite(SpecRect(7, 4, 7, 5),
-                            texture: ImportedArt.suburbHouseExterior(), layer: .props)
+                            texture: ImportedArt.generatedHouse(variant: "dark_purple"),
+                            layer: .props)
         painter.addBlockingRect(SpecRect(7, 4, 7, 5))
         painter.placeTree(SpecRect(4, 3, 2, 2),  texture: ImportedArt.parkMediumTree())
         painter.placeTree(SpecRect(16, 3, 2, 2), texture: ImportedArt.parkMediumTree())
@@ -399,10 +399,13 @@ enum ParkWorld {
 
         // §3.4/§3.5/§3.6/§3.11 — Six row-houses with fenced front yards,
         // yard trees, flowers, and driveways down to the north sidewalk.
-        let topRowXs = [24, 37, 50, 63, 76, 89]
-        for hx in topRowXs {
+        let topRow: [(Int, String)] = [
+            (24, "blue"), (37, "brown"), (50, "green"),
+            (63, "red_brown"), (76, "dark_red"), (89, "charcoal")
+        ]
+        for (hx, roof) in topRow {
             painter.placeSprite(SpecRect(hx, 6, 7, 5),
-                                texture: ImportedArt.suburbHouseExterior(), layer: .props)
+                                texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
             painter.addBlockingRect(SpecRect(hx, 6, 7, 5))
             fenceRing(painter, SpecRect(hx - 1, 11, 9, 5), gateXs: [hx + 3, hx + 4])
             painter.placeTree(SpecRect(hx, 4, 2, 2),     texture: ImportedArt.parkMediumTree())
@@ -417,9 +420,9 @@ enum ParkWorld {
         }
 
         // §3.4/§3.15 — Lower suburb: two houses + a small cottage.
-        for hx in [8, 22] {
+        for (hx, roof) in [(8, "brown"), (22, "tan")] {
             painter.placeSprite(SpecRect(hx, 30, 7, 5),
-                                texture: ImportedArt.suburbHouseExterior(), layer: .props)
+                                texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
             painter.addBlockingRect(SpecRect(hx, 30, 7, 5))
             fenceRing(painter, SpecRect(hx - 1, 35, 9, 5), gateXs: [hx + 3, hx + 4])
             painter.autotile(painter.tiles([SpecRect(hx + 3, 27, 2, 3)]),
@@ -427,7 +430,7 @@ enum ParkWorld {
                              tile: ImportedArt.parkStoneBlobTile)
         }
         painter.placeSprite(SpecRect(4, 42, 5, 4),
-                            texture: ImportedArt.suburbHouseExterior(), layer: .props)
+                            texture: ImportedArt.generatedHouse(variant: "tan"), layer: .props)
         painter.addBlockingRect(SpecRect(4, 42, 5, 4))
 
         // Lawn dressing: scattered trees, bushes, and a bench by the path.
@@ -602,7 +605,7 @@ private final class ScenePainter {
         let base = ImportedArt.parkGrassBaseTile()
         for yT in rect.y..<(rect.y + rect.h) {
             for xT in rect.x..<(rect.x + rect.w) {
-                let sprinkle = (xT * 7 + yT * 13) % 13 == 0
+                let sprinkle = (xT * 13 + yT * 7) % 17 == 3
                 place1x1(at: xT, yT,
                          texture: sprinkle ? ImportedArt.darkGrassTile(variant: (xT + yT) % 3) : base,
                          z: PaintLayer.ground.z)

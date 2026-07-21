@@ -373,8 +373,17 @@ enum ImportedArt {
     }
 
     /// Complete suburban house exterior sprite (112×80).
+    /// NOTE: despite the filename this is a PARTS sheet, not a whole house —
+    /// prefer `generatedHouse(variant:)`.
     static func suburbHouseExterior() -> SKTexture? {
         fileTexture(relativePath: "\(worldSuburbBase)pixel-art-complete-small-wooden-house-exterior-sprite-112x80.png")
+    }
+
+    /// Code-generated 112×80 house (tools/spritegen). Variants are the
+    /// MAP_SPEC §3.14 roof colors: blue, brown, green, red_brown, dark_red,
+    /// charcoal, tan, dark_purple.
+    static func generatedHouse(variant: String) -> SKTexture? {
+        fileTexture(relativePath: "textures.downloaded.sprites/world.generated/house-\(variant)-112x80.png")
     }
 
     /// Wood post-and-rail fence tileset (64×64 = 4 cols × 4 rows of 16×16).
