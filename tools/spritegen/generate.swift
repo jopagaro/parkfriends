@@ -57,6 +57,25 @@ func fillEllipse(_ g: inout Grid, cx: Double, cy: Double, rx: Double, ry: Double
     }
 }
 
+/// Form-shaded ellipse: highlight arc toward the upper-left edge, core color
+/// in the middle, shadow band hugging the lower-right rim. This is what makes
+/// a blob read as a 3D form instead of a flat sticker.
+func shadeEllipse(_ g: inout Grid, cx: Double, cy: Double, rx: Double, ry: Double,
+                  main: Character, hi: Character, lo: Character,
+                  hiThresh: Double = 0.34, loThresh: Double = -0.40) {
+    for y in 0..<g.count {
+        for x in 0..<g[0].count {
+            let nx = (Double(x) + 0.5 - cx) / rx
+            let ny = (Double(y) + 0.5 - cy) / ry
+            let d = nx * nx + ny * ny
+            guard d <= 1.0 else { continue }
+            // light from upper-left, weighted toward the rim
+            let score = (-nx * 0.6 - ny * 0.8) * d.squareRoot()
+            g[y][x] = score > hiThresh ? hi : (score < loThresh ? lo : main)
+        }
+    }
+}
+
 /// Replaces body pixels that touch transparency with the outline color.
 func outlineShape(_ g: inout Grid, body: Set<Character>, outline: Character) {
     let h = g.count, w = g[0].count
@@ -181,15 +200,9 @@ let shellyFrames: [FrameSpec] = [
 
 func shellyHeadPart(eyesClosed: Bool = false) -> Grid {
     var g = emptyGrid(w: SW, h: SH)
-    fillEllipse(&g, cx: 32, cy: 22, rx: 20, ry: 20, "G")
+    shadeEllipse(&g, cx: 32, cy: 22, rx: 20, ry: 20, main: "G", hi: "H", lo: "g")
     // cheeks slightly wider than the dome
-    fillEllipse(&g, cx: 32, cy: 28, rx: 21.6, ry: 14, "G")
-    // highlight: upper-left arc
-    fillEllipse(&g, cx: 25, cy: 15, rx: 10.5, ry: 8.5, "H")
-    // jaw shade band (light from upper-left)
-    fillEllipse(&g, cx: 36, cy: 38, rx: 15, ry: 5.5, "G")
-    for x in 20...47 where g[40][x] == "G" { g[40][x] = "g" }
-    for x in 24...44 where g[41][x] == "G" { g[41][x] = "g" }
+    shadeEllipse(&g, cx: 32, cy: 28, rx: 21.6, ry: 14, main: "G", hi: "G", lo: "g")
     outlineShape(&g, body: ["G", "H"], outline: "g")
     // eyes 4x6, skeptical: right eye 2px lower; 2x2 catchlight upper-right
     for (ex, ey) in [(22, 18), (38, 20)] {
@@ -211,9 +224,8 @@ func shellyHeadPart(eyesClosed: Bool = false) -> Grid {
 /// Back of the head (walk-north): plain dome, no face, neck crease.
 func shellyHeadBackPart() -> Grid {
     var g = emptyGrid(w: SW, h: SH)
-    fillEllipse(&g, cx: 32, cy: 22, rx: 20, ry: 20, "G")
-    fillEllipse(&g, cx: 32, cy: 28, rx: 21.6, ry: 14, "G")
-    fillEllipse(&g, cx: 25, cy: 15, rx: 10.5, ry: 8.5, "H")
+    shadeEllipse(&g, cx: 32, cy: 22, rx: 20, ry: 20, main: "G", hi: "H", lo: "g")
+    shadeEllipse(&g, cx: 32, cy: 28, rx: 21.6, ry: 14, main: "G", hi: "G", lo: "g")
     outlineShape(&g, body: ["G", "H"], outline: "g")
     for x in 24...40 where g[38][x] == "G" { g[38][x] = "g" }   // neck crease
     return g
@@ -222,9 +234,8 @@ func shellyHeadBackPart() -> Grid {
 /// Profile head (walk-east): snout, single eye, brow.
 func shellyHeadEastPart() -> Grid {
     var g = emptyGrid(w: SW, h: SH)
-    fillEllipse(&g, cx: 36, cy: 22, rx: 17, ry: 18, "G")
-    fillEllipse(&g, cx: 50, cy: 30, rx: 8, ry: 6.5, "G")     // snout
-    fillEllipse(&g, cx: 30, cy: 14, rx: 9, ry: 7.5, "H")
+    shadeEllipse(&g, cx: 36, cy: 22, rx: 17, ry: 18, main: "G", hi: "H", lo: "g")
+    shadeEllipse(&g, cx: 50, cy: 30, rx: 8, ry: 6.5, main: "G", hi: "G", lo: "g")     // snout
     outlineShape(&g, body: ["G", "H"], outline: "g")
     for dy in 0..<6 { for dx in 0..<4 { g[17 + dy][40 + dx] = "E" } }
     g[17][42] = "W"; g[17][43] = "W"; g[18][42] = "W"; g[18][43] = "W"
@@ -239,7 +250,7 @@ func shellyShellEastPart() -> Grid {
     var g = emptyGrid(w: SW, h: SH)
     fillEllipse(&g, cx: 8, cy: 62, rx: 5, ry: 3.5, "G")        // tail nub
     outlineShape(&g, body: ["G"], outline: "g")
-    fillEllipse(&g, cx: 28, cy: 58, rx: 26, ry: 19, "T")
+    shadeEllipse(&g, cx: 28, cy: 58, rx: 26, ry: 19, main: "T", hi: "h", lo: "t")
     func seamH(row: Int, bend: Int) {
         for x in 0..<SW {
             let y = row + (abs(x - 28) > 17 ? bend : 0)
@@ -251,7 +262,6 @@ func shellyShellEastPart() -> Grid {
     seamH(row: 72, bend: -2)
     for x in [17, 28, 39] { for y in 49...61 where g[y][x] == "T" { g[y][x] = "t" } }
     for x in [23, 34] { for y in 63...71 where g[y][x] == "T" { g[y][x] = "t" } }
-    fillEllipse(&g, cx: 14, cy: 47, rx: 6, ry: 3.6, "h")
     outlineShape(&g, body: ["T", "t", "h"], outline: "r")
     outlineShape(&g, body: ["T", "t", "h"], outline: "r")
     return g
@@ -269,7 +279,7 @@ func shellyLegsEastPart(mode: Int) -> Grid {
 
 func shellyShellPart() -> Grid {
     var g = emptyGrid(w: SW, h: SH)
-    fillEllipse(&g, cx: 32, cy: 58, rx: 28, ry: 19, "T")
+    shadeEllipse(&g, cx: 32, cy: 58, rx: 28, ry: 19, main: "T", hi: "h", lo: "t")
 
     // Scute seams: two curved horizontal seams; vertical dividers staggered
     // between rows (real tortoise plates are offset row to row).
@@ -293,8 +303,6 @@ func shellyShellPart() -> Grid {
         for y in 74...76 where g[y][x] == "T" { g[y][x] = "t" }
     }
 
-    // highlight cluster upper-left (after seams so it stays clean)
-    fillEllipse(&g, cx: 17, cy: 47, rx: 6.8, ry: 4.0, "h")
 
     // rim: double outline in darkest brown
     outlineShape(&g, body: ["T", "t", "h"], outline: "r")
@@ -368,7 +376,7 @@ let BW = 128, BH = 128
 
 func shellyBattleShell(cx: Double, cy: Double, rx: Double, ry: Double) -> Grid {
     var g = emptyGrid(w: BW, h: BH)
-    fillEllipse(&g, cx: cx, cy: cy, rx: rx, ry: ry, "T")
+    shadeEllipse(&g, cx: cx, cy: cy, rx: rx, ry: ry, main: "T", hi: "h", lo: "t")
     func seamH(row: Int, bend: Int) {
         for x in 0..<BW {
             let y = row + (abs(Double(x) - cx) > rx * 0.65 ? bend : 0)
@@ -384,7 +392,6 @@ func shellyBattleShell(cx: Double, cy: Double, rx: Double, ry: Double) -> Grid {
     for x in [Int(cx - rx * 0.22), Int(cx + rx * 0.22)] {
         for y in Int(cy + ry * 0.17)...Int(cy + ry * 0.5) where g[y][x] == "T" { g[y][x] = "t" }
     }
-    fillEllipse(&g, cx: cx - rx * 0.55, cy: cy - ry * 0.55, rx: rx * 0.16, ry: ry * 0.14, "h")
     outlineShape(&g, body: ["T", "t", "h"], outline: "r")
     outlineShape(&g, body: ["T", "t", "h"], outline: "r")
     return g
@@ -402,9 +409,8 @@ func shellyBattleIdle(frame: Int) -> Grid {
     composite(&g, shellyBattleShell(cx: 64, cy: 92, rx: 48, ry: 30), dx: 0, dy: 0)
     // big head (≥40% of sprite height)
     var head = emptyGrid(w: BW, h: BH)
-    fillEllipse(&head, cx: 64, cy: 40, rx: 29, ry: 27, "G")
-    fillEllipse(&head, cx: 64, cy: 48, rx: 31, ry: 19, "G")
-    fillEllipse(&head, cx: 54, cy: 30, rx: 14, ry: 11, "H")
+    shadeEllipse(&head, cx: 64, cy: 40, rx: 29, ry: 27, main: "G", hi: "H", lo: "g")
+    shadeEllipse(&head, cx: 64, cy: 48, rx: 31, ry: 19, main: "G", hi: "G", lo: "g")
     outlineShape(&head, body: ["G", "H"], outline: "g")
     for (ex, ey) in [(48, 34), (72, 37)] {
         for dy in 0..<9 { for dx in 0..<6 { head[ey + dy][ex + dx] = "E" } }
@@ -440,9 +446,8 @@ func shellyBattleHurt() -> Grid {
     composite(&g, limbs, dx: 0, dy: 0)
     composite(&g, shellyBattleShell(cx: 64, cy: 92, rx: 48, ry: 30), dx: -3, dy: 2)
     var head = emptyGrid(w: BW, h: BH)
-    fillEllipse(&head, cx: 60, cy: 42, rx: 29, ry: 27, "G")
-    fillEllipse(&head, cx: 60, cy: 50, rx: 31, ry: 19, "G")
-    fillEllipse(&head, cx: 50, cy: 32, rx: 14, ry: 11, "H")
+    shadeEllipse(&head, cx: 60, cy: 42, rx: 29, ry: 27, main: "G", hi: "H", lo: "g")
+    shadeEllipse(&head, cx: 60, cy: 50, rx: 31, ry: 19, main: "G", hi: "G", lo: "g")
     outlineShape(&head, body: ["G", "H"], outline: "g")
     // X eyes
     for (ex, ey) in [(46, 36), (70, 39)] {
@@ -480,10 +485,8 @@ func spikeBodyPart(paw: Int = 0) -> Grid {   // paw: 0 both down, 1 left raised
     // feet
     fillEllipse(&g, cx: 24, cy: 80 - Double(paw == 1 ? 4 : 0), rx: 5, ry: 5, "B")
     fillEllipse(&g, cx: 40, cy: 80, rx: 5, ry: 5, "B")
-    // body
-    fillEllipse(&g, cx: 32, cy: 55, rx: 21, ry: 23, "B")
-    // forehead highlight
-    fillEllipse(&g, cx: 25, cy: 38, rx: 8, ry: 6, "h")
+    // body, form-shaded
+    shadeEllipse(&g, cx: 32, cy: 55, rx: 21, ry: 23, main: "B", hi: "h", lo: "b")
     // belly, slightly left-shifted
     fillEllipse(&g, cx: 29, cy: 68, rx: 11, ry: 9, "Y")
     // snout patch, slightly asymmetric
@@ -528,7 +531,7 @@ func spikeNorthFrame(_ f: Int) -> Grid {
     var body = emptyGrid(w: SW, h: SH)
     fillEllipse(&body, cx: 24, cy: 80, rx: 5, ry: 5, "B")
     fillEllipse(&body, cx: 40, cy: 80, rx: 5, ry: 5, "B")
-    fillEllipse(&body, cx: 32, cy: 55, rx: 21, ry: 23, "B")
+    shadeEllipse(&body, cx: 32, cy: 55, rx: 21, ry: 23, main: "B", hi: "B", lo: "b")
     outlineShape(&body, body: ["B"], outline: "b")
     composite(&g, body, dx: 0, dy: dy)
     var spines = emptyGrid(w: SW, h: SH)
@@ -565,9 +568,8 @@ func spikeEastFrame(_ f: Int) -> Grid {
     var body = emptyGrid(w: SW, h: SH)
     fillEllipse(&body, cx: 34 + stride, cy: 80, rx: 5, ry: 5.5, "B")
     fillEllipse(&body, cx: 20 - stride, cy: 80, rx: 5, ry: 5.5, "B")
-    fillEllipse(&body, cx: 32, cy: 56, rx: 20, ry: 22, "B")
+    shadeEllipse(&body, cx: 32, cy: 56, rx: 20, ry: 22, main: "B", hi: "h", lo: "b")
     fillEllipse(&body, cx: 48, cy: 52, rx: 9, ry: 7, "N")     // snout right
-    fillEllipse(&body, cx: 26, cy: 40, rx: 7, ry: 5, "h")
     outlineShape(&body, body: ["B", "N", "h"], outline: "b")
     for dyE in 0..<4 { for dxE in 0..<4 { body[42 + dyE][38 + dxE] = "E" } }
     body[42][40] = "W"; body[42][41] = "W"
@@ -588,8 +590,7 @@ func spikeBattleIdle(frame: Int) -> Grid {
     var body = emptyGrid(w: BW, h: BH)
     fillEllipse(&body, cx: 46, cy: 108, rx: 9, ry: 9, "B")
     fillEllipse(&body, cx: 82, cy: 108, rx: 9, ry: 9, "B")
-    fillEllipse(&body, cx: 64, cy: 74, rx: 38, ry: 42, "B")
-    fillEllipse(&body, cx: 50, cy: 44, rx: 14, ry: 10, "h")
+    shadeEllipse(&body, cx: 64, cy: 74, rx: 38, ry: 42, main: "B", hi: "h", lo: "b")
     fillEllipse(&body, cx: 58, cy: 98, rx: 20, ry: 16, "Y")
     fillEllipse(&body, cx: 62, cy: 68, rx: 16, ry: 12, "N")
     outlineShape(&body, body: ["B", "Y", "N", "h"], outline: "b")
@@ -624,8 +625,7 @@ func spikeBattleAttack() -> Grid {
     }
     composite(&g, spines, dx: 0, dy: 0)
     var core = emptyGrid(w: BW, h: BH)
-    fillEllipse(&core, cx: 64, cy: 72, rx: 16, ry: 16, "B")
-    fillEllipse(&core, cx: 58, cy: 65, rx: 6, ry: 4.5, "h")
+    shadeEllipse(&core, cx: 64, cy: 72, rx: 16, ry: 16, main: "B", hi: "h", lo: "b")
     outlineShape(&core, body: ["B", "h"], outline: "b")
     composite(&g, core, dx: 0, dy: 0)
     return g
@@ -642,7 +642,7 @@ func spikeBattleHurt() -> Grid {
     var body = emptyGrid(w: BW, h: BH)
     fillEllipse(&body, cx: 46, cy: 108, rx: 9, ry: 9, "B")
     fillEllipse(&body, cx: 82, cy: 108, rx: 9, ry: 9, "B")
-    fillEllipse(&body, cx: 64, cy: 74, rx: 38, ry: 42, "B")
+    shadeEllipse(&body, cx: 64, cy: 74, rx: 38, ry: 42, main: "B", hi: "h", lo: "b")
     fillEllipse(&body, cx: 58, cy: 98, rx: 20, ry: 16, "Y")
     fillEllipse(&body, cx: 62, cy: 68, rx: 16, ry: 12, "N")
     outlineShape(&body, body: ["B", "Y", "N"], outline: "b")
@@ -700,7 +700,7 @@ func hazelBodyPart(kick: Bool = false, headDY: Int = 0) -> Grid {
     fillEllipse(&g, cx: 22, cy: 80 - (kick ? 4 : 0), rx: 4.5, ry: 5, "M")
     fillEllipse(&g, cx: 36, cy: 80, rx: 4.5, ry: 5, "M")
     // slim body
-    fillEllipse(&g, cx: 28, cy: 62, rx: 13, ry: 17, "M")
+    shadeEllipse(&g, cx: 28, cy: 62, rx: 13, ry: 17, main: "M", hi: "M", lo: "m")
     fillEllipse(&g, cx: 28, cy: 66, rx: 7, ry: 10, "C")   // belly stripe
     outlineShape(&g, body: ["M", "C"], outline: "m")
     // head with cheek puffs (1px wider each side than it "should" be)
@@ -710,9 +710,8 @@ func hazelBodyPart(kick: Bool = false, headDY: Int = 0) -> Grid {
     fillEllipse(&head, cx: 38, cy: 14, rx: 5, ry: 7, "M")
     fillEllipse(&head, cx: 18, cy: 16, rx: 2.2, ry: 3.5, "P")
     fillEllipse(&head, cx: 38, cy: 15, rx: 2.2, ry: 3.5, "P")
-    fillEllipse(&head, cx: 28, cy: 30, rx: 15, ry: 14, "M")
-    fillEllipse(&head, cx: 28, cy: 34, rx: 16.5, ry: 10, "M")   // cheeks
-    fillEllipse(&head, cx: 22, cy: 23, rx: 7, ry: 5.5, "t")     // crown highlight
+    shadeEllipse(&head, cx: 28, cy: 30, rx: 15, ry: 14, main: "M", hi: "t", lo: "m")
+    shadeEllipse(&head, cx: 28, cy: 34, rx: 16.5, ry: 10, main: "M", hi: "M", lo: "m")   // cheeks
     outlineShape(&head, body: ["M", "P", "t"], outline: "m")
     // amber eyes with dark iris + catchlight
     for (ex, ey) in [(20, 26), (32, 26)] {
@@ -752,11 +751,10 @@ func hazelNorthFrame(_ f: Int) -> Grid {
     var body = emptyGrid(w: SW, h: SH)
     fillEllipse(&body, cx: 22, cy: 80 - (f == 2 ? 4 : 0), rx: 4.5, ry: 5, "M")
     fillEllipse(&body, cx: 36, cy: 80, rx: 4.5, ry: 5, "M")
-    fillEllipse(&body, cx: 28, cy: 62, rx: 13, ry: 17, "M")
+    shadeEllipse(&body, cx: 28, cy: 62, rx: 13, ry: 17, main: "M", hi: "M", lo: "m")
     fillEllipse(&body, cx: 18, cy: 15, rx: 5, ry: 7, "M")
     fillEllipse(&body, cx: 38, cy: 14, rx: 5, ry: 7, "M")
-    fillEllipse(&body, cx: 28, cy: 30, rx: 15, ry: 14, "M")
-    fillEllipse(&body, cx: 22, cy: 23, rx: 7, ry: 5.5, "t")
+    shadeEllipse(&body, cx: 28, cy: 30, rx: 15, ry: 14, main: "M", hi: "t", lo: "m")
     outlineShape(&body, body: ["M", "t"], outline: "m")
     composite(&g, body, dx: 0, dy: 0)
     // tail in FRONT when seen from behind
@@ -774,12 +772,11 @@ func hazelEastFrame(_ f: Int) -> Grid {
     let stride: Double = f == 0 ? 4 : (f == 2 ? -4 : 0)
     fillEllipse(&body, cx: 36 + stride, cy: 80, rx: 4.5, ry: 5.5, "M")
     fillEllipse(&body, cx: 24 - stride, cy: 80, rx: 4.5, ry: 5.5, "M")
-    fillEllipse(&body, cx: 30, cy: 62, rx: 13, ry: 17, "M")
+    shadeEllipse(&body, cx: 30, cy: 62, rx: 13, ry: 17, main: "M", hi: "M", lo: "m")
     // profile head: ear, dome, muzzle
     fillEllipse(&body, cx: 30, cy: 14, rx: 5, ry: 7, "M")
-    fillEllipse(&body, cx: 34, cy: 30, rx: 14, ry: 13, "M")
+    shadeEllipse(&body, cx: 34, cy: 30, rx: 14, ry: 13, main: "M", hi: "t", lo: "m")
     fillEllipse(&body, cx: 46, cy: 35, rx: 6, ry: 4.5, "M")   // muzzle
-    fillEllipse(&body, cx: 28, cy: 23, rx: 6, ry: 5, "t")
     outlineShape(&body, body: ["M", "t"], outline: "m")
     fillEllipse(&body, cx: 30, cy: 15, rx: 2, ry: 3.2, "P")
     for dy in 0..<5 { for dx in 0..<5 { body[26 + dy][38 + dx] = "I" } }
@@ -801,15 +798,14 @@ func hazelBattleIdle(frame: Int) -> Grid {
     var body = emptyGrid(w: BW, h: BH)
     fillEllipse(&body, cx: 40, cy: 112, rx: 8, ry: 9, "M")
     fillEllipse(&body, cx: 62, cy: 112, rx: 8, ry: 9, "M")
-    fillEllipse(&body, cx: 50, cy: 84, rx: 22, ry: 28, "M")
+    shadeEllipse(&body, cx: 50, cy: 84, rx: 22, ry: 28, main: "M", hi: "M", lo: "m")
     fillEllipse(&body, cx: 50, cy: 92, rx: 12, ry: 16, "C")
     fillEllipse(&body, cx: 32, cy: 26, rx: 9, ry: 13, "M")
     fillEllipse(&body, cx: 66, cy: 24, rx: 9, ry: 13, "M")
     fillEllipse(&body, cx: 32, cy: 28, rx: 4, ry: 6.5, "P")
     fillEllipse(&body, cx: 66, cy: 26, rx: 4, ry: 6.5, "P")
-    fillEllipse(&body, cx: 49, cy: 48, rx: 26, ry: 24, "M")
-    fillEllipse(&body, cx: 49, cy: 55, rx: 28.5, ry: 17, "M")
-    fillEllipse(&body, cx: 38, cy: 36, rx: 12, ry: 9, "t")
+    shadeEllipse(&body, cx: 49, cy: 48, rx: 26, ry: 24, main: "M", hi: "t", lo: "m")
+    shadeEllipse(&body, cx: 49, cy: 55, rx: 28.5, ry: 17, main: "M", hi: "M", lo: "m")
     outlineShape(&body, body: ["M", "C", "P", "t"], outline: "m")
     for (ex, ey) in [(34, 42), (56, 42)] {
         for dy in 0..<9 { for dx in 0..<9 { body[ey + dy][ex + dx] = "I" } }
@@ -849,12 +845,11 @@ func hazelBattleHurt() -> Grid {
     var body = emptyGrid(w: BW, h: BH)
     fillEllipse(&body, cx: 40, cy: 112, rx: 8, ry: 9, "M")
     fillEllipse(&body, cx: 62, cy: 112, rx: 8, ry: 9, "M")
-    fillEllipse(&body, cx: 50, cy: 84, rx: 22, ry: 28, "M")
+    shadeEllipse(&body, cx: 50, cy: 84, rx: 22, ry: 28, main: "M", hi: "M", lo: "m")
     fillEllipse(&body, cx: 50, cy: 92, rx: 12, ry: 16, "C")
     fillEllipse(&body, cx: 30, cy: 28, rx: 9, ry: 13, "M")
     fillEllipse(&body, cx: 64, cy: 26, rx: 9, ry: 13, "M")
-    fillEllipse(&body, cx: 47, cy: 50, rx: 26, ry: 24, "M")
-    fillEllipse(&body, cx: 36, cy: 38, rx: 12, ry: 9, "t")
+    shadeEllipse(&body, cx: 47, cy: 50, rx: 26, ry: 24, main: "M", hi: "t", lo: "m")
     outlineShape(&body, body: ["M", "C", "t"], outline: "m")
     for (ex, ey) in [(34, 44), (56, 44)] {
         for i in 0..<9 { body[ey + i][ex + i] = "E"; body[ey + i][ex + 8 - i] = "E" }
@@ -873,13 +868,11 @@ func pipBodyPart(lookLeft: Bool = false, cheekBulge: Int = 0) -> Grid {
     // ears behind (left ear 2px higher — perpetual confusion)
     fillEllipse(&g, cx: 20, cy: 24, rx: 5.5, ry: 6.5, "K")
     fillEllipse(&g, cx: 44, cy: 26, rx: 5.5, ry: 6.5, "K")
-    // near-circular body
-    fillEllipse(&g, cx: 32, cy: 54, rx: 23, ry: 25, "K")
+    // near-circular body, form-shaded
+    shadeEllipse(&g, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
     // cheek pouches (bulging, always full)
     fillEllipse(&g, cx: 11 - Double(cheekBulge), cy: 56, rx: 6.5, ry: 7.5, "K")
     fillEllipse(&g, cx: 53 + Double(cheekBulge), cy: 56, rx: 6.5, ry: 7.5, "K")
-    // lower-right warm shade, hugging the edge
-    fillEllipse(&g, cx: 44, cy: 73, rx: 9, ry: 5.5, "k")
     // chest tuft
     fillEllipse(&g, cx: 30, cy: 66, rx: 7, ry: 6, "Y")
     outlineShape(&g, body: ["K", "k", "Y"], outline: "k")
@@ -923,10 +916,9 @@ func pipNorthFrame(_ f: Int) -> Grid {
     var body = emptyGrid(w: SW, h: SH)
     fillEllipse(&body, cx: 20, cy: 24, rx: 5.5, ry: 6.5, "K")
     fillEllipse(&body, cx: 44, cy: 26, rx: 5.5, ry: 6.5, "K")
-    fillEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, "K")
+    shadeEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
     fillEllipse(&body, cx: 11, cy: 56, rx: 6.5, ry: 7.5, "K")
     fillEllipse(&body, cx: 53, cy: 56, rx: 6.5, ry: 7.5, "K")
-    fillEllipse(&body, cx: 42, cy: 72, rx: 10, ry: 7, "k")   // back shading
     outlineShape(&body, body: ["K", "k"], outline: "k")
     // tail dot
     fillEllipse(&body, cx: 32, cy: 74, rx: 2.5, ry: 2, "k")
@@ -942,9 +934,8 @@ func pipEastFrame(_ f: Int) -> Grid {
     composite(&g, sh, dx: 0, dy: 0)
     var body = emptyGrid(w: SW, h: SH)
     fillEllipse(&body, cx: 26, cy: 24, rx: 5.5, ry: 6.5, "K")     // ear
-    fillEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, "K")
+    shadeEllipse(&body, cx: 32, cy: 54, rx: 23, ry: 25, main: "K", hi: "K", lo: "k")
     fillEllipse(&body, cx: 50, cy: 56, rx: 7, ry: 8, "K")          // cheek right
-    fillEllipse(&body, cx: 40, cy: 74, rx: 10, ry: 6, "k")
     outlineShape(&body, body: ["K", "k"], outline: "k")
     fillEllipse(&body, cx: 26, cy: 25, rx: 2.5, ry: 3.5, "P")
     for dy in 0..<5 { for dx in 0..<5 { body[44 + dy][40 + dx] = "E" } }
@@ -961,10 +952,9 @@ func pipBattleIdle(frame: Int) -> Grid {
     var body = emptyGrid(w: BW, h: BH)
     fillEllipse(&body, cx: 40, cy: 40, rx: 10, ry: 12, "K")
     fillEllipse(&body, cx: 86, cy: 44, rx: 10, ry: 12, "K")
-    fillEllipse(&body, cx: 64, cy: 78, rx: 42, ry: 46, "K")
+    shadeEllipse(&body, cx: 64, cy: 78, rx: 42, ry: 46, main: "K", hi: "K", lo: "k")
     fillEllipse(&body, cx: 18 - Double(puff), cy: 84, rx: 12, ry: 14, "K")
     fillEllipse(&body, cx: 110 + Double(puff), cy: 84, rx: 12, ry: 14, "K")
-    fillEllipse(&body, cx: 88, cy: 108, rx: 16, ry: 10, "k")
     fillEllipse(&body, cx: 60, cy: 100, rx: 13, ry: 11, "Y")
     outlineShape(&body, body: ["K", "k", "Y"], outline: "k")
     fillEllipse(&body, cx: 40, cy: 42, rx: 4.5, ry: 6.5, "P")
@@ -1003,10 +993,9 @@ func pipBattleHurt() -> Grid {
     var body = emptyGrid(w: BW, h: BH)
     fillEllipse(&body, cx: 40, cy: 42, rx: 10, ry: 12, "K")
     fillEllipse(&body, cx: 86, cy: 46, rx: 10, ry: 12, "K")
-    fillEllipse(&body, cx: 64, cy: 80, rx: 42, ry: 44, "K")
+    shadeEllipse(&body, cx: 64, cy: 80, rx: 42, ry: 44, main: "K", hi: "K", lo: "k")
     fillEllipse(&body, cx: 16, cy: 86, rx: 12, ry: 14, "K")
     fillEllipse(&body, cx: 108, cy: 86, rx: 12, ry: 14, "K")
-    fillEllipse(&body, cx: 88, cy: 108, rx: 16, ry: 10, "k")
     outlineShape(&body, body: ["K", "k"], outline: "k")
     for (ex, ey) in [(48, 60), (68, 60)] {
         for i in 0..<9 { body[ey + i][ex + i] = "E"; body[ey + i][ex + 8 - i] = "E" }
