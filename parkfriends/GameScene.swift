@@ -1575,8 +1575,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         followerSpecies = state.party.map(\.species).filter { $0 != state.activeSpecies }
         for (index, spec) in followerSpecies.enumerated() {
             let follower = SKSpriteNode(texture: CharacterSprites.standingTexture(species: spec))
-            let base = CharacterSprites.overworldSize(species: spec)
-            follower.size = CGSize(width: base.width * 0.92, height: base.height * 0.92)
+            follower.size = CharacterSprites.overworldSize(species: spec)
             follower.zPosition = GameConstants.ZPos.entity - 0.1
             follower.alpha = 0.88
             let offset = idleFollowerOffset(index: index, facing: player.facing)
