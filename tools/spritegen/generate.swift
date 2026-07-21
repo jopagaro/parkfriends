@@ -907,17 +907,10 @@ func hazelBattleHurt() -> Grid {
 func pipMass(_ g: inout Grid, cx: Double, topY: Double, scale: Double) {
     let crownR = 16.5 * scale
     fillEllipse(&g, cx: cx, cy: topY + 14 * scale, rx: crownR, ry: 14 * scale, "J")
+    // shoulder blend so the crown→body junction has no step notch
+    fillEllipse(&g, cx: cx, cy: topY + 21 * scale, rx: 19.5 * scale, ry: 14 * scale, "J")
     fillEllipse(&g, cx: cx, cy: topY + 28 * scale, rx: 22.5 * scale, ry: 16 * scale, "J")
     fillEllipse(&g, cx: cx, cy: topY + 38 * scale, rx: 24 * scale, ry: 13 * scale, "J")
-    // form shadow lower-right, rim band only (hips added afterwards so they
-    // stay golden instead of soaking up the whole shadow)
-    let bcy = topY + 27 * scale
-    for y in 0..<g.count { for x in 0..<g[0].count where g[y][x] == "J" {
-        let nx = (Double(x) + 0.5 - cx) / (24 * scale)
-        let ny = (Double(y) + 0.5 - bcy) / (26 * scale)
-        let d = nx * nx + ny * ny
-        if d <= 1.02, (-nx * 0.6 - ny * 0.8) * d.squareRoot() < -0.56 { g[y][x] = "j" }
-    } }
     // flat sitting base
     let baseY = Int(topY + 48 * scale)
     for y in 0..<g.count where y > baseY { for x in 0..<g[0].count where g[y][x] == "J" { g[y][x] = "." } }
