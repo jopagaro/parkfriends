@@ -505,10 +505,10 @@ func spikeBody(w: Int, h: Int, cx: Double, cy: Double, scale: Double,
                hurt: Bool = false, armUp: Bool = false) -> Grid {
     var g = emptyGrid(w: w, h: h)
     // tall upright torso
-    shadeEllipse(&g, cx: cx, cy: cy + 8 * scale, rx: 15 * scale, ry: 21 * scale,
+    shadeEllipse(&g, cx: cx, cy: cy + 8 * scale, rx: 17.5 * scale, ry: 22 * scale,
                  main: "B", hi: "h", lo: "b")
     // big cream belly
-    fillEllipse(&g, cx: cx, cy: cy + 12 * scale, rx: 10 * scale, ry: 14 * scale, "N")
+    fillEllipse(&g, cx: cx, cy: cy + 12 * scale, rx: 12.5 * scale, ry: 15 * scale, "N")
     fillEllipse(&g, cx: cx - 3 * scale, cy: cy + 7 * scale, rx: 5 * scale, ry: 5 * scale, "Y")
     // head overlapping torso top
     shadeEllipse(&g, cx: cx, cy: cy - 20 * scale, rx: 14 * scale, ry: 12 * scale,
@@ -520,8 +520,8 @@ func spikeBody(w: Int, h: Int, cx: Double, cy: Double, scale: Double,
     fillEllipse(&g, cx: cx + 11 * scale, cy: cy - 29 * scale, rx: 3.4 * scale, ry: 3 * scale, "B")
     // nub arms
     let armY = cy + Double(armUp ? -2 : 2) * scale
-    fillEllipse(&g, cx: cx - 16 * scale, cy: armY, rx: 4.2 * scale, ry: 6 * scale, "B")
-    fillEllipse(&g, cx: cx + 16 * scale, cy: cy + 2 * scale, rx: 4.2 * scale, ry: 6 * scale, "B")
+    fillEllipse(&g, cx: cx - 18.5 * scale, cy: armY, rx: 4.4 * scale, ry: 6 * scale, "B")
+    fillEllipse(&g, cx: cx + 18.5 * scale, cy: cy + 2 * scale, rx: 4.4 * scale, ry: 6 * scale, "B")
     outlineShape(&g, body: ["B", "N", "Y", "h", "b"], outline: "b")
     // eyes + uneven determined brows
     let eyeSize = max(3, Int(4 * scale))
@@ -544,11 +544,6 @@ func spikeBody(w: Int, h: Int, cx: Double, cy: Double, scale: Double,
     // blush
     fillEllipse(&g, cx: cx - 10 * scale, cy: cy - 17 * scale, rx: 1.8 * scale, ry: 1.2 * scale, "P")
     fillEllipse(&g, cx: cx + 10 * scale, cy: cy - 17 * scale, rx: 1.8 * scale, ry: 1.2 * scale, "P")
-    // quill fringe dipping over the forehead (reference "bangs")
-    for (fx, flen) in [(cx - 6 * scale, 5.0 * scale), (cx, 6.5 * scale), (cx + 6 * scale, 5.0 * scale)] {
-        drawSpike(&g, baseX: fx, baseY: cy - 30 * scale, angle: .pi / 2,
-                  len: flen, baseR: 2.0 * scale, body: "b", tip: "b")
-    }
     return g
 }
 
@@ -631,8 +626,8 @@ func spikeEastFrame(_ f: Int) -> Grid {
     composite(&g, cloak, dx: 0, dy: dy)
     // upright body: torso + belly sliver + head with snout right
     var body = emptyGrid(w: SW, h: SH)
-    shadeEllipse(&body, cx: 34, cy: 62, rx: 14, ry: 20, main: "B", hi: "h", lo: "b")
-    fillEllipse(&body, cx: 40, cy: 66, rx: 8, ry: 12, "N")
+    shadeEllipse(&body, cx: 34, cy: 62, rx: 15.5, ry: 20, main: "B", hi: "h", lo: "b")
+    fillEllipse(&body, cx: 40, cy: 66, rx: 9.5, ry: 13, "N")
     shadeEllipse(&body, cx: 36, cy: 32, rx: 13, ry: 11, main: "B", hi: "h", lo: "b")
     fillEllipse(&body, cx: 47, cy: 36, rx: 7, ry: 4.5, "N")
     fillEllipse(&body, cx: 44, cy: 58, rx: 4, ry: 6, "B")   // near arm
