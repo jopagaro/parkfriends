@@ -14,7 +14,8 @@ final class PlayerNode: SKSpriteNode {
     init(species: Species) {
         self.species = species
         let texture = CharacterSprites.standingTexture(species: species)
-        super.init(texture: texture, color: .clear, size: CGSize(width: 44, height: 66))
+        super.init(texture: texture, color: .clear,
+                   size: CharacterSprites.overworldSize(species: species))
         name = "player"
         zPosition = GameConstants.ZPos.entity
 
@@ -39,6 +40,7 @@ final class PlayerNode: SKSpriteNode {
         species = s
         stopWalkCycle()
         texture = CharacterSprites.standingTexture(species: s)
+        size = CharacterSprites.overworldSize(species: s)
     }
 
     // MARK: - Movement

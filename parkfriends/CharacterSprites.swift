@@ -69,6 +69,18 @@ enum CharacterSprites {
         generatedIdleFrames(species: species).first ?? texture(species: species, frame: .a)
     }
 
+    /// Per-species overworld display size. All four are drawn on the same
+    /// 64x96 canvas but fill it differently (Shelly is wide, Hazel slim) —
+    /// these sizes normalize how big each looks on screen.
+    static func overworldSize(species: Species) -> CGSize {
+        switch species {
+        case .turtle:   return CGSize(width: 40, height: 58)
+        case .squirrel: return CGSize(width: 46, height: 70)
+        case .hedgehog: return CGSize(width: 44, height: 66)
+        case .hamster:  return CGSize(width: 42, height: 60)
+        }
+    }
+
     /// Warm up the cache off the critical path.
     static func preload() {
         for s in Species.allCases {
