@@ -26,6 +26,49 @@ enum CharacterSprites {
         return tex
     }
 
+    // MARK: - Code-generated sprite sets (tools/spritegen → world.generated)
+
+    enum GenDirection: String { case south, north, east, west }
+
+    private static func genSlug(_ s: Species) -> String {
+        switch s {
+        case .turtle:   return "shelly"
+        case .squirrel: return "hazel"
+        case .hedgehog: return "spike"
+        case .hamster:  return "pip"
+        }
+    }
+
+    private static let genBase = "textures.downloaded.sprites/world.generated/"
+
+    /// 4-frame directional walk cycle. Empty if the PNGs are missing —
+    /// callers fall back to the legacy procedural texture.
+    static func generatedWalkFrames(species: Species, direction: GenDirection) -> [SKTexture] {
+        (1...4).compactMap {
+            ImportedArt.fileTexture(relativePath:
+                "\(genBase)\(genSlug(species))-walk-\(direction.rawValue)-f\($0)-64x96.png")
+        }
+    }
+
+    /// 2-frame idle (second frame blinks).
+    static func generatedIdleFrames(species: Species) -> [SKTexture] {
+        (1...2).compactMap {
+            ImportedArt.fileTexture(relativePath:
+                "\(genBase)\(genSlug(species))-idle-south-f\($0)-64x96.png")
+        }
+    }
+
+    /// Battle pose: "idle-f1", "idle-f2", "attack", "hurt".
+    static func generatedBattleTexture(species: Species, pose: String) -> SKTexture? {
+        ImportedArt.fileTexture(relativePath:
+            "\(genBase)\(genSlug(species))-battle-\(pose)-128x128.png")
+    }
+
+    /// Best available standing texture (generated south idle, else legacy).
+    static func standingTexture(species: Species) -> SKTexture {
+        generatedIdleFrames(species: species).first ?? texture(species: species, frame: .a)
+    }
+
     /// Warm up the cache off the critical path.
     static func preload() {
         for s in Species.allCases {

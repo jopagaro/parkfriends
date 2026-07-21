@@ -1396,15 +1396,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let dy = target.y - f.position.y
             f.position.x += dx * (playerIsMoving ? 0.28 : 0.18)
             f.position.y += dy * (playerIsMoving ? 0.28 : 0.18)
-            if abs(dx) > 0.5 { f.xScale = dx < 0 ? -1 : 1 }
 
             let spec = i < followerSpecies.count ? followerSpecies[i] : .turtle
             let moving = sqrt(dx*dx + dy*dy) > (playerIsMoving ? 1.5 : 8.0)
-            if moving && playerIsMoving {
+            let dir: CharacterSprites.GenDirection =
+                abs(dx) >= abs(dy) ? (dx < 0 ? .west : .east) : (dy < 0 ? .south : .north)
+            let genWalk = CharacterSprites.generatedWalkFrames(species: spec, direction: dir)
+            if moving && playerIsMoving, genWalk.count == 4 {
+                f.xScale = 1
+                f.texture = genWalk[Int(currentTime / 0.12) % 4]
+            } else if moving && playerIsMoving {
+                if abs(dx) > 0.5 { f.xScale = dx < 0 ? -1 : 1 }
                 let frame: CharacterSprites.WalkFrame = Int(currentTime / 0.18) % 2 == 0 ? .a : .b
                 f.texture = CharacterSprites.texture(species: spec, frame: frame)
             } else {
-                f.texture = CharacterSprites.texture(species: spec, frame: .a)
+                f.xScale = 1
+                f.texture = CharacterSprites.standingTexture(species: spec)
             }
         }
 
@@ -1567,8 +1574,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let state = gameState, player != nil else { return }
         followerSpecies = state.party.map(\.species).filter { $0 != state.activeSpecies }
         for (index, spec) in followerSpecies.enumerated() {
-            let follower = SKSpriteNode(texture: CharacterSprites.texture(species: spec, frame: .a))
-            follower.size = CGSize(width: 48, height: 48)
+            let follower = SKSpriteNode(texture: CharacterSprites.standingTexture(species: spec))
+            follower.size = CGSize(width: 44, height: 66)
             follower.zPosition = GameConstants.ZPos.entity - 0.1
             follower.alpha = 0.88
             let offset = idleFollowerOffset(index: index, facing: player.facing)

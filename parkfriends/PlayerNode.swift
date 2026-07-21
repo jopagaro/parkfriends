@@ -9,10 +9,12 @@ final class PlayerNode: SKSpriteNode {
 
     private var isWalking = false
 
+    private var walkDirection: CharacterSprites.GenDirection = .south
+
     init(species: Species) {
         self.species = species
-        let texture = CharacterSprites.texture(species: species, frame: .a)
-        super.init(texture: texture, color: .clear, size: CGSize(width: 52, height: 52))
+        let texture = CharacterSprites.standingTexture(species: species)
+        super.init(texture: texture, color: .clear, size: CGSize(width: 48, height: 72))
         name = "player"
         zPosition = GameConstants.ZPos.entity
 
@@ -36,7 +38,7 @@ final class PlayerNode: SKSpriteNode {
     func setSpecies(_ s: Species) {
         species = s
         stopWalkCycle()
-        texture = CharacterSprites.texture(species: s, frame: .a)
+        texture = CharacterSprites.standingTexture(species: s)
     }
 
     // MARK: - Movement
@@ -49,7 +51,15 @@ final class PlayerNode: SKSpriteNode {
 
         if moving {
             facing = CGVector(dx: direction.dx / len, dy: direction.dy / len)
-            if !isWalking { startWalkCycle() }
+            // Dominant axis picks the sprite direction (SpriteKit y-up).
+            let dir: CharacterSprites.GenDirection =
+                abs(direction.dx) >= abs(direction.dy)
+                    ? (direction.dx < 0 ? .west : .east)
+                    : (direction.dy < 0 ? .south : .north)
+            if !isWalking || dir != walkDirection {
+                walkDirection = dir
+                startWalkCycle()
+            }
         } else {
             if isWalking { stopWalkCycle() }
         }
@@ -58,34 +68,50 @@ final class PlayerNode: SKSpriteNode {
             dx: direction.dx * species.baseSpeed,
             dy: direction.dy * species.baseSpeed
         )
-        if abs(direction.dx) > 0.05 {
-            xScale = direction.dx < 0 ? -1 : 1
-        }
     }
 
     // MARK: - Walk cycle
 
     private func startWalkCycle() {
         isWalking = true
-        let cycle = SKAction.repeatForever(.sequence([
-            .run { [weak self] in
-                guard let self else { return }
-                self.texture = CharacterSprites.texture(species: self.species, frame: .a)
-            },
-            .wait(forDuration: 0.16),
-            .run { [weak self] in
-                guard let self else { return }
-                self.texture = CharacterSprites.texture(species: self.species, frame: .b)
-            },
-            .wait(forDuration: 0.16),
-        ]))
-        run(cycle, withKey: "walk")
+        removeAction(forKey: "walk")
+        let frames = CharacterSprites.generatedWalkFrames(species: species, direction: walkDirection)
+        if frames.count == 4 {
+            run(.repeatForever(.animate(with: frames, timePerFrame: 0.12, resize: false, restore: false)),
+                withKey: "walk")
+        } else {
+            // Legacy fallback: 2-frame procedural toggle.
+            let cycle = SKAction.repeatForever(.sequence([
+                .run { [weak self] in
+                    guard let self else { return }
+                    self.texture = CharacterSprites.texture(species: self.species, frame: .a)
+                },
+                .wait(forDuration: 0.16),
+                .run { [weak self] in
+                    guard let self else { return }
+                    self.texture = CharacterSprites.texture(species: self.species, frame: .b)
+                },
+                .wait(forDuration: 0.16),
+            ]))
+            run(cycle, withKey: "walk")
+        }
     }
 
     private func stopWalkCycle() {
         isWalking = false
         removeAction(forKey: "walk")
-        texture = CharacterSprites.texture(species: species, frame: .a)
+        let idle = CharacterSprites.generatedIdleFrames(species: species)
+        if idle.count == 2 {
+            // Mostly-still idle with an occasional blink.
+            run(.repeatForever(.sequence([
+                .setTexture(idle[0], resize: false),
+                .wait(forDuration: 2.6),
+                .setTexture(idle[1], resize: false),
+                .wait(forDuration: 0.14),
+            ])), withKey: "walk")
+        } else {
+            texture = CharacterSprites.texture(species: species, frame: .a)
+        }
     }
 
     // MARK: - Effects

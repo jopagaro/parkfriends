@@ -1342,7 +1342,8 @@ private final class PartySlot: SKNode {
         let ppFrac = member.maxPP > 0 ? CGFloat(member.pp) / CGFloat(member.maxPP) : 0
         ppFill.size.width = max(0, ppFrac * 100)
 
-        sprite.texture = CharacterSprites.texture(species: member.species, frame: .a)
+        sprite.texture = CharacterSprites.generatedBattleTexture(species: member.species, pose: "idle-f1")
+            ?? CharacterSprites.texture(species: member.species, frame: .a)
         nameL.text     = member.species.displayName
         lvlL.text      = "Lv.\(member.level)"
         hpNum.text     = "\(member.hp)/\(member.maxHP)  PP:\(member.pp)"
