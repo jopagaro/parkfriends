@@ -907,7 +907,7 @@ func hazelBattleHurt() -> Grid {
 func pipMass(_ g: inout Grid, cx: Double, topY: Double, scale: Double) {
     let crownR = 16.5 * scale
     fillEllipse(&g, cx: cx, cy: topY + 14 * scale, rx: crownR, ry: 14 * scale, "J")
-    fillEllipse(&g, cx: cx, cy: topY + 28 * scale, rx: 21 * scale, ry: 16 * scale, "J")
+    fillEllipse(&g, cx: cx, cy: topY + 28 * scale, rx: 22.5 * scale, ry: 16 * scale, "J")
     fillEllipse(&g, cx: cx, cy: topY + 38 * scale, rx: 24 * scale, ry: 13 * scale, "J")
     // form shadow lower-right, rim band only (hips added afterwards so they
     // stay golden instead of soaking up the whole shadow)
@@ -918,9 +918,6 @@ func pipMass(_ g: inout Grid, cx: Double, topY: Double, scale: Double) {
         let d = nx * nx + ny * ny
         if d <= 1.02, (-nx * 0.6 - ny * 0.8) * d.squareRoot() < -0.56 { g[y][x] = "j" }
     } }
-    // haunch hip bulges
-    fillEllipse(&g, cx: cx - 22 * scale, cy: topY + 38 * scale, rx: 6 * scale, ry: 9 * scale, "J")
-    fillEllipse(&g, cx: cx + 22 * scale, cy: topY + 38 * scale, rx: 6 * scale, ry: 9 * scale, "J")
     // flat sitting base
     let baseY = Int(topY + 48 * scale)
     for y in 0..<g.count where y > baseY { for x in 0..<g[0].count where g[y][x] == "J" { g[y][x] = "." } }
@@ -933,9 +930,6 @@ func pipBodyPart(lookLeft: Bool = false, cheekBulge: Int = 0, hurt: Bool = false
     fillEllipse(&g, cx: 43, cy: 29, rx: 6.5, ry: 7.5, "J")
     // sitting pear mass (top of crown at y≈30, base flat at y≈78)
     pipMass(&g, cx: 32, topY: 30, scale: 1.0)
-    // cheek pouches at face level — asymmetric, left fuller
-    fillEllipse(&g, cx: 12 - Double(cheekBulge), cy: 52, rx: 7.5, ry: 8, "J")
-    fillEllipse(&g, cx: 52 + Double(cheekBulge), cy: 53, rx: 6, ry: 6.5, "J")
     // continuous cream front: chin → belly → base
     fillEllipse(&g, cx: 32, cy: 52, rx: 12, ry: 8, "K")
     fillEllipse(&g, cx: 32, cy: 65, rx: 13, ry: 14, "K")
@@ -999,8 +993,6 @@ func pipNorthFrame(_ f: Int) -> Grid {
     fillEllipse(&body, cx: 21, cy: 27, rx: 6.5, ry: 7.5, "J")
     fillEllipse(&body, cx: 43, cy: 29, rx: 6.5, ry: 7.5, "J")
     pipMass(&body, cx: 32, topY: 30, scale: 1.0)
-    fillEllipse(&body, cx: 12, cy: 52, rx: 7.5, ry: 8, "J")
-    fillEllipse(&body, cx: 52, cy: 53, rx: 6, ry: 6.5, "J")
     outlineShape(&body, body: ["J", "j"], outline: "j")
     drawSpike(&body, baseX: 30, baseY: 31, angle: -1.75, len: 4, baseR: 1.4, body: "J", tip: "J")
     drawSpike(&body, baseX: 34, baseY: 31, angle: -1.35, len: 4.5, baseR: 1.4, body: "J", tip: "J")
@@ -1055,8 +1047,7 @@ func pipBattleIdle(frame: Int) -> Grid {
     fillEllipse(&body, cx: 42, cy: 32, rx: 12, ry: 14, "J")
     fillEllipse(&body, cx: 86, cy: 36, rx: 12, ry: 14, "J")
     pipMass(&body, cx: 64, topY: 24, scale: 2.0)
-    fillEllipse(&body, cx: 22 - Double(puff), cy: 68, rx: 14, ry: 15, "J")
-    fillEllipse(&body, cx: 106 + Double(puff), cy: 70, rx: 11, ry: 12, "J")
+    _ = puff
     fillEllipse(&body, cx: 64, cy: 68, rx: 23, ry: 15, "K")
     fillEllipse(&body, cx: 64, cy: 94, rx: 25, ry: 26, "K")
     for y in 116...119 { for x in 42...86 where body[y][x] == "J" || body[y][x] == "j" { body[y][x] = "K" } }
@@ -1108,8 +1099,6 @@ func pipBattleHurt() -> Grid {
     fillEllipse(&body, cx: 42, cy: 34, rx: 12, ry: 14, "J")
     fillEllipse(&body, cx: 86, cy: 38, rx: 12, ry: 14, "J")
     pipMass(&body, cx: 64, topY: 26, scale: 2.0)
-    fillEllipse(&body, cx: 20, cy: 70, rx: 12, ry: 13, "J")
-    fillEllipse(&body, cx: 106, cy: 72, rx: 11, ry: 12, "J")
     fillEllipse(&body, cx: 64, cy: 70, rx: 23, ry: 15, "K")
     fillEllipse(&body, cx: 64, cy: 96, rx: 24, ry: 24, "K")
     outlineShape(&body, body: ["J", "j", "K"], outline: "j")
