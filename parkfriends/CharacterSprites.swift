@@ -85,7 +85,16 @@ enum CharacterSprites {
         case .hedgehog: targetContentHeight = 58
         case .hamster:  targetContentHeight = 52
         }
-        let frac = contentHeightFraction(of: standingTexture(species: species))
+        // Measure ONLY the generated idle (known 64x96 canvas). If the
+        // generated art is missing we fall back to a fixed legacy size —
+        // never measure the legacy texture (different canvas would produce
+        // a wildly oversized node).
+        guard let idle = generatedIdleFrames(species: species).first else {
+            let legacy = CGSize(width: 52, height: 52)
+            overworldSizeCache[species] = legacy
+            return legacy
+        }
+        let frac = contentHeightFraction(of: idle)
         let nodeH = targetContentHeight / max(0.4, frac)
         let size = CGSize(width: nodeH * (64.0 / 96.0), height: nodeH)
         overworldSizeCache[species] = size
