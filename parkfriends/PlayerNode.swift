@@ -19,7 +19,10 @@ final class PlayerNode: SKSpriteNode {
         name = "player"
         zPosition = GameConstants.ZPos.entity
 
-        let body = SKPhysicsBody(circleOfRadius: 18)
+        // Collision circle at the FEET (bottom quarter), not the node center —
+        // with tall sprites a centered body hits walls the feet never touch.
+        let body = SKPhysicsBody(circleOfRadius: 15,
+                                 center: CGPoint(x: 0, y: -size.height * 0.32))
         body.allowsRotation = false
         body.linearDamping  = 6
         body.friction       = 0
@@ -41,6 +44,18 @@ final class PlayerNode: SKSpriteNode {
         stopWalkCycle()
         texture = CharacterSprites.standingTexture(species: s)
         size = CharacterSprites.overworldSize(species: s)
+        // Rebuild the feet-anchored body for the new sprite height.
+        let oldBody = physicsBody
+        let body = SKPhysicsBody(circleOfRadius: 15,
+                                 center: CGPoint(x: 0, y: -size.height * 0.32))
+        body.allowsRotation = false
+        body.linearDamping  = 6
+        body.friction       = 0
+        body.restitution    = 0
+        body.categoryBitMask    = oldBody?.categoryBitMask ?? GameConstants.Category.player
+        body.collisionBitMask   = oldBody?.collisionBitMask ?? (GameConstants.Category.wall | GameConstants.Category.pushable)
+        body.contactTestBitMask = oldBody?.contactTestBitMask ?? 0
+        physicsBody = body
     }
 
     // MARK: - Movement
