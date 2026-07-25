@@ -142,19 +142,16 @@ enum ParkWorld {
             painter.addBlockingRect(wall)
         }
 
-        // §4.4 — Fountain: round pond blob basin + animated water shimmer.
-        painter.placeSprite(SpecRect(43, 23, 4, 4),
-                            texture: ImportedArt.pondBlobTile(col: 3, rowFromTop: 0),
+        // §4.4 — Fountain: generated two-tier stone fountain.
+        painter.placeSprite(SpecRect(43, 22, 4, 5),
+                            texture: ImportedArt.genTile("prop-fountain-128x160"),
                             layer: .props)
-        painter.placeAnimated(SpecRect(44, 24, 2, 2),
-                              frames: ImportedArt.parkWaterSurfaceFrames(),
-                              timePerFrame: 0.25)
 
-        // §4.4 — Statue: stone-block pedestal with a carved-rock figure.
-        painter.placeSprite(SpecRect(70, 44, 2, 1),
-                            texture: ImportedArt.parkStoneBlockTile(),
+        // §4.4 — Statue: stone duck memorial. Nobody explains it.
+        painter.placeSprite(SpecRect(70, 41, 2, 3),
+                            texture: ImportedArt.genTile("prop-statue-64x96"),
                             layer: .props)
-        painter.placeRock(SpecRect(70, 42, 2, 2), variant: 6)
+        painter.addBlockingRect(SpecRect(70, 43, 2, 1))
 
         // §4.9 — Pier: horizontal plank walkway extending east into the pond.
         painter.placeSprite(SpecRect(26, 19, 3, 1),
@@ -186,13 +183,9 @@ enum ParkWorld {
         for (xT, yT) in [(40, 19), (49, 19), (40, 28), (49, 28)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 2), texture: lampTex, layer: .props)
         }
-        let chairTex = ImportedArt.parkFurnitureTile(col: 6, rowFromTop: 2)
-        for (xT, yT) in [
-            (44, 20), (45, 20),      // bench facing fountain from north
-            (44, 30), (45, 30),      // south
-            (50, 24), (38, 24)       // east / west singles
-        ] {
-            painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: chairTex, layer: .props)
+        let benchTex = ImportedArt.genTile("prop-bench-64x40")
+        for (xT, yT) in [(44, 20), (44, 30), (50, 24), (37, 24)] {
+            painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
         }
 
         // §4.10/§4.11 — Plaza flower beds (textured).
@@ -210,8 +203,7 @@ enum ParkWorld {
             painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: t, layer: .decor)
         }
         // §4.11 — Bench facing the statue.
-        painter.placeSprite(SpecRect(70, 47, 1, 1), texture: chairTex, layer: .props)
-        painter.placeSprite(SpecRect(71, 47, 1, 1), texture: chairTex, layer: .props)
+        painter.placeSprite(SpecRect(70, 47, 2, 1), texture: benchTex, layer: .props)
 
         // §4.12 — Bushes scattered. Density pass: ~30 sprinkles.
         let bushTextures = [
@@ -238,8 +230,7 @@ enum ParkWorld {
             painter.center(SpecRect($0.0, $0.1, 1, 1))
         }
         for (xT, yT) in benchSpots {
-            painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: chairTex, layer: .props)
-            painter.placeSprite(SpecRect(xT + 1, yT, 1, 1), texture: chairTex, layer: .props)
+            painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
         }
 
         // Pond collision: one big rectangular wall covering the pond bounds.
@@ -443,9 +434,8 @@ enum ParkWorld {
                                 texture: ImportedArt.parkBiomSprite(col: 6, row: 4),
                                 layer: .decor)
         }
-        let chairTex = ImportedArt.parkFurnitureTile(col: 6, rowFromTop: 2)
-        painter.placeSprite(SpecRect(52, 44, 1, 1), texture: chairTex, layer: .props)
-        painter.placeSprite(SpecRect(53, 44, 1, 1), texture: chairTex, layer: .props)
+        painter.placeSprite(SpecRect(52, 44, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
         let benchPositions = [painter.center(SpecRect(52, 45, 1, 1))]
 
         // §3.3 — Tree-wall hedge border, 2 thick, gap at the park path (S).
@@ -712,8 +702,10 @@ private final class ScenePainter {
     }
 
     func placeRock(_ rect: SpecRect, variant: Int) {
-        let path = "textures.downloaded.sprites/world.park/pixel-art-gray-rock-with-grass-sprite-0\(variant).png"
-        guard let tex = ImportedArt.fileTexture(relativePath: path) else { return }
+        let genPath = "textures.downloaded.sprites/world.generated/prop-rock-\((variant - 1) % 3 + 1)-48x48.png"
+        let packPath = "textures.downloaded.sprites/world.park/pixel-art-gray-rock-with-grass-sprite-0\(variant).png"
+        guard let tex = ImportedArt.fileTexture(relativePath: genPath)
+                ?? ImportedArt.fileTexture(relativePath: packPath) else { return }
         tex.filteringMode = .nearest
         let s = SKSpriteNode(texture: tex,
                              size: CGSize(width: CGFloat(rect.w) * tile, height: CGFloat(rect.h) * tile))

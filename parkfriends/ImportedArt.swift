@@ -270,14 +270,16 @@ enum ImportedArt {
                             tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
     }
 
-    /// Sprout Wood Bridge sheet (80×48): vertical 2×3-tile walkway at left.
+    /// Vertical plank walkway (generated).
     static func sproutBridgeVertical() -> SKTexture? {
-        sheetTexture(relativePath: "\(sproutBase)Objects/Wood Bridge.png",
-                     tileSize: CGSize(width: 32, height: 48), col: 0, row: 0)
+        genTile("prop-bridge-v-96x144")
+            ?? sheetTexture(relativePath: "\(sproutBase)Objects/Wood Bridge.png",
+                            tileSize: CGSize(width: 32, height: 48), col: 0, row: 0)
     }
 
-    /// Horizontal 3×1-tile walkway strip from the same sheet (pier/dock).
+    /// Horizontal plank walkway / pier (generated).
     static func sproutBridgeHorizontal() -> SKTexture? {
+        if let gen = genTile("prop-bridge-h-144x48") { return gen }
         guard let full = cgImage(at: "\(sproutBase)Objects/Wood Bridge.png"),
               let crop = full.cropping(to: CGRect(x: 32, y: 0, width: 48, height: 16)) else { return nil }
         let key = "bridge-horizontal-strip"
@@ -728,7 +730,8 @@ enum ImportedArt {
     }
 
     static func lampTexture(city: Bool) -> SKTexture? {
-        fileTexture(relativePath: "textures.downloaded.sprites/SKTiled-master/Demo/Assets/sticker-knight/torch.png")
+        genTile("prop-lamppost-32x96")
+            ?? fileTexture(relativePath: "textures.downloaded.sprites/SKTiled-master/Demo/Assets/sticker-knight/torch.png")
     }
 
     static func suburbHouseTexture(variant: Int) -> SKTexture? {

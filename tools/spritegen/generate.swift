@@ -52,6 +52,7 @@ var palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     "9": (0xD0, 0xD0, 0xD0, 255), // sidewalk light
     "R": (0x2E, 0x2E, 0x32, 255), // asphalt
     "x": (0x3A, 0x3A, 0x3E, 255), // asphalt light
+    "5": (0x6A, 0x6A, 0x6A, 255), // statue mid gray
     // parametric NPC slots (set per-role before rendering)
     "a": (0xE8, 0xC0, 0x98, 255), // skin
     "d": (0xC8, 0x9A, 0x6E, 255), // skin shadow
@@ -1560,6 +1561,154 @@ func treeSprite(w: Int, h: Int, canopyR: Double, conifer: Bool = false) -> Grid 
     return g
 }
 
+// MARK: - PARK PROPS (bench, lamppost, fountain, statue, bridges, rocks)
+
+func propBench() -> Grid {   // 64x40 wooden park bench
+    var g = emptyGrid(w: 64, h: 40)
+    // legs
+    for (lx) in [7, 53] {
+        for y in 20..<36 { for x in lx..<(lx + 4) { g[y][x] = "r" } }
+    }
+    // backrest: two plank rows
+    for (py, ph) in [(4, 5), (11, 5)] {
+        for y in py..<(py + ph) { for x in 4..<60 { g[y][x] = "T" } }
+        for x in 4..<60 { g[py + ph - 1][x] = "t" }
+    }
+    // seat planks
+    for y in 18..<26 { for x in 2..<62 { g[y][x] = "T" } }
+    for x in 2..<62 { g[21][x] = "t"; g[25][x] = "t" }
+    // uprights connecting backrest
+    for (ux) in [8, 54] { for y in 4..<20 { for x in ux..<(ux + 3) { g[y][x] = "t" } } }
+    outlineShape(&g, body: ["T", "t", "r"], outline: "r")
+    return g
+}
+
+func propLamppost() -> Grid {   // 32x96 iron lamp with warm glass
+    var g = emptyGrid(w: 32, h: 96)
+    // base
+    for y in 86..<92 { for x in 8..<24 { g[y][x] = "R" } }
+    for y in 82..<86 { for x in 11..<21 { g[y][x] = "R" } }
+    // pole
+    for y in 22..<84 { for x in 14..<18 { g[y][x] = "R" } }
+    for y in 22..<84 { g[y][14] = "x" }
+    // head: cap + glass box
+    for y in 2..<6 { for x in 10..<22 { g[y][x] = "R" } }
+    g[1][15] = "R"; g[1][16] = "R"
+    for y in 6..<20 { for x in 9..<23 { g[y][x] = "Q" } }
+    for y in 9..<17 { for x in 12..<20 { g[y][x] = "W" } }
+    for y in 6..<20 { g[y][9] = "R"; g[y][22] = "R" }
+    for x in 9..<23 { g[19][x] = "R" }
+    outlineShape(&g, body: ["R", "x", "Q", "W"], outline: "R")
+    return g
+}
+
+func propFountain() -> Grid {   // 128x160 two-tier stone fountain
+    var g = emptyGrid(w: 128, h: 160)
+    // lower basin
+    var basin = emptyGrid(w: 128, h: 160)
+    fillEllipse(&basin, cx: 64, cy: 118, rx: 58, ry: 34, "1")
+    fillEllipse(&basin, cx: 64, cy: 114, rx: 50, ry: 27, "w")
+    for y in 0..<160 { for x in 0..<128 where basin[y][x] == "w" {
+        if speck(x, y, 7) < 40 { basin[y][x] = "u" }
+    } }
+    // rim highlight/shadow
+    for y in 0..<160 { for x in 0..<128 where basin[y][x] == "1" {
+        if y < 100 { basin[y][x] = "9" }
+        if y > 138 { basin[y][x] = "0" }
+    } }
+    outlineShape(&basin, body: ["1", "9", "0", "w", "u"], outline: "0")
+    composite(&g, basin, dx: 0, dy: 0)
+    // pedestal
+    var ped = emptyGrid(w: 128, h: 160)
+    for y in 66..<108 { for x in 54..<74 { ped[y][x] = "1" } }
+    for y in 66..<108 { ped[y][54] = "9"; ped[y][73] = "0" }
+    outlineShape(&ped, body: ["1", "9", "0"], outline: "0")
+    composite(&g, ped, dx: 0, dy: 0)
+    // upper bowl with water
+    var bowl = emptyGrid(w: 128, h: 160)
+    fillEllipse(&bowl, cx: 64, cy: 62, rx: 32, ry: 15, "1")
+    fillEllipse(&bowl, cx: 64, cy: 59, rx: 26, ry: 10, "w")
+    for y in 0..<160 { for x in 0..<128 where bowl[y][x] == "1" && y < 56 { bowl[y][x] = "9" } }
+    outlineShape(&bowl, body: ["1", "9", "w"], outline: "0")
+    composite(&g, bowl, dx: 0, dy: 0)
+    // spout + falling water threads
+    for y in 34..<52 { for x in 62..<66 { g[y][x] = "1" } }
+    for y in 30..<36 { for x in 60..<68 { g[y][x] = "9" } }
+    for (wx, wy0, wy1) in [(38, 66, 96), (88, 66, 96), (64, 40, 52)] {
+        for y in wy0..<wy1 { if y % 3 != 0 { g[y][wx] = "u"; g[y][wx + 1] = "W" } }
+    }
+    return g
+}
+
+func propStatue() -> Grid {   // 64x96 stone duck memorial on a plinth
+    var g = emptyGrid(w: 64, h: 96)
+    // plinth
+    for y in 78..<92 { for x in 8..<56 { g[y][x] = "1" } }
+    for y in 78..<80 { for x in 8..<56 { g[y][x] = "9" } }
+    for y in 62..<78 { for x in 16..<48 { g[y][x] = "1" } }
+    for y in 62..<78 { g[y][16] = "9"; g[y][47] = "0" }
+    // duck: body + head + bill, all stone tones
+    var duck = emptyGrid(w: 64, h: 96)
+    shadeEllipse(&duck, cx: 30, cy: 46, rx: 17, ry: 12, main: "1", hi: "9", lo: "0")
+    shadeEllipse(&duck, cx: 42, cy: 26, rx: 9, ry: 8.5, main: "1", hi: "9", lo: "0")
+    for y in 22..<28 { for x in 50..<60 { duck[y][x] = "0" } }   // bill
+    fillEllipse(&duck, cx: 16, cy: 42, rx: 5, ry: 4, "9")        // tail
+    duck[24][44] = "5"; duck[24][45] = "5"                        // carved eye
+    outlineShape(&duck, body: ["1", "9", "0", "5"], outline: "5")
+    composite(&g, duck, dx: 0, dy: 0)
+    outlineShape(&g, body: ["1", "9", "0", "5"], outline: "5")
+    return g
+}
+
+func propRock(_ v: Int) -> Grid {   // 48x48 boulder with grass tufts
+    var g = emptyGrid(w: 48, h: 48)
+    fillEllipse(&g, cx: 24, cy: 40, rx: 18, ry: 4, "S")
+    var rock = emptyGrid(w: 48, h: 48)
+    shadeEllipse(&rock, cx: 22 + Double(v % 3) * 2, cy: 26, rx: 15 + Double(v % 2) * 3,
+                 ry: 12, main: "1", hi: "9", lo: "0")
+    shadeEllipse(&rock, cx: 30, cy: 20, rx: 9, ry: 7, main: "1", hi: "9", lo: "0")
+    outlineShape(&rock, body: ["1", "9", "0"], outline: "0")
+    composite(&g, rock, dx: 0, dy: 0)
+    for (tx, ty) in [(8, 36), (38, 37), (20, 39)] {
+        g[ty][tx] = "G"; g[ty - 1][tx] = "H"; g[ty][tx + 1] = "G"
+    }
+    return g
+}
+
+func propBridgeV() -> Grid {   // 96x144: north-south plank walkway
+    var g = emptyGrid(w: 96, h: 144)
+    // planks: horizontal boards
+    var y = 0
+    var i = 0
+    while y < 144 {
+        let bh = 10 + (i % 2)
+        for yy in y..<min(144, y + bh) { for x in 8..<88 { g[yy][x] = yy == y + bh - 1 ? "t" : "T" } }
+        // nail dots
+        g[y + 3][12] = "r"; g[y + 3][83] = "r"
+        y += bh; i += 1
+    }
+    // side rails
+    for x in [4, 5, 6, 89, 90, 91] { for yy in 0..<144 { g[yy][x] = "r" } }
+    for x in [7, 88] { for yy in 0..<144 where yy % 18 < 10 { g[yy][x] = "t" } }
+    outlineShape(&g, body: ["T", "t", "r"], outline: "r")
+    return g
+}
+
+func propBridgeH() -> Grid {   // 144x48: east-west pier/walkway
+    var g = emptyGrid(w: 144, h: 48)
+    var x = 0
+    var i = 0
+    while x < 144 {
+        let bw = 10 + (i % 2)
+        for xx in x..<min(144, x + bw) { for y in 6..<42 { g[y][xx] = xx == x + bw - 1 ? "t" : "T" } }
+        g[10][x + 3] = "r"; g[37][x + 3] = "r"
+        x += bw; i += 1
+    }
+    for y in [2, 3, 4, 43, 44, 45] { for xx in 0..<144 { g[y][xx] = "r" } }
+    outlineShape(&g, body: ["T", "t", "r"], outline: "r")
+    return g
+}
+
 // MARK: - HOUSES (bible Part 3 anatomy, MAP_SPEC §3.14 roof variants)
 // 112x80 px = 7x5 tiles. Roof (2 tile rows) → wall w/ asymmetric windows →
 // foundation strip → door reaching ground. Selective outline in dark brown.
@@ -1620,10 +1769,17 @@ func houseImage(variant: String) -> CGImage {
         for x in stride(from: off, to: W, by: 12) { put(x, y, roofSh); put(x, y + 1, roofSh) }
     }
     rect(0, 27, W, 1, roofSh)                         // eave shadow
+    // ridge cap + chimney
+    rect(0, 0, W, 2, roofSh)
+    rect(78, 0, 12, 10, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    rect(77, 0, 14, 2, RGB(r: 0x6E, g: 0x48, b: 0x1E))
 
-    // Wall rows 28-69, plank lines every 7px.
+    // Wall rows 28-69, plank lines every 7px + eave shade + corner trim.
     rect(1, 28, W - 2, 42, wall)
     for y in stride(from: 34, to: 69, by: 7) { rect(1, y, W - 2, 1, wallSh) }
+    rect(1, 28, W - 2, 3, wallSh)
+    rect(1, 28, 4, 42, RGB(r: 0xD4, g: 0xA8, b: 0x70))
+    rect(W - 5, 28, 4, 42, wallSh)
 
     // Windows: left lit or dark by variant hash; right window 2px lower
     // (asymmetry rule). Sizes differ slightly.
@@ -1633,17 +1789,38 @@ func houseImage(variant: String) -> CGImage {
     rect(78, 36, 14, 15, frame)
     rect(79, 37, 12, 13, leftLit ? glassDrk : glassLit)
     if leftLit { rect(79, 37, 12, 3, RGB(r: 0x3A, g: 0x4C, b: 0x5E)) }  // curtain hint
+    // sills + shutters
+    rect(12, 50, 18, 3, frame)
+    rect(76, 51, 18, 3, frame)
+    rect(10, 34, 3, 16, roofSh); rect(29, 34, 3, 16, roofSh)
+    rect(74, 36, 3, 15, roofSh); rect(93, 36, 3, 15, roofSh)
+    // window cross panes
+    rect(20, 35, 1, 14, frame); rect(15, 41, 12, 1, frame)
+    rect(84, 37, 1, 13, frame); rect(79, 43, 12, 1, frame)
 
     // Foundation rows 70-79 with darker top lip.
     rect(0, 70, W, 10, found)
     rect(0, 70, W, 1, outline)
 
-    // Door: off-center (bible: never centered), reaches ground.
+    // Door: off-center (bible: never centered), reaches ground, with a
+    // little canopy and a step.
     let doorX = h % 3 == 0 ? 40 : 46
+    rect(doorX - 3, 46, 24, 4, roof)
+    rect(doorX - 3, 49, 24, 1, roofSh)
     rect(doorX, 50, 18, 30, doorDk)
     rect(doorX + 1, 51, 16, 29, doorC)
     rect(doorX + 3, 54, 12, 1, doorDk)                // panel line
     put(doorX + 13, 66, knob); put(doorX + 14, 66, knob)
+    rect(doorX - 2, 78, 22, 2, RGB(r: 0x8A, g: 0x8A, b: 0x8A))   // step
+
+    // Lab dish for the secret-lab variant
+    if variant == "dark_purple" {
+        rect(20, 2, 3, 12, RGB(r: 0x6A, g: 0x6A, b: 0x6A))
+        for i in 0..<7 {
+            rect(12 + i, 6 - min(i, 3), 1, 4 + min(i, 3), RGB(r: 0x9A, g: 0x9A, b: 0x9A))
+        }
+        rect(10, 0, 12, 2, RGB(r: 0xB8, g: 0xB8, b: 0xB8))
+    }
 
     // AC unit: off-center right, never top floor. Shadow line below.
     rect(90, 58, 10, 7, acGray)
@@ -1806,6 +1983,21 @@ writePNG(render(blobSheet(fillVariant: { tileWater(variant: $0) }, rim: "v", fri
          to: "\(outDir)/sheet-water-blob-128.png")
 writePNG(render(blobSheet(fillVariant: { tileHedgeLeaf(variant: $0) }, rim: "g", fringe: nil)),
          to: "\(outDir)/sheet-hedge-blob-128.png")
+
+// ---- Props ----
+writePNG(render(propBench()), to: "\(outDir)/prop-bench-64x40.png")
+writePNG(render(propLamppost()), to: "\(outDir)/prop-lamppost-32x96.png")
+writePNG(render(propFountain()), to: "\(outDir)/prop-fountain-128x160.png")
+writePNG(render(propStatue()), to: "\(outDir)/prop-statue-64x96.png")
+for v in 1...3 { writePNG(render(propRock(v)), to: "\(outDir)/prop-rock-\(v)-48x48.png") }
+writePNG(render(propBridgeV()), to: "\(outDir)/prop-bridge-v-96x144.png")
+writePNG(render(propBridgeH()), to: "\(outDir)/prop-bridge-h-144x48.png")
+do {
+    let previewDir = (previewPath as NSString).deletingLastPathComponent
+    writeSheet(rows: [[propBench(), propLamppost(), propStatue(), propRock(1), propRock(2), propRock(3)],
+                      [propFountain(), propBridgeV(), propBridgeH()]],
+               scale: 3, to: "\(previewDir)/props-preview.png")
+}
 
 // ---- Trees ----
 writePNG(render(treeSprite(w: 96, h: 128, canopyR: 40)), to: "\(outDir)/tree-large-96x128.png")
