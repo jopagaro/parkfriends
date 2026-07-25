@@ -43,6 +43,15 @@ let palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     "k": (0xC4, 0xA0, 0x7A, 255), // warm cream shadow
     "J": (0xE8, 0xA8, 0x55, 255), // hamster golden coat
     "j": (0xC0, 0x80, 0x38, 255), // golden shadow/outline
+    // world tiles
+    "w": (0x4A, 0x8E, 0xC4, 255), // water
+    "v": (0x2E, 0x6A, 0xA0, 255), // water deep
+    "u": (0x76, 0xB4, 0xD8, 255), // water light ripple
+    "1": (0xBE, 0xBE, 0xBE, 255), // sidewalk
+    "0": (0xA0, 0xA0, 0xA0, 255), // sidewalk shadow
+    "9": (0xD0, 0xD0, 0xD0, 255), // sidewalk light
+    "R": (0x2E, 0x2E, 0x32, 255), // asphalt
+    "x": (0x3A, 0x3A, 0x3E, 255), // asphalt light
     "O": (0xE8, 0x60, 0x60, 255), // bright pink nose
     "Q": (0xD4, 0xB0, 0x30, 255), // gold (chaos star)
 ]
@@ -1104,6 +1113,244 @@ func pipBattleHurt() -> Grid {
     return g
 }
 
+// MARK: - WORLD TILES (32px base, bible Part 2 palette)
+// Everything the ground painter consumes: fill tiles, 4x4 blob autotile
+// sheets (same layout ScenePainter.autotile already expects), road and
+// sidewalk families, hedge, and tree sprites. One palette with the cast.
+
+let TS = 32
+
+/// Deterministic hash for texture speckle (stable across runs).
+func speck(_ x: Int, _ y: Int, _ salt: Int) -> Int {
+    var h = UInt64(x &* 374761393 &+ y &* 668265263 &+ salt &* 2246822519)
+    h = (h ^ (h >> 13)) &* 1274126177
+    return Int(h % 1000)
+}
+
+func tileGrass(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 97, y, 11)
+        g[y][x] = r < 30 ? "H" : (r < 58 ? "g" : "G")
+    } }
+    // occasional 2px blade clusters
+    if variant % 3 == 1 {
+        for (bx, by) in [(6, 8), (22, 18), (13, 26)] {
+            g[by][bx] = "g"; g[by - 1][bx] = "g"; g[by - 1][bx + 1] = "H"
+        }
+    }
+    return g
+}
+
+func tileGrassDark(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 131, y, 23)
+        g[y][x] = r < 40 ? "G" : "g"
+    } }
+    return g
+}
+
+func tileDirt(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 61, y, 37)
+        g[y][x] = r < 34 ? "t" : (r < 44 ? "h" : "T")
+    } }
+    // few pebbles
+    for (px, py) in [(8, 6), (20, 14), (13, 24), (26, 27)] where speck(px, py, variant) % 3 == 0 {
+        g[py][px] = "r"; g[py][px + 1] = "r"; g[py + 1][px] = "t"
+    }
+    return g
+}
+
+func tileStone(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 43, y, 53)
+        g[y][x] = r < 26 ? "0" : (r < 40 ? "9" : "1")
+    } }
+    // slab joints every 16px
+    for i in 0..<TS { g[15][i] = "0"; g[i][15] = "0" }
+    if variant % 3 == 2 {   // crack
+        for i in 0..<6 { g[6 + i][20 + (i / 2)] = "0" }
+    }
+    return g
+}
+
+func tileSidewalk(variant: Int) -> Grid { tileStone(variant: variant) }
+
+func tileRoad(variant: Int, dash: Bool = false) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 29, y, 71)
+        g[y][x] = r < 60 ? "x" : "R"
+    } }
+    if dash {
+        for x in 4..<14 { for y in 14...17 { g[y][x] = "W" } }
+        for x in 22..<32 { for y in 14...17 { g[y][x] = "W" } }
+    }
+    return g
+}
+
+func tileWater(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 89, y, 97)
+        g[y][x] = r < 30 ? "v" : "w"
+    } }
+    for (rx, ry) in [(7, 9), (21, 22)] where variant % 2 == 0 {
+        for i in 0..<5 { g[ry][rx + i] = "u" }
+    }
+    return g
+}
+
+func tileHedgeLeaf(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 17, y, 113)
+        g[y][x] = r < 200 ? "g" : (r < 620 ? "G" : "H")
+    } }
+    return g
+}
+
+/// One cell of a blob autotile sheet. `n/s/e/w` mark OUTSIDE edges.
+/// The interior texture comes from `fill`; outside edges get a rounded
+/// rim in `rim` plus an optional 2px fringe band in `fringe`.
+/// Grows `ch` into transparent pixels adjacent to any body pixel.
+func dilate(_ g: inout Grid, with ch: Character) {
+    let h = g.count, w = g[0].count
+    var adds: [(Int, Int)] = []
+    for y in 0..<h { for x in 0..<w where g[y][x] == "." {
+        let n = [(x-1,y),(x+1,y),(x,y-1),(x,y+1)]
+        if n.contains(where: { $0.0 >= 0 && $0.0 < w && $0.1 >= 0 && $0.1 < h && g[$0.1][$0.0] != "." }) {
+            adds.append((x, y))
+        }
+    } }
+    for (x, y) in adds { g[y][x] = ch }
+}
+
+func blobCell(fill: Grid, n: Bool, s: Bool, e: Bool, w: Bool,
+              rim: Character, fringe: Character?) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    let radius = 9.0
+    // with a fringe, inset the core shape so the fringe + rim can grow back
+    // out to the cell bounds without being clipped
+    let inset: Double = fringe != nil ? 3 : 0
+    func inside(_ x: Int, _ y: Int) -> Bool {
+        let fx = Double(x) + 0.5, fy = Double(y) + 0.5
+        if n, fy < inset { return false }
+        if s, fy > Double(TS) - inset { return false }
+        if w, fx < inset { return false }
+        if e, fx > Double(TS) - inset { return false }
+        for (cn, cs, ce, cw, cxr, cyr) in [
+            (n, false, false, w, radius, radius),
+            (n, false, e, false, Double(TS) - radius, radius),
+            (false, s, false, w, radius, Double(TS) - radius),
+            (false, s, e, false, Double(TS) - radius, Double(TS) - radius),
+        ] {
+            if cn || cs, ce || cw {
+                let inCornerBox = (cw ? fx < cxr : fx > cxr) && ((cn) ? fy < cyr : fy > cyr)
+                if inCornerBox {
+                    let dx = fx - cxr, dy = fy - cyr
+                    if dx * dx + dy * dy > (radius - inset) * (radius - inset) { return false }
+                }
+            }
+        }
+        return true
+    }
+    for y in 0..<TS { for x in 0..<TS where inside(x, y) { g[y][x] = fill[y][x] } }
+    if fringe != nil {
+        outlineShape(&g, body: Set(palette.keys).subtracting(["."]), outline: rim)
+        if let f = fringe { dilate(&g, with: f); dilate(&g, with: f) }
+        dilate(&g, with: rim)
+    } else {
+        outlineShape(&g, body: Set(palette.keys).subtracting(["."]), outline: rim)
+    }
+    return g
+}
+
+/// Full 4x4 blob sheet in the painter's expected layout:
+/// row0 = horizontal capsule (L,M,R) + single blob at (3,0)
+/// col3 rows1-3 = vertical capsule; cols0-2 rows1-3 = 3x3 blob.
+func blobSheet(fillVariant: (Int) -> Grid, rim: Character, fringe: Character?) -> Grid {
+    var sheet = emptyGrid(w: TS * 4, h: TS * 4)
+    func put(_ cx: Int, _ cy: Int, n: Bool, s: Bool, e: Bool, w: Bool) {
+        let cell = blobCell(fill: fillVariant(cx + cy * 4), n: n, s: s, e: e, w: w,
+                            rim: rim, fringe: fringe)
+        for y in 0..<TS { for x in 0..<TS where cell[y][x] != "." {
+            sheet[cy * TS + y][cx * TS + x] = cell[y][x]
+        } }
+    }
+    put(0, 0, n: true, s: true, e: false, w: true)    // H capsule L
+    put(1, 0, n: true, s: true, e: false, w: false)   // H capsule M
+    put(2, 0, n: true, s: true, e: true, w: false)    // H capsule R
+    put(3, 0, n: true, s: true, e: true, w: true)     // single
+    put(0, 1, n: true, s: false, e: false, w: true)   // blob TL
+    put(1, 1, n: true, s: false, e: false, w: false)  // T
+    put(2, 1, n: true, s: false, e: true, w: false)   // TR
+    put(0, 2, n: false, s: false, e: false, w: true)  // L
+    put(1, 2, n: false, s: false, e: false, w: false) // C
+    put(2, 2, n: false, s: false, e: true, w: false)  // R
+    put(0, 3, n: false, s: true, e: false, w: true)   // BL
+    put(1, 3, n: false, s: true, e: false, w: false)  // B
+    put(2, 3, n: false, s: true, e: true, w: false)   // BR
+    put(3, 1, n: true, s: false, e: true, w: true)    // V capsule T
+    put(3, 2, n: false, s: false, e: true, w: true)   // V capsule M
+    put(3, 3, n: false, s: true, e: true, w: true)    // V capsule B
+    return sheet
+}
+
+// MARK: - Trees (form-shaded, bible greens)
+
+func treeSprite(w: Int, h: Int, canopyR: Double, conifer: Bool = false) -> Grid {
+    var g = emptyGrid(w: w, h: h)
+    let cx = Double(w) / 2
+    // shadow
+    fillEllipse(&g, cx: cx, cy: Double(h) - 5, rx: canopyR * 0.85, ry: 4.5, "S")
+    // trunk
+    let trunkW = max(6.0, canopyR * 0.28)
+    var trunk = emptyGrid(w: w, h: h)
+    for y in Int(Double(h) * 0.55)..<(h - 6) {
+        for x in Int(cx - trunkW / 2)..<Int(cx + trunkW / 2) { trunk[y][x] = "t" }
+    }
+    for y in Int(Double(h) * 0.55)..<(h - 6) { trunk[y][Int(cx + trunkW / 2) - 1] = "r" }
+    outlineShape(&trunk, body: ["t", "r"], outline: "r")
+    composite(&g, trunk, dx: 0, dy: 0)
+    // canopy
+    var can = emptyGrid(w: w, h: h)
+    if conifer {
+        // stacked triangles
+        let tiers = 3
+        for tier in 0..<tiers {
+            let ty = Double(tier) * canopyR * 0.62 + canopyR * 0.55
+            let tr = canopyR * (0.55 + 0.28 * Double(tier))
+            for y in 0..<h { for x in 0..<w {
+                let fy = Double(y) - ty
+                let half = tr * (fy / (canopyR * 0.9) + 0.3)
+                if fy > -canopyR * 0.3, fy < canopyR * 0.68,
+                   abs(Double(x) - cx) < half { can[y][x] = "G" }
+            } }
+        }
+    } else {
+        shadeEllipse(&can, cx: cx, cy: canopyR + 4, rx: canopyR, ry: canopyR * 0.92,
+                     main: "G", hi: "H", lo: "g")
+        // lumpy silhouette: extra side lobes
+        shadeEllipse(&can, cx: cx - canopyR * 0.55, cy: canopyR * 1.28, rx: canopyR * 0.5,
+                     ry: canopyR * 0.42, main: "G", hi: "H", lo: "g")
+        shadeEllipse(&can, cx: cx + canopyR * 0.55, cy: canopyR * 1.28, rx: canopyR * 0.5,
+                     ry: canopyR * 0.42, main: "G", hi: "G", lo: "g")
+    }
+    // leaf texture flecks
+    for y in 0..<h { for x in 0..<w where can[y][x] != "." {
+        let r = speck(x, y, 131)
+        if r < 40 { can[y][x] = "g" } else if r < 60, can[y][x] == "G" { can[y][x] = "H" }
+    } }
+    outlineShape(&can, body: ["G", "g", "H"], outline: "g")
+    composite(&g, can, dx: 0, dy: 0)
+    return g
+}
+
 // MARK: - HOUSES (bible Part 3 anatomy, MAP_SPEC §3.14 roof variants)
 // 112x80 px = 7x5 tiles. Roof (2 tile rows) → wall w/ asymmetric windows →
 // foundation strip → door reaching ground. Selective outline in dark brown.
@@ -1307,7 +1554,61 @@ let characters: [CharacterSet] = [
                  ("hurt", pipBattleHurt())]),
 ]
 for c in characters { emit(c) }
-print("wrote full sets for \(characters.map(\.name).joined(separator: ", "))")
+
+// ---- World tiles ----
+for v in 0..<3 {
+    writePNG(render(tileGrass(variant: v)), to: "\(outDir)/tile-grass-\(v)-32.png")
+    writePNG(render(tileGrassDark(variant: v)), to: "\(outDir)/tile-grassdark-\(v)-32.png")
+    writePNG(render(tileSidewalk(variant: v)), to: "\(outDir)/tile-sidewalk-\(v)-32.png")
+}
+for v in 0..<2 {
+    writePNG(render(tileRoad(variant: v)), to: "\(outDir)/tile-road-\(v)-32.png")
+}
+writePNG(render(tileRoad(variant: 0, dash: true)), to: "\(outDir)/tile-road-dash-32.png")
+
+writePNG(render(blobSheet(fillVariant: { tileDirt(variant: $0) }, rim: "r", fringe: nil)),
+         to: "\(outDir)/sheet-dirt-blob-128.png")
+writePNG(render(blobSheet(fillVariant: { tileStone(variant: $0) }, rim: "0", fringe: "g")),
+         to: "\(outDir)/sheet-stone-blob-128.png")
+writePNG(render(blobSheet(fillVariant: { tileWater(variant: $0) }, rim: "v", fringe: "T")),
+         to: "\(outDir)/sheet-water-blob-128.png")
+writePNG(render(blobSheet(fillVariant: { tileHedgeLeaf(variant: $0) }, rim: "g", fringe: nil)),
+         to: "\(outDir)/sheet-hedge-blob-128.png")
+
+// ---- Trees ----
+writePNG(render(treeSprite(w: 96, h: 128, canopyR: 40)), to: "\(outDir)/tree-large-96x128.png")
+writePNG(render(treeSprite(w: 64, h: 92, canopyR: 27)), to: "\(outDir)/tree-medium-64x92.png")
+writePNG(render(treeSprite(w: 48, h: 68, canopyR: 19)), to: "\(outDir)/tree-small-48x68.png")
+writePNG(render(treeSprite(w: 64, h: 110, canopyR: 26, conifer: true)), to: "\(outDir)/tree-conifer-64x110.png")
+writePNG(render(treeSprite(w: 140, h: 190, canopyR: 60)), to: "\(outDir)/tree-oak-140x190.png")
+
+// Tile preview sheet
+do {
+    let previews: [Grid] = [
+        tileGrass(variant: 0), tileGrass(variant: 1), tileGrassDark(variant: 0),
+        tileDirt(variant: 0), tileStone(variant: 0), tileSidewalk(variant: 2),
+        tileRoad(variant: 0), tileRoad(variant: 0, dash: true), tileWater(variant: 0),
+        tileHedgeLeaf(variant: 0)
+    ]
+    let gapT = 6
+    var strip = emptyGrid(w: previews.count * (TS + gapT), h: TS)
+    for (i, t) in previews.enumerated() {
+        for y in 0..<TS { for x in 0..<TS { strip[y][i * (TS + gapT) + x] = t[y][x] } }
+    }
+    let previewDir = (previewPath as NSString).deletingLastPathComponent
+    writeSheet(rows: [[strip],
+                      [blobSheet(fillVariant: { tileDirt(variant: $0) }, rim: "r", fringe: nil),
+                       blobSheet(fillVariant: { tileStone(variant: $0) }, rim: "0", fringe: "g"),
+                       blobSheet(fillVariant: { tileWater(variant: $0) }, rim: "v", fringe: "T"),
+                       blobSheet(fillVariant: { tileHedgeLeaf(variant: $0) }, rim: "g", fringe: nil)],
+                      [treeSprite(w: 96, h: 128, canopyR: 40),
+                       treeSprite(w: 64, h: 92, canopyR: 27),
+                       treeSprite(w: 48, h: 68, canopyR: 19),
+                       treeSprite(w: 64, h: 110, canopyR: 26, conifer: true),
+                       treeSprite(w: 140, h: 190, canopyR: 60)]],
+               scale: 3, to: "\(previewDir)/world-tiles-preview.png")
+}
+print("wrote full sets for \(characters.map(\.name).joined(separator: ", ")) + world tiles")
 
 // Houses: one PNG per MAP_SPEC §3.14 roof variant.
 for variant in roofColors.keys.sorted() {

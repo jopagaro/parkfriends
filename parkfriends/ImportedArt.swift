@@ -211,28 +211,32 @@ enum ImportedArt {
     // Row 0 (top): 3-wide horizontal capsule + 1×1 single blob at col 3.
     // Rows 1-3: 3×3 blob (cols 0-2) + vertical capsule at col 3.
 
-    /// Pond border tileset, addressed row-from-top for the autotiler.
+    /// Water blob autotile (generated, sand shoreline).
     static func pondBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
-        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-blue-pond-water-border-corners-and-edges-tileset-64x64.png",
-                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+        genBlobTile("sheet-water-blob-128", col: col, rowFromTop: rowFromTop)
+            ?? sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-blue-pond-water-border-corners-and-edges-tileset-64x64.png",
+                                   tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
     }
 
-    /// Pebbled dirt path blob tileset.
+    /// Dirt path blob autotile (generated).
     static func parkPathBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
-        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-pebbled-brown-dirt-path-corner-and-edge-tileset-64x64.png",
-                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+        genBlobTile("sheet-dirt-blob-128", col: col, rowFromTop: rowFromTop)
+            ?? sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-pebbled-brown-dirt-path-corner-and-edge-tileset-64x64.png",
+                                   tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
     }
 
-    /// Gray stone path with grass border blob tileset (plazas).
+    /// Stone plaza blob autotile (generated, grass border).
     static func parkStoneBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
-        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-gray-stone-path-with-grass-border-corners-and-edges-tileset-64x64.png",
-                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+        genBlobTile("sheet-stone-blob-128", col: col, rowFromTop: rowFromTop)
+            ?? sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-gray-stone-path-with-grass-border-corners-and-edges-tileset-64x64.png",
+                                   tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
     }
 
-    /// Dense leaf hedge blob tileset (tree-wall map border).
+    /// Hedge blob autotile (generated leafy mass).
     static func parkHedgeBlobTile(col: Int, rowFromTop: Int) -> SKTexture? {
-        sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-dense-leaf-hedge-border-corner-and-edge-tileset-64x64.png",
-                            tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
+        genBlobTile("sheet-hedge-blob-128", col: col, rowFromTop: rowFromTop)
+            ?? sheetTextureFromTop(relativePath: "\(worldParkBase)pixel-art-dense-leaf-hedge-border-corner-and-edge-tileset-64x64.png",
+                                   tileSize: CGSize(width: 16, height: 16), col: col, rowFromTop: rowFromTop)
     }
 
     /// Plain bright grass fill (MAP_SPEC `grass_fill`, piece 70).
@@ -240,10 +244,24 @@ enum ImportedArt {
         fileTexture(relativePath: "\(worldParkBase)pixel-art-plain-bright-grass-fill-piece-70-16x16.png")
     }
 
-    /// Solid grass base — RGB(101,165,32), the exact green baked into the
-    /// pond/stone/hedge tileset borders, so edges blend seamlessly.
+    private static let genWorld = "textures.downloaded.sprites/world.generated/"
+
+    /// Generated 32px world tile by filename stem.
+    static func genTile(_ name: String) -> SKTexture? {
+        fileTexture(relativePath: "\(genWorld)\(name).png")
+    }
+
+    /// Generated 4x4 blob sheet cell (32px cells), row measured from top.
+    static func genBlobTile(_ sheet: String, col: Int, rowFromTop: Int) -> SKTexture? {
+        sheetTextureFromTop(relativePath: "\(genWorld)\(sheet).png",
+                            tileSize: CGSize(width: 32, height: 32),
+                            col: col, rowFromTop: rowFromTop)
+    }
+
+    /// Solid grass base — now the generated textured grass (pack fallback).
     static func parkGrassBaseTile() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-solid-dark-green-grass-square-tile-16x16.png")
+        genTile("tile-grass-0-32")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-solid-dark-green-grass-square-tile-16x16.png")
     }
 
     /// Furniture sheet (144×96 = 9×6 of 16×16). (6,2) = rounded wood chair.
@@ -293,22 +311,16 @@ enum ImportedArt {
         fileTexture(relativePath: "\(worldParkBase)pixel-art-chair-dark-wood-simple-backrest-front-view-sprite-16x32.png")
     }
 
-    /// Gray stone ground (single 16×16 tile). Pass cracked/mottled variant.
+    /// Sidewalk/concrete tile (generated, slab joints + crack variant).
     static func parkStoneTile(variant: Int = 0) -> SKTexture? {
-        switch variant % 3 {
-        case 1:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-with-cracks-tile-16x16.png")
-        case 2:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-with-mottled-texture-tile-16x16.png")
-        default: return fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-tile-16x16.png")
-        }
+        genTile("tile-sidewalk-\(abs(variant) % 3)-32")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-gray-stone-ground-tile-16x16.png")
     }
 
-    /// Dark forest floor grass (single 16×16 tiles, 3 variants).
+    /// Dark grass tile (generated variants).
     static func darkGrassTile(variant: Int = 0) -> SKTexture? {
-        switch variant % 3 {
-        case 1:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-bottom-sprouts-tile-16x16.png")
-        case 2:  return fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-corner-sprouts-tile-16x16.png")
-        default: return fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-small-sprouts-tile-16x16.png")
-        }
+        genTile("tile-grassdark-\(abs(variant) % 3)-32")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-dark-green-grass-with-small-sprouts-tile-16x16.png")
     }
 
     /// Biom things sheet (144×80, 16×16 = 9 cols × 5 rows).
@@ -347,29 +359,39 @@ enum ImportedArt {
         }
     }
 
-    /// Large round green tree sprite (48×48 standalone PNG).
+    /// Large round tree (generated, form-shaded).
     static func parkLargeTree() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-large-round-green-tree-sprite-48x48.png")
+        genTile("tree-large-96x128")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-large-round-green-tree-sprite-48x48.png")
     }
 
-    /// Medium round green tree sprite (32×32 standalone PNG).
+    /// Medium round tree (generated).
     static func parkMediumTree() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-medium-round-green-tree-sprite-32x32.png")
+        genTile("tree-medium-64x92")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-medium-round-green-tree-sprite-32x32.png")
     }
 
-    /// Wide medium round tree (32×32).
+    /// Wide tree — same generated medium canopy.
     static func parkWideTree() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-medium-wide-round-green-tree-sprite-32x32.png")
+        genTile("tree-medium-64x92")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-medium-wide-round-green-tree-sprite-32x32.png")
     }
 
-    /// Tall conifer / pine sprite (32×48).
+    /// Conifer (generated stacked-tier pine).
     static func parkTallConifer() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-tall-conical-green-tree-sprite-32x48.png")
+        genTile("tree-conifer-64x110")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-tall-conical-green-tree-sprite-32x48.png")
     }
 
-    /// Small conifer sprite (16×32).
+    /// Small tree (generated).
     static func parkSmallConifer() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-small-conical-green-tree-sprite-16x32.png")
+        genTile("tree-small-48x68")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-small-conical-green-tree-sprite-16x32.png")
+    }
+
+    /// Landmark oak (generated, largest canopy).
+    static func parkOakTree() -> SKTexture? {
+        genTile("tree-oak-140x190") ?? parkLargeTree()
     }
 
     /// Complete suburban house exterior sprite (112×80).
@@ -409,11 +431,14 @@ enum ImportedArt {
                                    col: mapped.0, rowFromTop: mapped.1)
     }
 
-    /// Purple-blue brick street pavement (48×32 = 3×2 of 16×16).
+    /// Asphalt road tile (generated). The suburb's road band centers on
+    /// spec row 23 — that row gets the dashed center line.
     static func suburbPavementTile(col: Int, rowFromTop: Int) -> SKTexture? {
-        sheetTextureFromTop(relativePath: "\(worldSuburbBase)pixel-art-purple-blue-brick-street-pavement-tile-48x32.png",
-                            tileSize: CGSize(width: 16, height: 16),
-                            col: ((col % 3) + 3) % 3, rowFromTop: ((rowFromTop % 2) + 2) % 2)
+        if rowFromTop == 23 { return genTile("tile-road-dash-32") ?? genTile("tile-road-0-32") }
+        return genTile("tile-road-\(abs(col + rowFromTop) % 2)-32")
+            ?? sheetTextureFromTop(relativePath: "\(worldSuburbBase)pixel-art-purple-blue-brick-street-pavement-tile-48x32.png",
+                                   tileSize: CGSize(width: 16, height: 16),
+                                   col: ((col % 3) + 3) % 3, rowFromTop: ((rowFromTop % 2) + 2) % 2)
     }
 
     static func sproutBridgeTexture(col: Int, row: Int) -> SKTexture? {

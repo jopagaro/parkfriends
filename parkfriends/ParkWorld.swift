@@ -98,7 +98,7 @@ enum ParkWorld {
         painter.addBlockingRect(SpecRect(47, 12, 1, 3))
 
         // §4.4 / §4.5 — Trees with collision.
-        painter.placeTree(SpecRect(3, 44, 5, 8),  texture: ImportedArt.parkLargeTree())     // oak landmark
+        painter.placeTree(SpecRect(3, 44, 5, 8),  texture: ImportedArt.parkOakTree())       // oak landmark
         painter.placeTree(SpecRect(11, 3, 4, 5),  texture: ImportedArt.parkLargeTree())
         painter.placeTree(SpecRect(59, 4, 4, 5),  texture: ImportedArt.parkLargeTree())
         painter.placeTree(SpecRect(79, 8, 3, 4),  texture: ImportedArt.parkMediumTree())
