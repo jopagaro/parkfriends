@@ -513,7 +513,28 @@ enum ImportedArt {
         (variant % 2 == 0) ? senseiTexture() : hatGuyTexture()
     }
 
+    /// Generated human NPC walk frames (2 per direction). Empty for animals.
+    static func genNPCWalkFrames(kind: NPCKind, direction: String) -> [SKTexture] {
+        let role: String?
+        switch kind {
+        case .rangerGuide: role = "ranger"
+        case .jogger:      role = "jogger"
+        case .child:       role = "child"
+        case .birdwatcher: role = "birdwatcher"
+        case .dogwalker:   role = "dogwalker"
+        case .gardener:    role = "gardener"
+        case .worker:      role = "worker"
+        case .shopkeeper:  role = "shopkeeper"
+        default:           role = nil
+        }
+        guard let role else { return [] }
+        return (1...2).compactMap {
+            fileTexture(relativePath: "textures.downloaded.sprites/world.generated/npc-\(role)-\(direction)-f\($0)-64x96.png")
+        }
+    }
+
     static func npcTexture(kind: NPCKind) -> SKTexture? {
+        if let gen = genNPCWalkFrames(kind: kind, direction: "south").first { return gen }
         switch kind {
         // ── Animal ambient NPCs — use sprite sheet frame 0 ──────────────────
         case .cat:     return catFrames(directionRow: 0).first

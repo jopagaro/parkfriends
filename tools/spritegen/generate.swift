@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Palette (design bible Part 11 + character sheets)
 
-let palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
+var palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     ".": (0, 0, 0, 0),            // transparent
     "G": (0x5D, 0xA8, 0x32, 255), // green main
     "g": (0x3D, 0x72, 0x20, 255), // green dark (outline/shadow)
@@ -52,6 +52,18 @@ let palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     "9": (0xD0, 0xD0, 0xD0, 255), // sidewalk light
     "R": (0x2E, 0x2E, 0x32, 255), // asphalt
     "x": (0x3A, 0x3A, 0x3E, 255), // asphalt light
+    // parametric NPC slots (set per-role before rendering)
+    "a": (0xE8, 0xC0, 0x98, 255), // skin
+    "d": (0xC8, 0x9A, 0x6E, 255), // skin shadow
+    "e": (0x3A, 0x5F, 0xA0, 255), // shirt
+    "f": (0x2A, 0x46, 0x78, 255), // shirt dark
+    "i": (0x5A, 0x42, 0x28, 255), // pants
+    "l": (0x42, 0x30, 0x1C, 255), // pants dark
+    "n": (0xC4, 0x95, 0x5A, 255), // hat
+    "o": (0xA0, 0x78, 0x40, 255), // hat dark
+    "p": (0x5A, 0x3A, 0x18, 255), // hair
+    "y": (0xD4, 0xB0, 0x30, 255), // accent (badge/vest/apron)
+    "z": (0x3C, 0x28, 0x10, 255), // shoes
     "O": (0xE8, 0x60, 0x60, 255), // bright pink nose
     "Q": (0xD4, 0xB0, 0x30, 255), // gold (chaos star)
 ]
@@ -1113,6 +1125,199 @@ func pipBattleHurt() -> Grid {
     return g
 }
 
+// MARK: - HUMAN NPCS (parametric rig — one body, role hats/clothes)
+// Bible 3.4: ~clay figures, big head, dot eyes, NO mouths. 64x96 canvas,
+// 4 directions x 2 walk frames each, built from a single rig.
+
+struct NPCRole {
+    let name: String
+    let skin: (UInt8, UInt8, UInt8)
+    let shirt: (UInt8, UInt8, UInt8)
+    let shirtDark: (UInt8, UInt8, UInt8)
+    let pants: (UInt8, UInt8, UInt8)
+    let hair: (UInt8, UInt8, UInt8)
+    let hat: (UInt8, UInt8, UInt8)?
+    let hatDark: (UInt8, UInt8, UInt8)
+    let accent: (UInt8, UInt8, UInt8)
+    let hatStyle: String                // "brim", "cap", "hard", "band", "straw", "none"
+    let vest: Bool
+    let apron: Bool
+    let scale: Double
+}
+
+let npcRoles: [NPCRole] = [
+    NPCRole(name: "ranger", skin: (0xE0,0xB0,0x88), shirt: (0x3D,0x72,0x20), shirtDark: (0x2A,0x50,0x18),
+            pants: (0x5A,0x42,0x28), hair: (0x4A,0x30,0x18), hat: (0xC4,0x95,0x5A), hatDark: (0xA0,0x78,0x40),
+            accent: (0xD4,0xB0,0x30), hatStyle: "brim", vest: false, apron: false, scale: 1.0),
+    NPCRole(name: "jogger", skin: (0xE8,0xC0,0x98), shirt: (0x3A,0x5F,0xA0), shirtDark: (0x2A,0x46,0x78),
+            pants: (0x48,0x48,0x48), hair: (0x2E,0x22,0x16), hat: (0xC8,0x30,0x30), hatDark: (0x9A,0x24,0x24),
+            accent: (0xF5,0xF0,0xDC), hatStyle: "band", vest: false, apron: false, scale: 1.0),
+    NPCRole(name: "child", skin: (0xF0,0xCC,0xA6), shirt: (0xC8,0x30,0x30), shirtDark: (0x9A,0x24,0x24),
+            pants: (0x3A,0x5F,0xA0), hair: (0x6E,0x4C,0x2A), hat: (0x3A,0x5F,0xA0), hatDark: (0x2A,0x46,0x78),
+            accent: (0xE8,0xC0,0x40), hatStyle: "cap", vest: false, apron: false, scale: 0.8),
+    NPCRole(name: "birdwatcher", skin: (0xD8,0xA8,0x80), shirt: (0xC4,0xA0,0x6A), shirtDark: (0xA0,0x80,0x4E),
+            pants: (0x5A,0x5A,0x40), hair: (0x8A,0x8A,0x8A), hat: (0x3D,0x72,0x20), hatDark: (0x2A,0x50,0x18),
+            accent: (0x1E,0x1E,0x22), hatStyle: "cap", vest: false, apron: false, scale: 1.0),
+    NPCRole(name: "dogwalker", skin: (0xE8,0xC0,0x98), shirt: (0xE8,0xA8,0x55), shirtDark: (0xC0,0x80,0x38),
+            pants: (0x3A,0x5F,0xA0), hair: (0x2E,0x22,0x16), hat: nil, hatDark: (0x2E,0x22,0x16),
+            accent: (0xC8,0x30,0x30), hatStyle: "none", vest: false, apron: false, scale: 1.0),
+    NPCRole(name: "gardener", skin: (0xD8,0xA8,0x80), shirt: (0x6E,0x8E,0x3A), shirtDark: (0x54,0x6E,0x2A),
+            pants: (0x6E,0x4C,0x2A), hair: (0xB8,0xB8,0xB8), hat: (0xE0,0xC8,0xA0), hatDark: (0xC4,0xA0,0x7A),
+            accent: (0x8B,0x5C,0x28), hatStyle: "straw", vest: false, apron: true, scale: 1.0),
+    NPCRole(name: "worker", skin: (0xE0,0xB0,0x88), shirt: (0x6A,0x6A,0x6A), shirtDark: (0x50,0x50,0x50),
+            pants: (0x48,0x48,0x60), hair: (0x2E,0x22,0x16), hat: (0xE8,0xC0,0x40), hatDark: (0xC4,0x9A,0x20),
+            accent: (0xE8,0xC0,0x40), hatStyle: "hard", vest: true, apron: false, scale: 1.0),
+    NPCRole(name: "shopkeeper", skin: (0xE8,0xC0,0x98), shirt: (0xF0,0xEC,0xE0), shirtDark: (0xC8,0xC0,0xB0),
+            pants: (0x2E,0x2E,0x32), hair: (0x4A,0x30,0x18), hat: nil, hatDark: (0x4A,0x30,0x18),
+            accent: (0xC8,0x30,0x30), hatStyle: "none", vest: false, apron: true, scale: 1.0),
+]
+
+func applyRolePalette(_ r: NPCRole) {
+    palette["a"] = (r.skin.0, r.skin.1, r.skin.2, 255)
+    palette["d"] = (UInt8(Int(r.skin.0) * 3 / 4), UInt8(Int(r.skin.1) * 3 / 4), UInt8(Int(r.skin.2) * 3 / 4), 255)
+    palette["e"] = (r.shirt.0, r.shirt.1, r.shirt.2, 255)
+    palette["f"] = (r.shirtDark.0, r.shirtDark.1, r.shirtDark.2, 255)
+    palette["i"] = (r.pants.0, r.pants.1, r.pants.2, 255)
+    palette["l"] = (UInt8(Int(r.pants.0) * 3 / 4), UInt8(Int(r.pants.1) * 3 / 4), UInt8(Int(r.pants.2) * 3 / 4), 255)
+    palette["p"] = (r.hair.0, r.hair.1, r.hair.2, 255)
+    if let h = r.hat { palette["n"] = (h.0, h.1, h.2, 255) }
+    palette["o"] = (r.hatDark.0, r.hatDark.1, r.hatDark.2, 255)
+    palette["y"] = (r.accent.0, r.accent.1, r.accent.2, 255)
+}
+
+/// One human frame. dir: 0=S 1=N 2=E. step: 0/1 walk alternation.
+func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
+    applyRolePalette(r)
+    let sc = r.scale
+    var g = emptyGrid(w: SW, h: SH)
+    let cx = 32.0
+    let headCY = 30.0 + (1.0 - sc) * 22
+    let headR = 14.0 * sc
+    let bodyTop = headCY + headR * 0.8
+    let legTop = bodyTop + 22 * sc
+    let footY = legTop + 14 * sc
+
+    fillEllipse(&g, cx: cx, cy: footY + 5, rx: 15 * sc, ry: 3.4, "S")
+
+    // legs
+    var legs = emptyGrid(w: SW, h: SH)
+    let lift = 3.0 * sc
+    for (ix, off) in [(-1.0, step == 0 ? 0.0 : lift), (1.0, step == 0 ? lift : 0.0)] {
+        let lx = cx + ix * 5.5 * sc
+        for y in Int(legTop)..<Int(footY - off) {
+            for x in Int(lx - 3.4 * sc)..<Int(lx + 3.4 * sc) { legs[y][x] = "i" }
+        }
+        fillEllipse(&legs, cx: lx + (dir == 2 ? ix * 1.5 : 0), cy: footY - off - 1,
+                    rx: 4.2 * sc, ry: 2.6 * sc, "z")
+    }
+    outlineShape(&legs, body: ["i", "z"], outline: "l")
+    composite(&g, legs, dx: 0, dy: 0)
+
+    // body
+    var body = emptyGrid(w: SW, h: SH)
+    shadeEllipse(&body, cx: cx, cy: bodyTop + 12 * sc, rx: 12.5 * sc, ry: 14 * sc,
+                 main: "e", hi: "e", lo: "f")
+    if r.vest {
+        for y in Int(bodyTop + 2 * sc)..<Int(bodyTop + 20 * sc) {
+            for x in Int(cx - 9 * sc)..<Int(cx + 9 * sc) where body[y][x] != "." { body[y][x] = "y" }
+        }
+    }
+    if r.apron {
+        for y in Int(bodyTop + 6 * sc)..<Int(bodyTop + 24 * sc) {
+            for x in Int(cx - 7 * sc)..<Int(cx + 7 * sc) where body[y][x] != "." { body[y][x] = "y" }
+        }
+    }
+    let armDY = step == 0 ? 0.0 : 2.0 * sc
+    if dir == 2 {
+        fillEllipse(&body, cx: cx + 8 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, "e")
+    } else {
+        fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, "e")
+        fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 12 * sc - armDY, rx: 3.6 * sc, ry: 8 * sc, "e")
+        fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 19 * sc + armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
+        fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 19 * sc - armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
+    }
+    outlineShape(&body, body: ["e", "f", "y", "a"], outline: "f")
+    composite(&g, body, dx: 0, dy: 0)
+
+    // head
+    var head = emptyGrid(w: SW, h: SH)
+    let hx = dir == 2 ? cx + 2 : cx
+    shadeEllipse(&head, cx: hx, cy: headCY, rx: headR, ry: headR * 0.95,
+                 main: "a", hi: "a", lo: "d", loThresh: -0.52)
+    if dir == 2 {
+        fillEllipse(&head, cx: hx + headR * 0.9, cy: headCY + 3, rx: 2.6 * sc, ry: 2.2 * sc, "a")
+    }
+    // hair base (visible for hatless + north)
+    if r.hatStyle == "none" || dir == 1 {
+        for y in 0..<SH { for x in 0..<SW where head[y][x] != "." {
+            if Double(y) < headCY - headR * (dir == 1 ? -0.1 : 0.3) { head[y][x] = "p" }
+        } }
+    }
+    switch r.hatStyle {
+    case "brim":
+        for x in max(0, Int(hx - headR - 5))..<min(SW, Int(hx + headR + 5)) {
+            for y in Int(headCY - headR * 0.55)..<Int(headCY - headR * 0.55) + 3 { head[y][x] = "n" }
+        }
+        fillEllipse(&head, cx: hx, cy: headCY - headR * 0.78, rx: headR * 0.62, ry: headR * 0.5, "n")
+        for x in max(0, Int(hx - headR * 0.6))..<min(SW, Int(hx + headR * 0.6)) {
+            head[Int(headCY - headR * 0.6)][x] = "o"
+        }
+    case "cap":
+        for y in 0..<SH { for x in 0..<SW where head[y][x] != "." {
+            if Double(y) < headCY - headR * 0.25 { head[y][x] = "n" }
+        } }
+        if dir != 1 {
+            let bx0 = dir == 2 ? Int(hx) : Int(hx - headR * 0.9)
+            for x in bx0..<min(SW, Int(hx + headR * 1.2)) {
+                for y in Int(headCY - headR * 0.3)..<Int(headCY - headR * 0.3) + 2 { head[y][x] = "o" }
+            }
+        }
+    case "hard":
+        fillEllipse(&head, cx: hx, cy: headCY - headR * 0.55, rx: headR * 0.95, ry: headR * 0.6, "n")
+        for x in max(0, Int(hx - headR))..<min(SW, Int(hx + headR)) {
+            head[Int(headCY - headR * 0.18)][x] = "o"
+        }
+    case "band":
+        for y in 0..<SH { for x in 0..<SW where head[y][x] != "." {
+            if Double(y) < headCY - headR * 0.3 { head[y][x] = "p" }
+        } }
+        for x in max(0, Int(hx - headR))..<min(SW, Int(hx + headR)) {
+            let yy = Int(headCY - headR * 0.32)
+            if head[yy][x] != "." { head[yy][x] = "n"; head[yy + 1][x] = "n" }
+        }
+    case "straw":
+        for x in max(0, Int(hx - headR - 6))..<min(SW, Int(hx + headR + 6)) {
+            for y in Int(headCY - headR * 0.5)..<Int(headCY - headR * 0.5) + 3 { head[y][x] = "n" }
+        }
+        fillEllipse(&head, cx: hx, cy: headCY - headR * 0.75, rx: headR * 0.58, ry: headR * 0.45, "n")
+    default:
+        if dir != 1 {
+            for y in 0..<SH { for x in 0..<SW where head[y][x] != "." {
+                if Double(y) < headCY - headR * 0.35 { head[y][x] = "p" }
+            } }
+        }
+    }
+    outlineShape(&head, body: ["a", "d", "p", "n", "o"], outline: "d")
+    if dir == 0 {
+        for (ex, ey) in [(Int(hx - 5 * sc), Int(headCY + 1)), (Int(hx + 3 * sc), Int(headCY + 1))] {
+            for dy in 0..<3 { for dx in 0..<2 { head[ey + dy][ex + dx] = "E" } }
+        }
+    } else if dir == 2 {
+        for dy in 0..<3 { for dx in 0..<2 {
+            head[Int(headCY) + dy][Int(hx + headR * 0.45) + dx] = "E"
+        } }
+    }
+    if r.name == "birdwatcher", dir == 0 {
+        fillEllipse(&head, cx: cx - 3, cy: bodyTop + 4, rx: 2.4, ry: 2.0, "E")
+        fillEllipse(&head, cx: cx + 3, cy: bodyTop + 4, rx: 2.4, ry: 2.0, "E")
+    }
+    if r.name == "ranger", dir == 0 {
+        for dy in 0..<2 { for dx in 0..<2 { head[Int(bodyTop + 6) + dy][Int(cx - 7) + dx] = "y" } }
+    }
+    composite(&g, head, dx: 0, dy: 0)
+    return g
+}
+
 // MARK: - WORLD TILES (32px base, bible Part 2 palette)
 // Everything the ground painter consumes: fill tiles, 4x4 blob autotile
 // sheets (same layout ScenePainter.autotile already expects), road and
@@ -1131,7 +1336,7 @@ func tileGrass(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
         let r = speck(x + variant * 97, y, 11)
-        g[y][x] = r < 30 ? "H" : (r < 58 ? "g" : "G")
+        g[y][x] = r < 13 ? "H" : (r < 34 ? "g" : "G")
     } }
     // occasional 2px blade clusters
     if variant % 3 == 1 {
@@ -1199,8 +1404,10 @@ func tileWater(variant: Int) -> Grid {
         let r = speck(x + variant * 89, y, 97)
         g[y][x] = r < 30 ? "v" : "w"
     } }
-    for (rx, ry) in [(7, 9), (21, 22)] where variant % 2 == 0 {
-        for i in 0..<5 { g[ry][rx + i] = "u" }
+    for (rx, ry) in [(7, 9), (21, 22), (14, 27)] {
+        if speck(rx, ry, variant) % 2 == 0 {
+            for i in 0..<5 { g[ry][rx + i] = "u" }
+        }
     }
     return g
 }
@@ -1334,12 +1541,14 @@ func treeSprite(w: Int, h: Int, canopyR: Double, conifer: Bool = false) -> Grid 
         }
     } else {
         shadeEllipse(&can, cx: cx, cy: canopyR + 4, rx: canopyR, ry: canopyR * 0.92,
-                     main: "G", hi: "H", lo: "g")
-        // lumpy silhouette: extra side lobes
+                     main: "G", hi: "H", lo: "g", hiThresh: 0.40, loThresh: -0.55)
+        // lumpy silhouette: soft side + top lobes
         shadeEllipse(&can, cx: cx - canopyR * 0.55, cy: canopyR * 1.28, rx: canopyR * 0.5,
-                     ry: canopyR * 0.42, main: "G", hi: "H", lo: "g")
+                     ry: canopyR * 0.42, main: "G", hi: "H", lo: "G", hiThresh: 0.5)
         shadeEllipse(&can, cx: cx + canopyR * 0.55, cy: canopyR * 1.28, rx: canopyR * 0.5,
-                     ry: canopyR * 0.42, main: "G", hi: "G", lo: "g")
+                     ry: canopyR * 0.42, main: "G", hi: "G", lo: "g", loThresh: -0.62)
+        fillEllipse(&can, cx: cx - canopyR * 0.3, cy: canopyR * 0.5, rx: canopyR * 0.4, ry: canopyR * 0.3, "G")
+        fillEllipse(&can, cx: cx + canopyR * 0.35, cy: canopyR * 0.55, rx: canopyR * 0.35, ry: canopyR * 0.28, "G")
     }
     // leaf texture flecks
     for y in 0..<h { for x in 0..<w where can[y][x] != "." {
@@ -1554,6 +1763,29 @@ let characters: [CharacterSet] = [
                  ("hurt", pipBattleHurt())]),
 ]
 for c in characters { emit(c) }
+
+// ---- Human NPCs ----
+var npcPreviewRows: [[Grid]] = []
+for role in npcRoles {
+    var row: [Grid] = []
+    for (di, dname) in [(0, "south"), (1, "north"), (2, "east")] {
+        for step in 0..<2 {
+            let frame = humanFrame(role, dir: di, step: step)
+            writePNG(render(frame), to: "\(outDir)/npc-\(role.name)-\(dname)-f\(step + 1)-64x96.png")
+            if step == 0 { row.append(frame) }
+        }
+    }
+    // west = mirrored east
+    for step in 0..<2 {
+        writePNG(render(mirrored(humanFrame(role, dir: 2, step: step))),
+                 to: "\(outDir)/npc-\(role.name)-west-f\(step + 1)-64x96.png")
+    }
+    npcPreviewRows.append(row)
+}
+do {
+    let previewDir = (previewPath as NSString).deletingLastPathComponent
+    writeSheet(rows: npcPreviewRows, scale: 3, to: "\(previewDir)/npc-preview.png")
+}
 
 // ---- World tiles ----
 for v in 0..<3 {

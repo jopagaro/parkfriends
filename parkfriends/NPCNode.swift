@@ -104,7 +104,7 @@ final class NPCNode: SKSpriteNode {
         switch kind {
         case .rangerGuide, .jogger, .child, .birdwatcher, .dogwalker,
              .gardener, .worker, .shopkeeper:
-            displaySize = CGSize(width: 46, height: 68)
+            displaySize = CGSize(width: 50, height: 74)
         default:
             displaySize = CGSize(width: 40, height: 40)
         }
@@ -142,7 +142,18 @@ final class NPCNode: SKSpriteNode {
         case .raccoon:  return ImportedArt.raccoonFrames(directionRow: 0).first
         case .bird:     return ImportedArt.birdFrames(white: false, directionRow: 0).first
         case .hazel:    return ImportedArt.foxFrames(directionRow: 0).first
-        default:        return WorldSprites.texture(npc: kind)
+        default:
+            return ImportedArt.genNPCWalkFrames(kind: kind, direction: "south").first
+                ?? WorldSprites.texture(npc: kind)
+        }
+    }
+
+    private static func genDirection(forRow row: Int) -> String {
+        switch row {
+        case 6:    return "east"
+        case 4, 5: return "north"
+        case 2, 3: return "west"
+        default:   return "south"
         }
     }
 
@@ -153,7 +164,8 @@ final class NPCNode: SKSpriteNode {
         case .raccoon:return ImportedArt.raccoonFrames(directionRow: directionRow)
         case .bird:   return ImportedArt.birdFrames(white: false, directionRow: directionRow)
         case .hazel:  return ImportedArt.foxFrames(directionRow: directionRow)
-        default:      return []
+        default:
+            return ImportedArt.genNPCWalkFrames(kind: kind, direction: genDirection(forRow: directionRow))
         }
     }
 
@@ -178,7 +190,6 @@ final class NPCNode: SKSpriteNode {
     }
 
     private func updateAnimalDirection(dx: CGFloat, dy: CGFloat) {
-        guard kind.isAnimal else { return }
         let row = NPCNode.directionRow(for: CGVector(dx: dx, dy: dy))
         let frames = NPCNode.walkFrames(for: kind, directionRow: row, variant: animalVariant)
         guard !frames.isEmpty else { return }
