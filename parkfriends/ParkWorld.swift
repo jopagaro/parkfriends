@@ -33,12 +33,6 @@ enum ParkWorld {
         // §4.2 — L0 bright grass everywhere, with darker patches under the
         // tree clusters so the fill doesn't read as one flat sheet.
         painter.fillGrass(rect: SpecRect(0, 0, painter.cols, painter.rows))
-        for shade in [
-            SpecRect(11, 3, 5, 5), SpecRect(58, 5, 6, 5), SpecRect(3, 44, 6, 9),
-            SpecRect(79, 9, 4, 4), SpecRect(26, 55, 6, 6)
-        ] {
-            painter.fillDarkGrass(rect: shade)
-        }
 
         // §4.2/§4.8 — Water: pond + creek painted as ONE autotiled blob so
         // shores wrap every edge and the creek merges seamlessly into the pond.
@@ -148,13 +142,13 @@ enum ParkWorld {
                             layer: .props)
 
         // §4.4 — Statue: stone duck memorial. Nobody explains it.
-        painter.placeSprite(SpecRect(70, 41, 2, 3),
+        painter.placeSprite(SpecRect(69, 40, 3, 4),
                             texture: ImportedArt.genTile("prop-statue-64x96"),
                             layer: .props)
-        painter.addBlockingRect(SpecRect(70, 43, 2, 1))
+        painter.addBlockingRect(SpecRect(69, 42, 3, 2))
 
         // §4.9 — Pier: horizontal plank walkway extending east into the pond.
-        painter.placeSprite(SpecRect(26, 19, 3, 1),
+        painter.placeSprite(SpecRect(26, 19, 4, 1),
                             texture: ImportedArt.sproutBridgeHorizontal(),
                             layer: .props)
 
@@ -195,8 +189,8 @@ enum ParkWorld {
         for (xT, yT, t) in [
             (41, 21, flowerRed), (48, 21, flowerYellow),
             (41, 29, flowerBlue), (48, 29, flowerRed),
-            (69, 44, flowerRed), (71, 44, flowerYellow),
-            (69, 41, flowerBlue), (71, 41, flowerRed),
+            (67, 44, flowerRed), (73, 44, flowerYellow),
+            (67, 41, flowerBlue), (73, 41, flowerRed),
             // §4.6 — freestanding flower clusters
             (50, 12, flowerRed), (52, 12, flowerYellow), (36, 50, flowerBlue)
         ] {
@@ -361,7 +355,7 @@ enum ParkWorld {
         // lower lawn, then straight south to the park scene (x=49..50 there).
         // Small 3-tile steps keep the diagonal smooth instead of staircased.
         var creekRects: [SpecRect] = (0..<17).map { i in
-            SpecRect(97 - 3 * i, 28 + i, 5, 2)
+            SpecRect(97 - 3 * i, 27 + i, 7, 3)
         }
         creekRects.append(SpecRect(49, 44, 2, 6))
         painter.autotile(painter.tiles(creekRects),
@@ -507,8 +501,10 @@ enum ParkWorld {
             SpecRect(rect.x, rect.y, 1, rect.h), SpecRect(x2, rect.y, 1, rect.h)
         ])
         for gx in gateXs { ring.remove(TileXY(x: gx, y: y2)) }
-        painter.autotile(ring, z: PaintLayer.decor.z + 0.5,
-                         tile: ImportedArt.suburbFenceBlobTile)
+        painter.autotile(ring, z: PaintLayer.decor.z + 0.5) {
+            ImportedArt.genBlobTile("sheet-picket-blob-128", col: $0, rowFromTop: $1)
+                ?? ImportedArt.suburbFenceBlobTile(col: $0, rowFromTop: $1)
+        }
         let gateMin = gateXs.min() ?? x2 + 1
         let gateMax = gateXs.max() ?? x2 + 1
         painter.addBlockingRect(SpecRect(rect.x, rect.y, rect.w, 1))
@@ -590,15 +586,17 @@ final class ScenePainter {
     }
 
     func fillGrass(rect: SpecRect) {
-        // Solid base in the tilesets' shared green, with a sparse sprout tile
-        // every ~13th cell for texture without noise.
+        // Textured base with sparse sprout-variant tiles (same family, no
+        // dark blotches).
         let base = ImportedArt.parkGrassBaseTile()
         for yT in rect.y..<(rect.y + rect.h) {
             for xT in rect.x..<(rect.x + rect.w) {
-                let sprinkle = (xT * 13 + yT * 7) % 17 == 3
-                place1x1(at: xT, yT,
-                         texture: sprinkle ? ImportedArt.darkGrassTile(variant: (xT + yT) % 3) : base,
-                         z: PaintLayer.ground.z)
+                let n = (xT * 13 + yT * 7) % 19
+                let tex: SKTexture?
+                if n == 3 { tex = ImportedArt.genTile("tile-grass-1-32") ?? base }
+                else if n == 11 { tex = ImportedArt.genTile("tile-grass-2-32") ?? base }
+                else { tex = base }
+                place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z)
             }
         }
     }

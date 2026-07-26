@@ -1509,6 +1509,23 @@ func blobSheet(fillVariant: (Int) -> Grid, rim: Character, fringe: Character?) -
     return sheet
 }
 
+/// White picket fence fill for a blob sheet cell: pickets + two rails.
+func tilePicket(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    _ = variant
+    // rails
+    for y in [10, 22] { for x in 0..<TS { g[y][x] = "1"; g[y + 1][x] = "0" } }
+    // pickets every 8px with pointed tops
+    var x = 2
+    while x < TS {
+        for y in 6..<30 { g[y][x] = "1"; g[y][x + 1] = "1"; g[y][x + 2] = "0" }
+        g[5][x + 1] = "1"
+        g[4][x + 1] = "0"
+        x += 8
+    }
+    return g
+}
+
 // MARK: - Trees (form-shaded, bible greens)
 
 func treeSprite(w: Int, h: Int, canopyR: Double, conifer: Bool = false) -> Grid {
@@ -2133,9 +2150,17 @@ func propMound() -> RGBCanvas {
     let c = RGBCanvas(96, 64)
     for y in 0..<64 { for x in 0..<96 {
         let dx = (Double(x) - 48) / 44, dy = (Double(y) - 44) / 26
-        if dx*dx + dy*dy <= 1 {
+        let d = dx*dx + dy*dy
+        if d <= 1 {
             let r = speck(x, y, 41)
-            c.put(x, y, r < 300 ? RGB(r: 0xA0, g: 0x78, b: 0x40) : RGB(r: 0xC4, g: 0x95, b: 0x5A))
+            // lit top-left, dark base rim → reads as a raised pile
+            if (-dx * 0.5 - dy * 0.8) * d.squareRoot() > 0.3 {
+                c.put(x, y, r < 300 ? RGB(r: 0xE0, g: 0xB4, b: 0x76) : RGB(r: 0xD4, g: 0xA8, b: 0x66))
+            } else if d > 0.78 {
+                c.put(x, y, RGB(r: 0x7A, g: 0x5C, b: 0x2E))
+            } else {
+                c.put(x, y, r < 300 ? RGB(r: 0x8B, g: 0x5C, b: 0x28) : RGB(r: 0xA8, g: 0x80, b: 0x48))
+            }
         }
     } }
     return c
@@ -2143,19 +2168,25 @@ func propMound() -> RGBCanvas {
 
 func propChainlink() -> RGBCanvas {
     let c = RGBCanvas(32, 64)
-    let steel = RGB(r: 0x9A, g: 0x9A, b: 0x9A)
-    c.rect(0, 8, 3, 56, RGB(r: 0x6E, g: 0x6E, b: 0x6E))
-    c.rect(0, 8, 32, 3, steel)
-    c.rect(0, 58, 32, 2, steel)
-    var d = 0
-    while d < 32 + 48 {
-        for i in 0..<48 {
-            let x1 = d - i, y = 11 + i
-            if x1 >= 0, x1 < 32, y < 58 { c.put(x1, y, steel) }
-            let x2 = i - d + 31
-            if x2 >= 0, x2 < 32, y < 58 { c.put(x2, y, steel) }
+    let steel = RGB(r: 0xAA, g: 0xAA, b: 0xAA)
+    let dark = RGB(r: 0x6E, g: 0x6E, b: 0x6E)
+    // posts + rails
+    c.rect(0, 6, 4, 58, dark)
+    c.rect(0, 6, 32, 4, RGB(r: 0xC0, g: 0xC0, b: 0xC0))
+    c.rect(0, 58, 32, 3, dark)
+    // dense diamond mesh (2px strokes)
+    var d = -32
+    while d < 64 {
+        for i in 0..<46 {
+            let y = 11 + i
+            for t in 0..<2 {
+                let x1 = d + i + t
+                if x1 >= 0, x1 < 32, y < 58 { c.put(x1, y, steel) }
+                let x2 = d + 46 - i + t
+                if x2 >= 0, x2 < 32, y < 58 { c.put(x2, y, dark) }
+            }
         }
-        d += 12
+        d += 16
     }
     return c
 }
@@ -2177,21 +2208,31 @@ func propTrailer() -> RGBCanvas {
 
 func tileFloorWood() -> RGBCanvas {
     let c = RGBCanvas(32, 32)
-    let wood = RGB(r: 0xC4, g: 0x95, b: 0x5A), woodSh = RGB(r: 0xA0, g: 0x78, b: 0x40)
-    c.rect(0, 0, 32, 32, wood)
-    c.rect(0, 7, 32, 1, woodSh); c.rect(0, 15, 32, 1, woodSh)
-    c.rect(0, 23, 32, 1, woodSh); c.rect(0, 31, 32, 1, woodSh)
-    c.rect(10, 0, 1, 8, woodSh); c.rect(24, 8, 1, 8, woodSh)
-    c.rect(6, 16, 1, 8, woodSh); c.rect(20, 24, 1, 8, woodSh)
-    for i in 0..<6 { c.put(4 + i * 5, 3 + (i * 7) % 26, woodSh) }
+    let tones = [RGB(r: 0xD0, g: 0xA4, b: 0x6A), RGB(r: 0xC6, g: 0x9A, b: 0x62),
+                 RGB(r: 0xCC, g: 0xA0, b: 0x66), RGB(r: 0xC2, g: 0x96, b: 0x5E)]
+    let seam = RGB(r: 0xA2, g: 0x78, b: 0x46)
+    // four long boards per tile; verticals rare and staggered
+    for b in 0..<4 {
+        c.rect(0, b * 8, 32, 8, tones[b])
+        c.rect(0, b * 8 + 7, 32, 1, seam)
+        let joint = [26, 6, 18, 12][b]
+        c.rect(joint, b * 8, 1, 7, seam)
+        c.put(joint - 6, b * 8 + 3, seam)
+    }
     return c
 }
 
 func tileFloorLab() -> RGBCanvas {
     let c = RGBCanvas(32, 32)
-    let a = RGB(r: 0xB8, g: 0xC0, b: 0xC8), b = RGB(r: 0x9A, g: 0xA4, b: 0xB0)
-    c.rect(0, 0, 16, 16, a); c.rect(16, 0, 16, 16, b)
-    c.rect(0, 16, 16, 16, b); c.rect(16, 16, 16, 16, a)
+    let a = RGB(r: 0xAE, g: 0xB6, b: 0xBE)
+    let plate = RGB(r: 0xA6, g: 0xAE, b: 0xB8), lip = RGB(r: 0x8E, g: 0x98, b: 0xA4)
+    c.rect(0, 0, 32, 32, plate)
+    _ = a
+    c.rect(0, 0, 32, 1, RGB(r: 0xBE, g: 0xC6, b: 0xCE))
+    c.rect(0, 31, 32, 1, lip); c.rect(31, 0, 1, 32, lip)
+    c.rect(0, 0, 1, 32, RGB(r: 0xBE, g: 0xC6, b: 0xCE))
+    // corner rivets
+    for (x, y) in [(3, 3), (27, 3), (3, 27), (27, 27)] { c.rect(x, y, 2, 2, lip) }
     return c
 }
 
@@ -2456,6 +2497,8 @@ writePNG(render(blobSheet(fillVariant: { tileWater(variant: $0) }, rim: "v", fri
          to: "\(outDir)/sheet-water-blob-128.png")
 writePNG(render(blobSheet(fillVariant: { tileHedgeLeaf(variant: $0) }, rim: "g", fringe: nil)),
          to: "\(outDir)/sheet-hedge-blob-128.png")
+writePNG(render(blobSheet(fillVariant: { tilePicket(variant: $0) }, rim: "0", fringe: nil)),
+         to: "\(outDir)/sheet-picket-blob-128.png")
 
 // ---- City buildings + props + interiors ----
 writeCanvas(bldgCafe(), to: "\(outDir)/bldg-cafe-256x192.png")

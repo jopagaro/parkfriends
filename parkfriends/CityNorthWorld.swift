@@ -58,12 +58,18 @@ enum CityNorthWorld {
             if block { painter.addBlockingRect(rect) }
         }
         prop("prop-container-160x96", SpecRect(4, 26, 5, 3))
+        prop("prop-container-160x96", SpecRect(16, 6, 5, 3))
+        prop("prop-pipes-128x48",     SpecRect(30, 40, 4, 2))
+        prop("prop-mound-96x64",      SpecRect(12, 22, 3, 2), block: false)
+        prop("prop-mound-96x64",      SpecRect(56, 24, 3, 2), block: false)
+        prop("prop-dumpster-96x64",   SpecRect(36, 6, 3, 2))
         prop("prop-trailer-192x128",  SpecRect(76, 38, 6, 4))
         prop("prop-pipes-128x48",     SpecRect(8, 38, 4, 2))
         prop("prop-mound-96x64",      SpecRect(48, 16, 3, 2), block: false)
         prop("prop-mound-96x64",      SpecRect(24, 8, 3, 2), block: false)
         prop("prop-dumpster-96x64",   SpecRect(60, 30, 3, 2))
-        for (xT, yT) in [(20, 20), (23, 21), (26, 20), (40, 32), (43, 33), (46, 32)] {
+        for (xT, yT) in [(20, 20), (23, 21), (26, 20), (40, 32), (43, 33), (46, 32),
+                         (30, 14), (33, 15), (52, 28), (55, 29), (58, 28)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-cone-24x32"), layer: .decor)
         }
@@ -71,8 +77,9 @@ enum CityNorthWorld {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-barrel-32x40"), layer: .props)
         }
-        // crates around the dig
-        for (xT, yT) in [(34, 12), (36, 13), (52, 36)] {
+        // rubble around the dig + along the old-park grass edge
+        for (xT, yT) in [(34, 12), (36, 13), (52, 36), (64, 10), (66, 7), (70, 11),
+                         (78, 12), (84, 11)] {
             painter.placeRock(SpecRect(xT, yT, 1, 1), variant: xT % 3 + 1)
         }
 
