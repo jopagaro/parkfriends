@@ -35,6 +35,7 @@ enum CitySouthWorld {
         // dirt path continues from the park gap down to the road
         painter.autotile(painter.tiles([SpecRect(44, 0, 4, 14)]),
                          z: PaintLayer.ground.z + 0.2,
+                         interior: { ImportedArt.genTile("tile-dirt-\(($0 * 5 + $1 * 3) % 3)-32") },
                          tile: ImportedArt.parkPathBlobTile)
 
         // Cross street through the middle.

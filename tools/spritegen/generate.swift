@@ -1397,13 +1397,19 @@ func tileDirt(variant: Int) -> Grid {
 
 func tileStone(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
+    // per-quad tone variation so slabs aren't uniform
     for y in 0..<TS { for x in 0..<TS {
+        let quad = (x / 16) + (y / 16) * 2
+        let toneShift = speck(quad, variant, 61) % 3
         let r = speck(x + variant * 43, y, 53)
-        g[y][x] = r < 26 ? "0" : (r < 40 ? "9" : "1")
+        if r < 12 { g[y][x] = "0" }
+        else if r < 24 || toneShift == 2 { g[y][x] = "9" }
+        else { g[y][x] = "1" }
     } }
-    // slab joints every 16px
-    for i in 0..<TS { g[15][i] = "0"; g[i][15] = "0" }
-    if variant % 3 == 2 {   // crack
+    // broken, low-contrast joints (dashes with gaps, mid tone)
+    for i in 0..<TS where i % 4 != 3 { g[15][i] = "9"; g[i][15] = "9" }
+    for i in stride(from: 2, to: TS, by: 7) { g[15][i] = "0"; g[i][15] = "0" }
+    if variant % 3 == 2 {
         for i in 0..<6 { g[6 + i][20 + (i / 2)] = "0" }
     }
     return g
@@ -1421,6 +1427,17 @@ func tileRoad(variant: Int, dash: Bool = false) -> Grid {
         for x in 4..<14 { for y in 14...17 { g[y][x] = "W" } }
         for x in 22..<32 { for y in 14...17 { g[y][x] = "W" } }
     }
+    return g
+}
+
+/// Calm water (dither only) — used for shoreline edge cells so the bank
+/// ring doesn't repeat crest patterns.
+func tileWaterCalm(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 89, y, 97)
+        g[y][x] = r < 14 ? "v" : "w"
+    } }
     return g
 }
 
@@ -1471,7 +1488,7 @@ func dilate(_ g: inout Grid, with ch: Character) {
 }
 
 func blobCell(fill: Grid, n: Bool, s: Bool, e: Bool, w: Bool,
-              rim: Character, fringe: Character?) -> Grid {
+              rim: Character, fringe: Character?, midRim: Character? = nil) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     let radius = 9.0
     // with a fringe, inset the core shape so the fringe + rim can grow back
@@ -1500,12 +1517,25 @@ func blobCell(fill: Grid, n: Bool, s: Bool, e: Bool, w: Bool,
         return true
     }
     for y in 0..<TS { for x in 0..<TS where inside(x, y) { g[y][x] = fill[y][x] } }
+    let bodySet = Set(palette.keys).subtracting(["."])
     if fringe != nil {
-        outlineShape(&g, body: Set(palette.keys).subtracting(["."]), outline: rim)
+        outlineShape(&g, body: bodySet, outline: rim)
         if let f = fringe { dilate(&g, with: f); dilate(&g, with: f) }
         dilate(&g, with: rim)
     } else {
-        outlineShape(&g, body: Set(palette.keys).subtracting(["."]), outline: rim)
+        outlineShape(&g, body: bodySet, outline: rim)
+    }
+    // soften: mid band just inside the rim
+    if let mid = midRim {
+        let h = g.count, w = g[0].count
+        var adds: [(Int, Int)] = []
+        for y in 0..<h { for x in 0..<w where g[y][x] != "." && g[y][x] != rim {
+            let n = [(x-1,y),(x+1,y),(x,y-1),(x,y+1)]
+            if n.contains(where: { $0.0 >= 0 && $0.0 < w && $0.1 >= 0 && $0.1 < h && g[$0.1][$0.0] == rim }) {
+                adds.append((x, y))
+            }
+        } }
+        for (x, y) in adds where speck(x, y, 3) % 4 != 0 { g[y][x] = mid }
     }
     return g
 }
@@ -1513,11 +1543,12 @@ func blobCell(fill: Grid, n: Bool, s: Bool, e: Bool, w: Bool,
 /// Full 4x4 blob sheet in the painter's expected layout:
 /// row0 = horizontal capsule (L,M,R) + single blob at (3,0)
 /// col3 rows1-3 = vertical capsule; cols0-2 rows1-3 = 3x3 blob.
-func blobSheet(fillVariant: (Int) -> Grid, rim: Character, fringe: Character?) -> Grid {
+func blobSheet(fillVariant: (Int) -> Grid, rim: Character, fringe: Character?,
+               midRim: Character? = nil) -> Grid {
     var sheet = emptyGrid(w: TS * 4, h: TS * 4)
     func put(_ cx: Int, _ cy: Int, n: Bool, s: Bool, e: Bool, w: Bool) {
         let cell = blobCell(fill: fillVariant(cx + cy * 4), n: n, s: s, e: e, w: w,
-                            rim: rim, fringe: fringe)
+                            rim: rim, fringe: fringe, midRim: midRim)
         for y in 0..<TS { for x in 0..<TS where cell[y][x] != "." {
             sheet[cy * TS + y][cx * TS + x] = cell[y][x]
         } }
@@ -1943,13 +1974,19 @@ func buildingShell(w: Int, h: Int, wall: RGB, wallSh: RGB, brick: Bool) -> RGBCa
     c.rect(0, 0, w, 10, wallSh)
     c.rect(0, 10, w, 2, outlineB)
     if brick {
+        let mortar = RGB(r: UInt8((Int(wall.r) * 3 + Int(wallSh.r)) / 4),
+                         g: UInt8((Int(wall.g) * 3 + Int(wallSh.g)) / 4),
+                         b: UInt8((Int(wall.b) * 3 + Int(wallSh.b)) / 4))
         var y = 14
         var row = 0
         while y < h - 4 {
-            c.rect(0, y, w, 1, wallSh)
+            for x in 0..<w where (x + y) % 5 != 4 { c.put(x, y, mortar) }
             let off = row % 2 == 0 ? 0 : 16
             var x = off
-            while x < w { c.rect(x, y - 5, 1, 5, wallSh); x += 32 }
+            while x < w {
+                for yy in (y - 5)..<y where yy % 3 != 2 { c.put(x, yy, mortar) }
+                x += 32
+            }
             y += 6; row += 1
         }
     }
@@ -2531,14 +2568,17 @@ for v in 0..<2 {
 }
 for v in 0..<3 {
     writePNG(render(tileDirt(variant: v)), to: "\(outDir)/tile-dirt-\(v)-32.png")
+    writePNG(render(tileWater(variant: v)), to: "\(outDir)/tile-water-\(v)-32.png")
+    writePNG(render(tileHedgeLeaf(variant: v)), to: "\(outDir)/tile-hedge-\(v)-32.png")
+    writePNG(render(tileStone(variant: v)), to: "\(outDir)/tile-stonefill-\(v)-32.png")
 }
 writePNG(render(tileRoad(variant: 0, dash: true)), to: "\(outDir)/tile-road-dash-32.png")
 
-writePNG(render(blobSheet(fillVariant: { tileDirt(variant: $0) }, rim: "r", fringe: nil)),
+writePNG(render(blobSheet(fillVariant: { tileDirt(variant: $0) }, rim: "r", fringe: nil, midRim: "t")),
          to: "\(outDir)/sheet-dirt-blob-128.png")
-writePNG(render(blobSheet(fillVariant: { tileStone(variant: $0) }, rim: "0", fringe: "g")),
+writePNG(render(blobSheet(fillVariant: { tileStone(variant: $0) }, rim: "0", fringe: "g", midRim: "9")),
          to: "\(outDir)/sheet-stone-blob-128.png")
-writePNG(render(blobSheet(fillVariant: { tileWater(variant: $0) }, rim: "v", fringe: "T")),
+writePNG(render(blobSheet(fillVariant: { tileWaterCalm(variant: $0) }, rim: "v", fringe: "T", midRim: "u")),
          to: "\(outDir)/sheet-water-blob-128.png")
 writePNG(render(blobSheet(fillVariant: { tileHedgeLeaf(variant: $0) }, rim: "g", fringe: nil)),
          to: "\(outDir)/sheet-hedge-blob-128.png")

@@ -49,6 +49,7 @@ enum ParkWorld {
         let waterRects = [pondRect, creekArm] + creekSteps
         painter.autotile(painter.tiles(waterRects),
                          z: PaintLayer.ground.z + 0.1,
+                         interior: { ImportedArt.genTile("tile-water-\(($0 * 7 + $1 * 11) % 3)-32") },
                          tile: ImportedArt.pondBlobTile)
 
         // §4.10 — Fountain plaza, octagonal: 14×14 stone with 4 corner 2×2
@@ -61,12 +62,14 @@ enum ParkWorld {
         ]))
         painter.autotile(plazaTiles,
                          z: PaintLayer.ground.z + 0.2,
+                         interior: { ImportedArt.genTile("tile-stonefill-\(($0 * 7 + $1 * 5) % 3)-32") },
                          tile: ImportedArt.parkStoneBlobTile)
 
         // §4.1 — Statue plaza.
         let statuePlazaRect = SpecRect(66, 38, 10, 10)
         painter.autotile(painter.tiles([statuePlazaRect]),
                          z: PaintLayer.ground.z + 0.2,
+                         interior: { ImportedArt.genTile("tile-stonefill-\(($0 * 7 + $1 * 5) % 3)-32") },
                          tile: ImportedArt.parkStoneBlobTile)
 
         // §4.3 — Dirt path network, autotiled so ends and corners are rounded.
@@ -80,6 +83,7 @@ enum ParkWorld {
         ], excluding: pathExclusions)
         painter.autotile(pathTiles,
                          z: PaintLayer.ground.z + 0.3,
+                         interior: { ImportedArt.genTile("tile-dirt-\(($0 * 5 + $1 * 3) % 3)-32") },
                          tile: ImportedArt.parkPathBlobTile)
 
         // §4.8 — Wooden bridge where the main N-S path crosses the creek
@@ -127,6 +131,7 @@ enum ParkWorld {
         ]))
         painter.autotile(hedgeTiles,
                          z: PaintLayer.props.z,
+                         interior: { ImportedArt.genTile("tile-hedge-\(($0 * 3 + $1 * 7) % 3)-32") },
                          tile: ImportedArt.parkHedgeBlobTile)
         for wall in [
             SpecRect(0, 0, 44, 2), SpecRect(48, 0, cols - 48, 2),
@@ -349,6 +354,7 @@ enum ParkWorld {
         // §3.2 — Dirt path from the road down to the park gap (x=44..47).
         painter.autotile(painter.tiles([SpecRect(44, 27, 4, 23)]),
                          z: PaintLayer.ground.z + 0.3,
+                         interior: { ImportedArt.genTile("tile-dirt-\(($0 * 5 + $1 * 3) % 3)-32") },
                          tile: ImportedArt.parkPathBlobTile)
 
         // §3.9 — Creek: spring at the east tree line, diagonal SW through the
@@ -360,6 +366,7 @@ enum ParkWorld {
         creekRects.append(SpecRect(49, 44, 2, 6))
         painter.autotile(painter.tiles(creekRects),
                          z: PaintLayer.ground.z + 0.1,
+                         interior: { ImportedArt.genTile("tile-water-\(($0 * 7 + $1 * 11) % 3)-32") },
                          tile: ImportedArt.pondBlobTile)
         for r in creekRects { painter.addBlockingRect(r) }
 
@@ -440,6 +447,7 @@ enum ParkWorld {
         hedgeTiles.subtract(painter.tiles([SpecRect(44, rows - 2, 4, 2)]))
         painter.autotile(hedgeTiles,
                          z: PaintLayer.props.z,
+                         interior: { ImportedArt.genTile("tile-hedge-\(($0 * 3 + $1 * 7) % 3)-32") },
                          tile: ImportedArt.parkHedgeBlobTile)
         for wall in [
             SpecRect(0, 0, cols, 2),
@@ -628,12 +636,20 @@ final class ScenePainter {
     /// Paints a tile set with a 4×4 blob tileset (shared layout: 3×3 blob,
     /// capsules in row 0 / col 3, single blob at (3,0)). Tile choice is by
     /// N/S/E/W neighbors within the set — edges wrap every boundary.
-    func autotile(_ tileSet: Set<TileXY>, z: CGFloat, tile texProvider: (Int, Int) -> SKTexture?) {
+    func autotile(_ tileSet: Set<TileXY>, z: CGFloat,
+                  interior: ((Int, Int) -> SKTexture?)? = nil,
+                  tile texProvider: (Int, Int) -> SKTexture?) {
         for t in tileSet {
             let w = tileSet.contains(TileXY(x: t.x - 1, y: t.y))
             let e = tileSet.contains(TileXY(x: t.x + 1, y: t.y))
             let n = tileSet.contains(TileXY(x: t.x, y: t.y - 1))
             let s = tileSet.contains(TileXY(x: t.x, y: t.y + 1))
+            // fully-interior cells: position-varied fill so open areas never
+            // read as repeated boxed cells
+            if n, s, e, w, let interior, let tex = interior(t.x, t.y) {
+                place1x1(at: t.x, t.y, texture: tex, z: z)
+                continue
+            }
             let col: Int, rowFromTop: Int
             if !n && !s {
                 rowFromTop = 0
