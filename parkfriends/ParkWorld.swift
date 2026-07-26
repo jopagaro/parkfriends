@@ -586,16 +586,16 @@ final class ScenePainter {
     }
 
     func fillGrass(rect: SpecRect) {
-        // Textured base with sparse sprout-variant tiles (same family, no
-        // dark blotches).
-        let base = ImportedArt.parkGrassBaseTile()
+        // EarthBound checkerboard baked into the tile at half-tile scale,
+        // with sparse sprout/flower variants breaking the rhythm.
+        let a = ImportedArt.genTile("tile-grass-0-32") ?? ImportedArt.parkGrassBaseTile()
         for yT in rect.y..<(rect.y + rect.h) {
             for xT in rect.x..<(rect.x + rect.w) {
-                let n = (xT * 13 + yT * 7) % 19
+                let n = (xT * 13 + yT * 7) % 37
                 let tex: SKTexture?
-                if n == 3 { tex = ImportedArt.genTile("tile-grass-1-32") ?? base }
-                else if n == 11 { tex = ImportedArt.genTile("tile-grass-2-32") ?? base }
-                else { tex = base }
+                if n == 3 { tex = ImportedArt.genTile("tile-grass-1-32") ?? a }
+                else if n == 17 { tex = ImportedArt.genTile("tile-grass-2-32") ?? a }
+                else { tex = a }
                 place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z)
             }
         }

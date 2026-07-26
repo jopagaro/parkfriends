@@ -53,6 +53,7 @@ var palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     "R": (0x2E, 0x2E, 0x32, 255), // asphalt
     "x": (0x3A, 0x3A, 0x3E, 255), // asphalt light
     "5": (0x6A, 0x6A, 0x6A, 255), // statue mid gray
+    "6": (0x66, 0xB4, 0x38, 255), // grass checker-mate (lighter)
     // parametric NPC slots (set per-role before rendering)
     "a": (0xE8, 0xC0, 0x98, 255), // skin
     "d": (0xC8, 0x9A, 0x6E, 255), // skin shadow
@@ -1333,16 +1334,35 @@ func speck(_ x: Int, _ y: Int, _ salt: Int) -> Int {
     return Int(h % 1000)
 }
 
+func grassClumps(_ g: inout Grid, base: Character, salt: Int) {
+    // deliberate SNES-style clumps: small leaf tufts, not noise
+    for i in 0..<4 {
+        let cx = 3 + speck(i, salt, 5) % (TS - 7)
+        let cy = 3 + speck(salt, i, 9) % (TS - 7)
+        g[cy][cx] = "g"; g[cy][cx + 1] = "g"; g[cy + 1][cx + 1] = "g"
+        g[cy - 1][cx] = "H"
+    }
+}
+
 func tileGrass(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
+    // fine EarthBound checker: 16px quadrants inside every tile, so the
+    // pattern tiles seamlessly at half-tile scale
     for y in 0..<TS { for x in 0..<TS {
-        let r = speck(x + variant * 97, y, 11)
-        g[y][x] = r < 13 ? "H" : (r < 34 ? "g" : "G")
+        g[y][x] = ((x / 16) + (y / 16)) % 2 == 0 ? "G" : "6"
     } }
-    // occasional 2px blade clusters
-    if variant % 3 == 1 {
+    grassClumps(&g, base: "G", salt: 11 + variant * 97)
+    if variant == 1 {   // sprout variant
         for (bx, by) in [(6, 8), (22, 18), (13, 26)] {
             g[by][bx] = "g"; g[by - 1][bx] = "g"; g[by - 1][bx + 1] = "H"
+            g[by][bx + 1] = "g"
+        }
+    }
+    if variant == 2 {   // tiny flowers variant
+        for (fx, fy, c) in [(8, 6, "W"), (24, 14, "P"), (14, 25, "Q")] {
+            g[fy][fx] = Character(c); g[fy][fx + 1] = Character(c)
+            g[fy + 1][fx] = Character(c)
+            g[fy - 1][fx] = "H"
         }
     }
     return g
@@ -1361,12 +1381,17 @@ func tileDirt(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
         let r = speck(x + variant * 61, y, 37)
-        g[y][x] = r < 34 ? "t" : (r < 44 ? "h" : "T")
+        g[y][x] = r < 16 ? "t" : "T"
     } }
-    // few pebbles
-    for (px, py) in [(8, 6), (20, 14), (13, 24), (26, 27)] where speck(px, py, variant) % 3 == 0 {
-        g[py][px] = "r"; g[py][px + 1] = "r"; g[py + 1][px] = "t"
+    // pebble clusters with lit tops
+    for i in 0..<3 {
+        let px = 3 + speck(i, variant, 13) % (TS - 8)
+        let py = 3 + speck(variant, i, 17) % (TS - 8)
+        g[py][px] = "t"; g[py][px + 1] = "t"; g[py + 1][px] = "r"
+        g[py + 1][px + 1] = "t"; g[py - 1][px] = "h"
     }
+    // faint horizontal wear bands
+    for x in stride(from: variant % 3, to: TS, by: 9) { g[10][x] = "t"; g[24][(x + 4) % TS] = "t" }
     return g
 }
 
@@ -1403,11 +1428,15 @@ func tileWater(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
         let r = speck(x + variant * 89, y, 97)
-        g[y][x] = r < 30 ? "v" : "w"
+        g[y][x] = r < 14 ? "v" : "w"
     } }
-    for (rx, ry) in [(7, 9), (21, 22), (14, 27)] {
-        if speck(rx, ry, variant) % 2 == 0 {
-            for i in 0..<5 { g[ry][rx + i] = "u" }
+    // SNES wave crests: staggered rows of short highlights with dark lee
+    for (row, off) in [(5, 2), (13, 12), (21, 6), (28, 18)] {
+        var x = off + (variant % 2) * 5
+        while x < TS - 5 {
+            for i in 0..<4 { g[row][x + i] = "u" }
+            g[row + 1][x + 1] = "v"; g[row + 1][x + 2] = "v"
+            x += 14
         }
     }
     return g
@@ -1415,10 +1444,13 @@ func tileWater(variant: Int) -> Grid {
 
 func tileHedgeLeaf(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
-    for y in 0..<TS { for x in 0..<TS {
-        let r = speck(x + variant * 17, y, 113)
-        g[y][x] = r < 200 ? "g" : (r < 620 ? "G" : "H")
-    } }
+    for y in 0..<TS { for x in 0..<TS { g[y][x] = "G" } }
+    for i in 0..<7 {
+        let cx = 2 + speck(i, variant, 23) % (TS - 6)
+        let cy = 2 + speck(variant, i, 29) % (TS - 6)
+        g[cy][cx] = "g"; g[cy][cx + 1] = "g"; g[cy + 1][cx + 1] = "g"
+        g[cy - 1][cx + 1] = "H"
+    }
     return g
 }
 
@@ -1568,11 +1600,20 @@ func treeSprite(w: Int, h: Int, canopyR: Double, conifer: Bool = false) -> Grid 
         fillEllipse(&can, cx: cx - canopyR * 0.3, cy: canopyR * 0.5, rx: canopyR * 0.4, ry: canopyR * 0.3, "G")
         fillEllipse(&can, cx: cx + canopyR * 0.35, cy: canopyR * 0.55, rx: canopyR * 0.35, ry: canopyR * 0.28, "G")
     }
-    // leaf texture flecks
-    for y in 0..<h { for x in 0..<w where can[y][x] != "." {
-        let r = speck(x, y, 131)
-        if r < 40 { can[y][x] = "g" } else if r < 60, can[y][x] == "G" { can[y][x] = "H" }
-    } }
+    // leaf clump texture: deliberate tufts with lit tops
+    var clumped = 0
+    let target = max(6, Int(canopyR * canopyR / 55))
+    var ci = 0
+    while clumped < target && ci < target * 8 {
+        let cx2 = 2 + speck(ci, 131, w) % (w - 6)
+        let cy2 = 2 + speck(131, ci, h) % (h - 6)
+        ci += 1
+        guard can[cy2][cx2] != "." else { continue }
+        can[cy2][cx2] = "g"; can[cy2][cx2 + 1] = "g"
+        can[cy2 + 1][cx2] = "g"; can[cy2 + 1][cx2 + 2] = "g"
+        if can[cy2 - 1][cx2] != "." { can[cy2 - 1][cx2] = "H" }
+        clumped += 1
+    }
     outlineShape(&can, body: ["G", "g", "H"], outline: "g")
     composite(&g, can, dx: 0, dy: 0)
     return g
@@ -1582,6 +1623,7 @@ func treeSprite(w: Int, h: Int, canopyR: Double, conifer: Bool = false) -> Grid 
 
 func propBench() -> Grid {   // 64x40 wooden park bench
     var g = emptyGrid(w: 64, h: 40)
+    fillEllipse(&g, cx: 32, cy: 37, rx: 28, ry: 2.8, "S")
     // legs
     for (lx) in [7, 53] {
         for y in 20..<36 { for x in lx..<(lx + 4) { g[y][x] = "r" } }
@@ -1602,6 +1644,7 @@ func propBench() -> Grid {   // 64x40 wooden park bench
 
 func propLamppost() -> Grid {   // 32x96 iron lamp with warm glass
     var g = emptyGrid(w: 32, h: 96)
+    fillEllipse(&g, cx: 16, cy: 92, rx: 12, ry: 2.6, "S")
     // base
     for y in 86..<92 { for x in 8..<24 { g[y][x] = "R" } }
     for y in 82..<86 { for x in 11..<21 { g[y][x] = "R" } }
@@ -1621,6 +1664,7 @@ func propLamppost() -> Grid {   // 32x96 iron lamp with warm glass
 
 func propFountain() -> Grid {   // 128x160 two-tier stone fountain
     var g = emptyGrid(w: 128, h: 160)
+    fillEllipse(&g, cx: 64, cy: 150, rx: 56, ry: 6, "S")
     // lower basin
     var basin = emptyGrid(w: 128, h: 160)
     fillEllipse(&basin, cx: 64, cy: 118, rx: 58, ry: 34, "1")
@@ -1659,6 +1703,7 @@ func propFountain() -> Grid {   // 128x160 two-tier stone fountain
 
 func propStatue() -> Grid {   // 64x96 stone duck memorial on a plinth
     var g = emptyGrid(w: 64, h: 96)
+    fillEllipse(&g, cx: 32, cy: 91, rx: 26, ry: 3.4, "S")
     // plinth
     for y in 78..<92 { for x in 8..<56 { g[y][x] = "1" } }
     for y in 78..<80 { for x in 8..<56 { g[y][x] = "9" } }
@@ -2476,7 +2521,7 @@ do {
 }
 
 // ---- World tiles ----
-for v in 0..<3 {
+for v in 0..<4 {
     writePNG(render(tileGrass(variant: v)), to: "\(outDir)/tile-grass-\(v)-32.png")
     writePNG(render(tileGrassDark(variant: v)), to: "\(outDir)/tile-grassdark-\(v)-32.png")
     writePNG(render(tileSidewalk(variant: v)), to: "\(outDir)/tile-sidewalk-\(v)-32.png")
