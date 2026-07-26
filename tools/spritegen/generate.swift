@@ -1843,6 +1843,476 @@ func houseImage(variant: String) -> CGImage {
                    intent: .defaultIntent)!
 }
 
+// MARK: - CITY BUILDINGS + PROPS + INTERIORS (RGB canvas)
+
+final class RGBCanvas {
+    let W: Int, H: Int
+    var px: [UInt8]
+    init(_ w: Int, _ h: Int) { W = w; H = h; px = [UInt8](repeating: 0, count: w * h * 4) }
+    func put(_ x: Int, _ y: Int, _ c: RGB) {
+        guard x >= 0, x < W, y >= 0, y < H else { return }
+        let i = (y * W + x) * 4
+        px[i] = c.r; px[i+1] = c.g; px[i+2] = c.b; px[i+3] = 255
+    }
+    func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ c: RGB) {
+        for yy in y..<(y+h) { for xx in x..<(x+w) { put(xx, yy, c) } }
+    }
+    func image() -> CGImage {
+        let provider = CGDataProvider(data: Data(px) as CFData)!
+        return CGImage(width: W, height: H, bitsPerComponent: 8, bitsPerPixel: 32,
+                       bytesPerRow: W * 4, space: CGColorSpaceCreateDeviceRGB(),
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                       provider: provider, decode: nil, shouldInterpolate: false,
+                       intent: .defaultIntent)!
+    }
+}
+
+let brickA   = RGB(r: 0xC4, g: 0x7A, b: 0x52), brickAsh = RGB(r: 0x9A, g: 0x5C, b: 0x3A)
+let concB    = RGB(r: 0x9E, g: 0x9E, b: 0x9E), concBsh  = RGB(r: 0x7A, g: 0x7A, b: 0x7A)
+let outlineB = RGB(r: 0x3C, g: 0x28, b: 0x10)
+let glassLit2 = RGB(r: 0xF0, g: 0xE8, b: 0x90), glassDrk2 = RGB(r: 0x2A, g: 0x3A, b: 0x4A)
+let frameC   = RGB(r: 0x3A, g: 0x3A, b: 0x3A)
+
+/// Shared storefront/base building shell. Returns canvas; caller decorates.
+func buildingShell(w: Int, h: Int, wall: RGB, wallSh: RGB, brick: Bool) -> RGBCanvas {
+    let c = RGBCanvas(w, h)
+    c.rect(0, 0, w, h, wall)
+    // parapet roofline
+    c.rect(0, 0, w, 10, wallSh)
+    c.rect(0, 10, w, 2, outlineB)
+    if brick {
+        var y = 14
+        var row = 0
+        while y < h - 4 {
+            c.rect(0, y, w, 1, wallSh)
+            let off = row % 2 == 0 ? 0 : 16
+            var x = off
+            while x < w { c.rect(x, y - 5, 1, 5, wallSh); x += 32 }
+            y += 6; row += 1
+        }
+    }
+    // side shading + outline
+    c.rect(w - 6, 0, 6, h, wallSh)
+    c.rect(0, 0, 1, h, outlineB); c.rect(w - 1, 0, 1, h, outlineB)
+    c.rect(0, 0, w, 1, outlineB); c.rect(0, h - 1, w, 1, outlineB)
+    return c
+}
+
+func windowGrid(_ c: RGBCanvas, x0: Int, y0: Int, cols: Int, rows: Int,
+                ww: Int, wh: Int, gapX: Int, gapY: Int, seed: Int) {
+    for r in 0..<rows { for col in 0..<cols {
+        let x = x0 + col * (ww + gapX), y = y0 + r * (wh + gapY)
+        c.rect(x - 2, y - 2, ww + 4, wh + 4, frameC)
+        let lit = speck(col, r, seed) % 3 == 0
+        c.rect(x, y, ww, wh, lit ? glassLit2 : glassDrk2)
+        c.rect(x, y, ww, 3, RGB(r: 0xC8, g: 0xD8, b: 0xE0))
+        c.rect(x + ww/2 - 1, y, 2, wh, frameC)
+    } }
+}
+
+func awning(_ c: RGBCanvas, x: Int, y: Int, w: Int, color: RGB) {
+    let white = RGB(r: 0xF0, g: 0xEC, b: 0xE0)
+    for i in 0..<w {
+        c.put(x + i, y, outlineB)
+        for yy in (y + 1)..<(y + 14) {
+            c.put(x + i, yy, (i / 12) % 2 == 0 ? color : white)
+        }
+    }
+    // scalloped bottom
+    var i = 0
+    while i < w {
+        c.rect(x + i + 2, y + 14, 8, 3, (i / 12) % 2 == 0 ? color : white)
+        i += 12
+    }
+    c.rect(x, y + 13, w, 1, outlineB)
+}
+
+func doorway(_ c: RGBCanvas, x: Int, y: Int, w: Int, h: Int, glass: Bool) {
+    c.rect(x - 2, y - 2, w + 4, h + 2, frameC)
+    c.rect(x, y, w, h, glass ? glassDrk2 : RGB(r: 0x5A, g: 0x3E, b: 0x1E))
+    if glass { c.rect(x + w/2 - 1, y, 2, h, frameC) }
+    else { c.put(x + w - 5, y + h/2, RGB(r: 0xD4, g: 0xB0, b: 0x30)) }
+}
+
+func bldgCafe() -> RGBCanvas {
+    let c = buildingShell(w: 256, h: 192, wall: brickA, wallSh: brickAsh, brick: true)
+    windowGrid(c, x0: 24, y0: 26, cols: 4, rows: 1, ww: 40, wh: 30, gapX: 16, gapY: 0, seed: 3)
+    awning(c, x: 12, y: 70, w: 232, color: RGB(r: 0xC8, g: 0x30, b: 0x30))
+    // big shop window + door
+    c.rect(22, 96, 130, 60, frameC)
+    c.rect(26, 100, 122, 52, glassDrk2)
+    c.rect(26, 100, 122, 8, RGB(r: 0xC8, g: 0xD8, b: 0xE0))
+    doorway(c, x: 180, y: 100, w: 44, h: 88, glass: true)
+    // coffee cup sign
+    c.rect(104, 44, 40, 22, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    c.rect(104, 44, 40, 2, outlineB); c.rect(104, 64, 40, 2, outlineB)
+    c.rect(104, 44, 2, 22, outlineB); c.rect(142, 44, 2, 22, outlineB)
+    c.rect(114, 50, 14, 10, RGB(r: 0x5A, g: 0x3E, b: 0x1E))
+    c.rect(128, 52, 4, 5, RGB(r: 0x5A, g: 0x3E, b: 0x1E))
+    c.put(118, 47, brickAsh); c.put(122, 46, brickAsh)
+    return c
+}
+
+func bldgStore() -> RGBCanvas {
+    let c = buildingShell(w: 256, h: 192, wall: RGB(r: 0xC4, g: 0x95, b: 0x5A), wallSh: RGB(r: 0xA0, g: 0x78, b: 0x40), brick: false)
+    awning(c, x: 12, y: 58, w: 232, color: RGB(r: 0x3D, g: 0x72, b: 0x20))
+    c.rect(20, 84, 150, 70, frameC)
+    c.rect(24, 88, 142, 62, glassDrk2)
+    // crates in window
+    c.rect(32, 118, 28, 28, RGB(r: 0xA0, g: 0x78, b: 0x40))
+    c.rect(66, 126, 22, 20, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    c.rect(100, 112, 30, 34, RGB(r: 0xC4, g: 0x95, b: 0x5A))
+    doorway(c, x: 196, y: 92, w: 40, h: 96, glass: false)
+    // sign: stacked goods square
+    c.rect(108, 26, 40, 26, RGB(r: 0xD4, g: 0xB0, b: 0x30))
+    c.rect(108, 26, 40, 2, outlineB); c.rect(108, 50, 40, 2, outlineB)
+    return c
+}
+
+func bldgHospital() -> RGBCanvas {
+    let c = buildingShell(w: 256, h: 224, wall: RGB(r: 0xE8, g: 0xE8, b: 0xE4), wallSh: concB, brick: false)
+    windowGrid(c, x0: 20, y0: 26, cols: 5, rows: 2, ww: 34, wh: 28, gapX: 12, gapY: 14, seed: 11)
+    doorway(c, x: 96, y: 156, w: 64, h: 66, glass: true)
+    c.rect(88, 148, 80, 6, concB)   // entrance canopy
+    // red cross sign
+    c.rect(112, 112, 32, 32, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    c.rect(124, 116, 8, 24, RGB(r: 0xC8, g: 0x30, b: 0x30))
+    c.rect(116, 124, 24, 8, RGB(r: 0xC8, g: 0x30, b: 0x30))
+    return c
+}
+
+func bldgPolice() -> RGBCanvas {
+    let c = buildingShell(w: 256, h: 224, wall: concB, wallSh: concBsh, brick: false)
+    c.rect(0, 12, 256, 8, RGB(r: 0x1A, g: 0x3A, b: 0x6A))
+    windowGrid(c, x0: 24, y0: 34, cols: 4, rows: 2, ww: 40, wh: 26, gapX: 16, gapY: 14, seed: 7)
+    doorway(c, x: 100, y: 158, w: 56, h: 64, glass: true)
+    c.rect(92, 150, 72, 6, RGB(r: 0x1A, g: 0x3A, b: 0x6A))
+    // badge sign
+    c.rect(116, 116, 24, 26, RGB(r: 0xD4, g: 0xB0, b: 0x30))
+    c.rect(120, 120, 16, 18, RGB(r: 0x1A, g: 0x3A, b: 0x6A))
+    // blue lamps
+    for lx in [78, 170] {
+        c.rect(lx, 160, 8, 8, RGB(r: 0x3A, g: 0x5F, b: 0xA0))
+        c.rect(lx + 2, 168, 4, 14, frameC)
+    }
+    return c
+}
+
+func bldgApartment() -> RGBCanvas {
+    let c = buildingShell(w: 256, h: 256, wall: RGB(r: 0x8B, g: 0x5C, b: 0x40), wallSh: RGB(r: 0x6E, g: 0x44, b: 0x2E), brick: true)
+    windowGrid(c, x0: 22, y0: 26, cols: 4, rows: 3, ww: 36, wh: 30, gapX: 20, gapY: 22, seed: 21)
+    // stoop + door
+    doorway(c, x: 106, y: 186, w: 44, h: 60, glass: false)
+    c.rect(96, 246, 64, 6, concB)
+    c.rect(100, 240, 56, 6, concBsh)
+    // fire escape zigzag on right
+    let steel = RGB(r: 0x48, g: 0x48, b: 0x48)
+    for (fy) in [40, 92, 144] {
+        c.rect(196, fy, 52, 3, steel)
+        c.rect(196, fy, 3, 34, steel)
+        c.rect(245, fy, 3, 34, steel)
+        for i in 0..<6 { c.rect(200 + i * 8, fy + 34 - i * 5, 8, 2, steel) }
+    }
+    return c
+}
+
+func bldgDevcorp() -> RGBCanvas {
+    let dark = RGB(r: 0x2E, g: 0x2E, b: 0x38), darker = RGB(r: 0x22, g: 0x22, b: 0x2A)
+    let c = buildingShell(w: 224, h: 288, wall: dark, wallSh: darker, brick: false)
+    let teal = RGB(r: 0x3A, g: 0x8A, b: 0x8A)
+    for r in 0..<7 { for col in 0..<5 {
+        let x = 16 + col * 40, y = 22 + r * 34
+        c.rect(x, y, 32, 26, speck(col, r, 31) % 4 == 0 ? teal : glassDrk2)
+        c.rect(x, y, 32, 2, RGB(r: 0x4A, g: 0x6A, b: 0x7A))
+    } }
+    doorway(c, x: 84, y: 250, w: 56, h: 36, glass: true)
+    return c
+}
+
+func propCar(variantColor: RGB, police: Bool) -> RGBCanvas {
+    let c = RGBCanvas(96, 48)
+    let body = police ? RGB(r: 0xE8, g: 0xE8, b: 0xE4) : variantColor
+    // wheels
+    for wx in [14, 66] {
+        c.rect(wx, 32, 16, 12, frameC)
+        c.rect(wx + 4, 36, 8, 5, RGB(r: 0x8A, g: 0x8A, b: 0x8A))
+    }
+    // body + cabin
+    c.rect(4, 20, 88, 16, body)
+    c.rect(20, 8, 52, 14, body)
+    c.rect(26, 10, 18, 10, glassDrk2)
+    c.rect(50, 10, 16, 10, glassDrk2)
+    if police {
+        c.rect(4, 24, 88, 6, RGB(r: 0x1A, g: 0x3A, b: 0x6A))
+        c.rect(38, 4, 8, 5, RGB(r: 0xC8, g: 0x30, b: 0x30))
+        c.rect(48, 4, 8, 5, RGB(r: 0x3A, g: 0x5F, b: 0xA0))
+    }
+    c.rect(84, 24, 6, 4, RGB(r: 0xF0, g: 0xE8, b: 0x90))
+    c.rect(4, 24, 4, 4, RGB(r: 0xC8, g: 0x30, b: 0x30))
+    return c
+}
+
+func propDumpster() -> RGBCanvas {
+    let c = RGBCanvas(96, 64)
+    let green = RGB(r: 0x3D, g: 0x5A, b: 0x3A), greenSh = RGB(r: 0x2A, g: 0x42, b: 0x28)
+    c.rect(4, 20, 88, 38, green)
+    c.rect(4, 20, 88, 8, greenSh)
+    c.rect(0, 14, 96, 8, greenSh)
+    for x in stride(from: 12, to: 90, by: 22) { c.rect(x, 30, 3, 22, greenSh) }
+    c.rect(10, 58, 10, 6, frameC); c.rect(76, 58, 10, 6, frameC)
+    return c
+}
+
+func propTrash() -> RGBCanvas {
+    let c = RGBCanvas(32, 48)
+    c.rect(6, 12, 20, 32, concB)
+    c.rect(6, 12, 20, 4, concBsh)
+    c.rect(4, 8, 24, 5, concBsh)
+    for x in stride(from: 9, to: 24, by: 5) { c.rect(x, 18, 2, 22, concBsh) }
+    return c
+}
+
+func propHydrant() -> RGBCanvas {
+    let c = RGBCanvas(24, 36)
+    let red = RGB(r: 0xC8, g: 0x30, b: 0x30), redSh = RGB(r: 0x9A, g: 0x24, b: 0x24)
+    c.rect(6, 10, 12, 20, red)
+    c.rect(8, 4, 8, 7, red)
+    c.rect(9, 2, 6, 3, redSh)
+    c.rect(2, 16, 5, 6, redSh); c.rect(17, 16, 5, 6, redSh)
+    c.rect(4, 30, 16, 4, redSh)
+    return c
+}
+
+func propCone() -> RGBCanvas {
+    let c = RGBCanvas(24, 32)
+    let orange = RGB(r: 0xE8, g: 0x7A, b: 0x2A)
+    for i in 0..<20 {
+        let w = 4 + i * 14 / 20
+        c.rect(12 - w/2, 6 + i, w, 1, i > 8 && i < 13 ? RGB(r: 0xF0, g: 0xEC, b: 0xE0) : orange)
+    }
+    c.rect(2, 26, 20, 4, orange)
+    return c
+}
+
+func propBarrel() -> RGBCanvas {
+    let c = RGBCanvas(32, 40)
+    let orange = RGB(r: 0xE8, g: 0x7A, b: 0x2A), oSh = RGB(r: 0xB8, g: 0x5E, b: 0x20)
+    c.rect(4, 4, 24, 32, orange)
+    c.rect(4, 4, 24, 4, oSh); c.rect(4, 18, 24, 4, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    c.rect(4, 32, 24, 4, oSh)
+    c.rect(24, 4, 4, 32, oSh)
+    return c
+}
+
+func propContainer() -> RGBCanvas {
+    let c = RGBCanvas(160, 96)
+    let red = RGB(r: 0xA8, g: 0x2E, b: 0x2E), redSh = RGB(r: 0x7E, g: 0x22, b: 0x22)
+    c.rect(0, 12, 160, 78, red)
+    c.rect(0, 12, 160, 10, redSh)
+    for x in stride(from: 8, to: 156, by: 14) { c.rect(x, 24, 4, 62, redSh) }
+    c.rect(146, 30, 10, 50, frameC)
+    return c
+}
+
+func propPipes() -> RGBCanvas {
+    let c = RGBCanvas(128, 48)
+    let steel = RGB(r: 0x8A, g: 0x8A, b: 0x8A), steelSh = RGB(r: 0x5E, g: 0x5E, b: 0x5E)
+    for (py, count) in [(28, 3), (12, 2)] {
+        for i in 0..<count {
+            let x = 10 + i * 38 + (py == 12 ? 19 : 0)
+            c.rect(x, py, 36, 16, steel)
+            c.rect(x, py, 36, 4, RGB(r: 0xB8, g: 0xB8, b: 0xB8))
+            c.rect(x, py + 12, 36, 4, steelSh)
+            c.rect(x + 2, py + 2, 4, 12, steelSh)
+        }
+    }
+    return c
+}
+
+func propMound() -> RGBCanvas {
+    let c = RGBCanvas(96, 64)
+    for y in 0..<64 { for x in 0..<96 {
+        let dx = (Double(x) - 48) / 44, dy = (Double(y) - 44) / 26
+        if dx*dx + dy*dy <= 1 {
+            let r = speck(x, y, 41)
+            c.put(x, y, r < 300 ? RGB(r: 0xA0, g: 0x78, b: 0x40) : RGB(r: 0xC4, g: 0x95, b: 0x5A))
+        }
+    } }
+    return c
+}
+
+func propChainlink() -> RGBCanvas {
+    let c = RGBCanvas(32, 64)
+    let steel = RGB(r: 0x9A, g: 0x9A, b: 0x9A)
+    c.rect(0, 8, 3, 56, RGB(r: 0x6E, g: 0x6E, b: 0x6E))
+    c.rect(0, 8, 32, 3, steel)
+    c.rect(0, 58, 32, 2, steel)
+    var d = 0
+    while d < 32 + 48 {
+        for i in 0..<48 {
+            let x1 = d - i, y = 11 + i
+            if x1 >= 0, x1 < 32, y < 58 { c.put(x1, y, steel) }
+            let x2 = i - d + 31
+            if x2 >= 0, x2 < 32, y < 58 { c.put(x2, y, steel) }
+        }
+        d += 12
+    }
+    return c
+}
+
+func propTrailer() -> RGBCanvas {
+    let c = RGBCanvas(192, 128)
+    let cream = RGB(r: 0xE0, g: 0xD8, b: 0xC0), creamSh = RGB(r: 0xB8, g: 0xB0, b: 0x98)
+    c.rect(8, 20, 176, 84, cream)
+    c.rect(8, 20, 176, 12, creamSh)
+    c.rect(4, 14, 184, 8, RGB(r: 0x6E, g: 0x6E, b: 0x6E))
+    c.rect(24, 44, 40, 30, frameC); c.rect(28, 48, 32, 22, glassDrk2)
+    c.rect(120, 44, 40, 60, frameC); c.rect(124, 48, 32, 54, RGB(r: 0x5A, g: 0x3E, b: 0x1E))
+    for bx in [20, 160] { c.rect(bx, 104, 14, 14, concBsh) }
+    c.rect(70, 30, 60, 8, RGB(r: 0xE8, g: 0xC0, b: 0x40))
+    return c
+}
+
+// ---- Interiors ----
+
+func tileFloorWood() -> RGBCanvas {
+    let c = RGBCanvas(32, 32)
+    let wood = RGB(r: 0xC4, g: 0x95, b: 0x5A), woodSh = RGB(r: 0xA0, g: 0x78, b: 0x40)
+    c.rect(0, 0, 32, 32, wood)
+    c.rect(0, 7, 32, 1, woodSh); c.rect(0, 15, 32, 1, woodSh)
+    c.rect(0, 23, 32, 1, woodSh); c.rect(0, 31, 32, 1, woodSh)
+    c.rect(10, 0, 1, 8, woodSh); c.rect(24, 8, 1, 8, woodSh)
+    c.rect(6, 16, 1, 8, woodSh); c.rect(20, 24, 1, 8, woodSh)
+    for i in 0..<6 { c.put(4 + i * 5, 3 + (i * 7) % 26, woodSh) }
+    return c
+}
+
+func tileFloorLab() -> RGBCanvas {
+    let c = RGBCanvas(32, 32)
+    let a = RGB(r: 0xB8, g: 0xC0, b: 0xC8), b = RGB(r: 0x9A, g: 0xA4, b: 0xB0)
+    c.rect(0, 0, 16, 16, a); c.rect(16, 0, 16, 16, b)
+    c.rect(0, 16, 16, 16, b); c.rect(16, 16, 16, 16, a)
+    return c
+}
+
+func tileWallInt(top: Bool) -> RGBCanvas {
+    let c = RGBCanvas(32, 32)
+    if top {
+        c.rect(0, 0, 32, 32, RGB(r: 0x8B, g: 0x5C, b: 0x40))
+        c.rect(0, 28, 32, 4, RGB(r: 0x6E, g: 0x44, b: 0x2E))
+    } else {
+        c.rect(0, 0, 32, 32, RGB(r: 0xE8, g: 0xE0, b: 0xC8))
+        c.rect(0, 0, 32, 2, RGB(r: 0xC8, g: 0xC0, b: 0xA8))
+        c.rect(0, 24, 32, 8, RGB(r: 0xA0, g: 0x78, b: 0x40))
+        c.rect(0, 24, 32, 2, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    }
+    return c
+}
+
+func furnBed() -> RGBCanvas {
+    let c = RGBCanvas(64, 96)
+    let wood = RGB(r: 0x8B, g: 0x5C, b: 0x28)
+    c.rect(2, 2, 60, 16, wood)
+    c.rect(2, 84, 60, 10, wood)
+    c.rect(6, 12, 52, 76, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    c.rect(6, 12, 52, 20, RGB(r: 0xE0, g: 0xD8, b: 0xC0))
+    c.rect(10, 16, 44, 12, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    c.rect(6, 34, 52, 54, RGB(r: 0x6E, g: 0x8E, b: 0x3A))
+    c.rect(6, 34, 52, 6, RGB(r: 0x54, g: 0x6E, b: 0x2A))
+    return c
+}
+
+func furnTable() -> RGBCanvas {
+    let c = RGBCanvas(64, 48)
+    let wood = RGB(r: 0xA0, g: 0x78, b: 0x40), woodSh = RGB(r: 0x8B, g: 0x5C, b: 0x28)
+    c.rect(2, 6, 60, 30, wood)
+    c.rect(2, 6, 60, 4, RGB(r: 0xC4, g: 0x95, b: 0x5A))
+    c.rect(2, 32, 60, 4, woodSh)
+    c.rect(6, 36, 6, 10, woodSh); c.rect(52, 36, 6, 10, woodSh)
+    return c
+}
+
+func furnChair() -> RGBCanvas {
+    let c = RGBCanvas(32, 48)
+    let wood = RGB(r: 0xA0, g: 0x78, b: 0x40), woodSh = RGB(r: 0x8B, g: 0x5C, b: 0x28)
+    c.rect(4, 2, 24, 18, wood)
+    c.rect(4, 2, 24, 3, woodSh)
+    c.rect(4, 20, 24, 12, RGB(r: 0xC4, g: 0x95, b: 0x5A))
+    c.rect(4, 32, 4, 12, woodSh); c.rect(24, 32, 4, 12, woodSh)
+    return c
+}
+
+func furnCabinet() -> RGBCanvas {
+    let c = RGBCanvas(64, 96)
+    let wood = RGB(r: 0x8B, g: 0x5C, b: 0x28), woodSh = RGB(r: 0x6E, g: 0x48, b: 0x1E)
+    c.rect(2, 2, 60, 90, wood)
+    c.rect(2, 2, 60, 6, woodSh)
+    c.rect(6, 12, 24, 34, woodSh); c.rect(34, 12, 24, 34, woodSh)
+    c.rect(6, 52, 52, 16, woodSh); c.rect(6, 72, 52, 16, woodSh)
+    for (kx, ky) in [(27, 28), (37, 28), (30, 58), (30, 78)] {
+        c.rect(kx, ky, 3, 3, RGB(r: 0xD4, g: 0xB0, b: 0x30))
+    }
+    return c
+}
+
+func furnRug() -> RGBCanvas {
+    let c = RGBCanvas(96, 64)
+    let red = RGB(r: 0xB8, g: 0x4A, b: 0x3A)
+    for y in 0..<64 { for x in 0..<96 {
+        let dx = (Double(x) - 48) / 46, dy = (Double(y) - 32) / 30
+        let d = dx*dx + dy*dy
+        if d <= 1 {
+            c.put(x, y, d > 0.72 ? RGB(r: 0xD4, g: 0xB0, b: 0x30) : (d > 0.5 ? RGB(r: 0xE0, g: 0xD8, b: 0xC0) : red))
+        }
+    } }
+    return c
+}
+
+func furnPlant() -> RGBCanvas {
+    let c = RGBCanvas(32, 64)
+    c.rect(8, 46, 16, 14, RGB(r: 0xB8, g: 0x5E, b: 0x20))
+    c.rect(8, 46, 16, 3, RGB(r: 0x8B, g: 0x45, b: 0x18))
+    for (lx, ly, lw, lh) in [(12, 10, 8, 26), (4, 20, 8, 20), (20, 18, 8, 22)] {
+        c.rect(lx, ly, lw, lh, RGB(r: 0x3D, g: 0x72, b: 0x20))
+        c.rect(lx + 2, ly + 2, 3, lh - 6, RGB(r: 0x5D, g: 0xA8, b: 0x32))
+    }
+    return c
+}
+
+func furnCounter() -> RGBCanvas {
+    let c = RGBCanvas(96, 48)
+    c.rect(0, 4, 96, 36, RGB(r: 0xA0, g: 0x78, b: 0x40))
+    c.rect(0, 4, 96, 8, RGB(r: 0xC4, g: 0x95, b: 0x5A))
+    c.rect(0, 36, 96, 8, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    return c
+}
+
+func furnLabConsole() -> RGBCanvas {
+    let c = RGBCanvas(128, 96)
+    let dark = RGB(r: 0x3A, g: 0x3A, b: 0x4A), darker = RGB(r: 0x2A, g: 0x2A, b: 0x36)
+    c.rect(4, 8, 120, 80, dark)
+    c.rect(4, 8, 120, 10, darker)
+    c.rect(4, 80, 120, 8, darker)
+    for (sx, on) in [(14, true), (52, false), (90, true)] {
+        c.rect(sx, 24, 26, 20, frameC)
+        c.rect(sx + 2, 26, 22, 16, on ? RGB(r: 0x3A, g: 0x8A, b: 0x8A) : glassDrk2)
+        if on { c.rect(sx + 4, 30, 12, 2, RGB(r: 0x8A, g: 0xC8, b: 0xC8)) }
+    }
+    for i in 0..<10 {
+        c.rect(12 + i * 11, 58, 6, 4, speck(i, 1, 77) % 3 == 0 ? RGB(r: 0xC8, g: 0x30, b: 0x30) : RGB(r: 0xE8, g: 0xC0, b: 0x40))
+    }
+    return c
+}
+
+func writeCanvas(_ c: RGBCanvas, to path: String) {
+    let url = URL(fileURLWithPath: path)
+    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                             withIntermediateDirectories: true)
+    let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(dest, c.image(), nil)
+    CGImageDestinationFinalize(dest)
+}
+
 // MARK: - Main
 
 let args = CommandLine.arguments
@@ -1973,6 +2443,9 @@ for v in 0..<3 {
 for v in 0..<2 {
     writePNG(render(tileRoad(variant: v)), to: "\(outDir)/tile-road-\(v)-32.png")
 }
+for v in 0..<3 {
+    writePNG(render(tileDirt(variant: v)), to: "\(outDir)/tile-dirt-\(v)-32.png")
+}
 writePNG(render(tileRoad(variant: 0, dash: true)), to: "\(outDir)/tile-road-dash-32.png")
 
 writePNG(render(blobSheet(fillVariant: { tileDirt(variant: $0) }, rim: "r", fringe: nil)),
@@ -1983,6 +2456,39 @@ writePNG(render(blobSheet(fillVariant: { tileWater(variant: $0) }, rim: "v", fri
          to: "\(outDir)/sheet-water-blob-128.png")
 writePNG(render(blobSheet(fillVariant: { tileHedgeLeaf(variant: $0) }, rim: "g", fringe: nil)),
          to: "\(outDir)/sheet-hedge-blob-128.png")
+
+// ---- City buildings + props + interiors ----
+writeCanvas(bldgCafe(), to: "\(outDir)/bldg-cafe-256x192.png")
+writeCanvas(bldgStore(), to: "\(outDir)/bldg-store-256x192.png")
+writeCanvas(bldgHospital(), to: "\(outDir)/bldg-hospital-256x224.png")
+writeCanvas(bldgPolice(), to: "\(outDir)/bldg-police-256x224.png")
+writeCanvas(bldgApartment(), to: "\(outDir)/bldg-apartment-256x256.png")
+writeCanvas(bldgDevcorp(), to: "\(outDir)/bldg-devcorp-224x288.png")
+writeCanvas(propCar(variantColor: RGB(r: 0xC8, g: 0x30, b: 0x30), police: false), to: "\(outDir)/prop-car-red-96x48.png")
+writeCanvas(propCar(variantColor: RGB(r: 0x3A, g: 0x5F, b: 0xA0), police: false), to: "\(outDir)/prop-car-blue-96x48.png")
+writeCanvas(propCar(variantColor: concB, police: true), to: "\(outDir)/prop-car-police-96x48.png")
+writeCanvas(propDumpster(), to: "\(outDir)/prop-dumpster-96x64.png")
+writeCanvas(propTrash(), to: "\(outDir)/prop-trashcan-32x48.png")
+writeCanvas(propHydrant(), to: "\(outDir)/prop-hydrant-24x36.png")
+writeCanvas(propCone(), to: "\(outDir)/prop-cone-24x32.png")
+writeCanvas(propBarrel(), to: "\(outDir)/prop-barrel-32x40.png")
+writeCanvas(propContainer(), to: "\(outDir)/prop-container-160x96.png")
+writeCanvas(propPipes(), to: "\(outDir)/prop-pipes-128x48.png")
+writeCanvas(propMound(), to: "\(outDir)/prop-mound-96x64.png")
+writeCanvas(propChainlink(), to: "\(outDir)/prop-chainlink-32x64.png")
+writeCanvas(propTrailer(), to: "\(outDir)/prop-trailer-192x128.png")
+writeCanvas(tileFloorWood(), to: "\(outDir)/tile-floorwood-32.png")
+writeCanvas(tileFloorLab(), to: "\(outDir)/tile-floorlab-32.png")
+writeCanvas(tileWallInt(top: true), to: "\(outDir)/tile-wallint-top-32.png")
+writeCanvas(tileWallInt(top: false), to: "\(outDir)/tile-wallint-32.png")
+writeCanvas(furnBed(), to: "\(outDir)/furn-bed-64x96.png")
+writeCanvas(furnTable(), to: "\(outDir)/furn-table-64x48.png")
+writeCanvas(furnChair(), to: "\(outDir)/furn-chair-32x48.png")
+writeCanvas(furnCabinet(), to: "\(outDir)/furn-cabinet-64x96.png")
+writeCanvas(furnRug(), to: "\(outDir)/furn-rug-96x64.png")
+writeCanvas(furnPlant(), to: "\(outDir)/furn-plant-32x64.png")
+writeCanvas(furnCounter(), to: "\(outDir)/furn-counter-96x48.png")
+writeCanvas(furnLabConsole(), to: "\(outDir)/furn-labconsole-128x96.png")
 
 // ---- Props ----
 writePNG(render(propBench()), to: "\(outDir)/prop-bench-64x40.png")

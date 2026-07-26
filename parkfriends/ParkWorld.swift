@@ -526,7 +526,7 @@ enum ParkWorld {
 // MARK: - Spec helpers (private)
 
 /// Rectangle in MAP_SPEC tile coords (origin top-left, y grows down).
-private struct SpecRect {
+struct SpecRect {
     let x: Int, y: Int, w: Int, h: Int
     init(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { self.x = x; self.y = y; self.w = w; self.h = h }
 
@@ -536,12 +536,12 @@ private struct SpecRect {
 }
 
 /// Single tile coordinate in MAP_SPEC space (for autotile sets).
-private struct TileXY: Hashable {
+struct TileXY: Hashable {
     let x: Int
     let y: Int
 }
 
-private enum PaintLayer {
+enum PaintLayer {
     case ground, decor, props
     var z: CGFloat {
         switch self {
@@ -569,7 +569,7 @@ private enum TreeKind {
 
 /// Paints SKSpriteNodes onto a scene root using MAP_SPEC tile coords.
 /// Handles spec→SpriteKit y-axis flip and tile→pixel scaling.
-private final class ScenePainter {
+final class ScenePainter {
     let root: SKNode
     let cols: Int
     let rows: Int
