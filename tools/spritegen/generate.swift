@@ -1235,111 +1235,181 @@ func applyRolePalette(_ r: NPCRole) {
 }
 
 /// One human frame. dir: 0=S 1=N 2=E. step: 0/1 walk alternation.
+/// v3 rig — studied from Mother 3 NPCs + anatomy base sheets: neck, sloped
+/// shoulders, tapered torso, separate limbs with stride, 3-tone ramps.
 func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     applyRolePalette(r)
     let sc = r.scale
     var g = emptyGrid(w: SW, h: SH)
     let cx = 32.0
-    let headCY = 30.0 + (1.0 - sc) * 22
-    let headR = 14.0 * sc
-    let bodyTop = headCY + headR * 0.8
-    let legTop = bodyTop + 22 * sc
-    let footY = legTop + 14 * sc
+    let headCY = 28.0 + (1.0 - sc) * 22
+    let headR = 13.0 * sc
+    let neckTop = headCY + headR * 0.82
+    let shoulderY = neckTop + 5 * sc
+    let waistY = shoulderY + 17 * sc
+    let hipY = waistY + 4 * sc
+    let footY = hipY + 16 * sc
+    let bob = step == 0 ? 0 : 1
 
-    fillEllipse(&g, cx: cx, cy: footY + 5, rx: 15 * sc, ry: 3.4, "S")
+    fillEllipse(&g, cx: cx, cy: footY + 4, rx: 14 * sc, ry: 3.2, "S")
 
-    // legs — with a belt line and a center seam so pants read as pants
+    func trap(_ grid: inout Grid, _ topY: Double, _ botY: Double,
+              _ topHalf: Double, _ botHalf: Double, _ ch: Character) {
+        let y0 = Int(topY), y1 = Int(botY)
+        guard y1 > y0 else { return }
+        for y in y0..<y1 {
+            let t = Double(y - y0) / Double(y1 - y0)
+            let half = topHalf + (botHalf - topHalf) * t
+            for x in Int(cx - half)...Int(cx + half) where x >= 0 && x < SW {
+                grid[y][x] = ch
+            }
+        }
+    }
+
+    // ── legs: two separate columns with a gap, stride on east ──
     var legs = emptyGrid(w: SW, h: SH)
     let lift = 3.0 * sc
-    for (ix, off) in [(-1.0, step == 0 ? 0.0 : lift), (1.0, step == 0 ? lift : 0.0)] {
-        let lx = cx + ix * 5.5 * sc
-        for y in Int(legTop)..<Int(footY - off) {
-            for x in Int(lx - 3.4 * sc)..<Int(lx + 3.4 * sc) { legs[y][x] = "i" }
+    for (ix, fwd) in [(-1.0, step == 0), (1.0, step == 1)] {
+        let stride = dir == 2 ? (fwd ? 3.0 : -3.0) * sc : 0
+        let off = dir == 2 ? (fwd ? 0 : lift * 0.7) : (fwd ? 0 : lift)
+        let lx = cx + ix * 4.6 * sc + stride
+        for y in Int(hipY)..<Int(footY - off) {
+            for x in Int(lx - 3.2 * sc)...Int(lx + 3.2 * sc) { legs[y][x] = "i" }
+            legs[y][Int(lx + 3.2 * sc)] = "l"          // outer-right shade
         }
-        fillEllipse(&legs, cx: lx + (dir == 2 ? ix * 1.5 : 0), cy: footY - off - 1,
-                    rx: 4.2 * sc, ry: 2.6 * sc, "z")
-    }
-    if dir != 2 {
-        for y in Int(legTop)..<Int(legTop + 8 * sc) where legs[y][Int(cx)] == "i" {
-            legs[y][Int(cx)] = "l"
+        // shoe with a toe: forward-facing block, slightly wider at the front
+        let sy = Int(footY - off)
+        for y in (sy - 3)..<sy {
+            for x in Int(lx - 3.8 * sc)...Int(lx + 3.8 * sc) { legs[y][x] = "z" }
         }
+        if dir == 2 { for x in Int(lx + 3.8 * sc)...Int(lx + 5.2 * sc) { legs[sy - 1][x] = "z" } }
     }
-    outlineShape(&legs, body: ["i", "z"], outline: "l")
+    outlineShape(&legs, body: ["i", "z", "l"], outline: "l")
     composite(&g, legs, dx: 0, dy: 0)
 
-    // torso
+    // ── torso: shoulders → waist taper, cylinder shading ──
     var body = emptyGrid(w: SW, h: SH)
+    let shoulderHalf = (dir == 2 ? 8.5 : 11.5) * sc
+    let waistHalf = (dir == 2 ? 7.5 : 9.0) * sc
     let torsoMain: Character = r.shirtless ? "a" : "e"
     let torsoHi:   Character = r.shirtless ? "-" : "+"
     let torsoLo:   Character = r.shirtless ? "d" : "f"
-    shadeEllipse(&body, cx: cx, cy: bodyTop + 12 * sc, rx: 12.5 * sc, ry: 14 * sc,
-                 main: torsoMain, hi: torsoHi, lo: torsoLo)
-    if r.shirtless, dir == 0 {
-        // chest + navel definition
-        for dx in -5...(-1) { body[Int(bodyTop + 8 * sc)][Int(cx) + dx] = "d" }
-        for dx in 1...5     { body[Int(bodyTop + 8 * sc)][Int(cx) + dx] = "d" }
-        body[Int(bodyTop + 18 * sc)][Int(cx)] = "d"
-    }
-    if !r.shirtless, dir != 1 {
-        // collar
-        for x in Int(cx - 5 * sc)...Int(cx + 5 * sc) where body[Int(bodyTop + 1 * sc)][x] != "." {
-            body[Int(bodyTop + 1 * sc)][x] = "f"
+    trap(&body, shoulderY - 2 * sc, shoulderY, shoulderHalf * 0.75, shoulderHalf, torsoMain)
+    trap(&body, shoulderY, waistY, shoulderHalf, waistHalf, torsoMain)
+    trap(&body, waistY, hipY + 2 * sc, waistHalf, waistHalf + 0.6 * sc, torsoMain)
+    for y in Int(shoulderY - 2 * sc)..<Int(hipY + 2 * sc) {
+        for x in 0..<SW where body[y][x] == torsoMain {
+            let t = Double(y - Int(shoulderY)) / max(1.0, waistY - shoulderY)
+            let half = shoulderHalf + (waistHalf - shoulderHalf) * min(1, max(0, t))
+            let rel = (Double(x) - cx) / max(1.0, half)
+            if rel < -0.55 { body[y][x] = torsoHi }
+            else if rel > 0.55 { body[y][x] = torsoLo }
         }
     }
+    if r.shirtless, dir == 0 {
+        for dx in -5...(-1) { body[Int(shoulderY + 6 * sc)][Int(cx) + dx] = "d" }
+        for dx in 1...5     { body[Int(shoulderY + 6 * sc)][Int(cx) + dx] = "d" }
+        body[Int(waistY - 1)][Int(cx)] = "d"
+    }
+    if !r.shirtless, dir != 1 {
+        for x in Int(cx - 4 * sc)...Int(cx + 4 * sc) where body[Int(shoulderY)][x] != "." {
+            body[Int(shoulderY)][x] = "f"              // collar
+        }
+        body[Int(waistY + 1)][Int(cx - 2)] = "f"       // hem crease
+        body[Int(waistY + 1)][Int(cx + 3)] = "f"
+    }
     if r.vest {
-        for y in Int(bodyTop + 2 * sc)..<Int(bodyTop + 20 * sc) {
-            for x in Int(cx - 9 * sc)..<Int(cx + 9 * sc) where body[y][x] != "." { body[y][x] = "y" }
+        for y in Int(shoulderY + 1 * sc)..<Int(hipY) {
+            for x in Int(cx - 8 * sc)..<Int(cx + 8 * sc) where body[y][x] != "." { body[y][x] = "y" }
         }
     }
     if r.apron {
-        for y in Int(bodyTop + 6 * sc)..<Int(bodyTop + 24 * sc) {
-            for x in Int(cx - 7 * sc)..<Int(cx + 7 * sc) where body[y][x] != "." { body[y][x] = "y" }
+        for y in Int(shoulderY + 5 * sc)..<Int(hipY + 2 * sc) {
+            for x in Int(cx - 6.5 * sc)..<Int(cx + 6.5 * sc) where body[y][x] != "." { body[y][x] = "y" }
         }
     }
     if r.sash, dir != 1 {
         let cols: [Character] = r.sashRainbow ? ["%", "X", "2", "G", "w", "^"] : ["y", "y", "y"]
-        for y in Int(bodyTop)..<Int(legTop) {
+        for y in Int(shoulderY - 1)..<Int(hipY) {
             for x in 0..<SW where body[y][x] != "." {
-                let dgn = (x - Int(cx - 12 * sc)) - (y - Int(bodyTop))
+                let dgn = (x - Int(cx - 10 * sc)) - (y - Int(shoulderY))
                 if dgn >= 0, dgn < cols.count * 2 { body[y][x] = cols[dgn / 2] }
             }
         }
     }
-    // arms with hands
-    let armDY = step == 0 ? 0.0 : 2.0 * sc
-    let armCh: Character = r.shirtless ? "a" : "e"
-    if dir == 2 {
-        fillEllipse(&body, cx: cx + 8 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, armCh)
-        fillEllipse(&body, cx: cx + 8 * sc, cy: bodyTop + 19 * sc + armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
-    } else {
-        fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, armCh)
-        fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 12 * sc - armDY, rx: 3.6 * sc, ry: 8 * sc, armCh)
-        fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 19 * sc + armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
-        fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 19 * sc - armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
+    // belt
+    if !r.apron, dir != 1 || true {
+        for x in Int(cx - waistHalf)...Int(cx + waistHalf) where body[Int(hipY)][x] != "." {
+            body[Int(hipY)][x] = "l"
+        }
     }
-    outlineShape(&body, body: ["e", "f", "+", "y", "a", "-", "%", "X", "2", "G", "w", "^"], outline: r.shirtless ? "d" : "f")
-    composite(&g, body, dx: 0, dy: 0)
 
-    // head
+    // ── arms: sleeve upper 55% then skin, hands, opposite swing ──
+    let armCh: Character = r.shirtless ? "a" : "e"
+    let armLen = 15.0 * sc
+    if dir == 2 {
+        let swing = (step == 0 ? 2.5 : -2.5) * sc
+        let ax = cx + 1.5 * sc
+        for i in 0..<Int(armLen) {
+            let t = Double(i) / armLen
+            let x = ax + t * swing
+            let y = shoulderY + 1 + Double(i)
+            fillEllipse(&body, cx: x, cy: y, rx: 2.4 * sc, ry: 1.6,
+                        t < 0.55 && !r.shirtless ? armCh : "a")
+        }
+        fillEllipse(&body, cx: ax + swing, cy: shoulderY + armLen + 1, rx: 2.4 * sc, ry: 2.4 * sc, "a")
+    } else {
+        for (sgn, dy) in [(-1.0, step == 0 ? 0.0 : 2 * sc), (1.0, step == 0 ? 2 * sc : 0.0)] {
+            let ax = cx + sgn * (shoulderHalf + 2.2 * sc)
+            for i in 0..<Int(armLen) {
+                let t = Double(i) / armLen
+                let x = ax + sgn * sin(t * 1.2) * 1.5 * sc
+                let y = shoulderY + 1 + Double(i) + dy
+                fillEllipse(&body, cx: x, cy: y, rx: 2.3 * sc, ry: 1.6,
+                            t < 0.55 && !r.shirtless ? armCh : "a")
+            }
+            fillEllipse(&body, cx: ax + sgn * 1.2, cy: shoulderY + armLen + 1 + dy,
+                        rx: 2.4 * sc, ry: 2.4 * sc, "a")
+        }
+    }
+    outlineShape(&body, body: ["e", "f", "+", "y", "a", "-", "%", "X", "2", "G", "w", "^", "l"],
+                 outline: r.shirtless ? "d" : "f")
+    composite(&g, body, dx: 0, dy: bob)
+
+    // ── neck (drawn over collar so the head sits on skin, not shirt) ──
+    var neck = emptyGrid(w: SW, h: SH)
+    for y in Int(neckTop)..<Int(shoulderY + 1) {
+        for x in Int(cx - 2.6 * sc)...Int(cx + 2.6 * sc) { neck[y][x] = "a" }
+    }
+    for x in Int(cx - 2.6 * sc)...Int(cx + 2.6 * sc) { neck[Int(neckTop)][x] = "d" }  // chin shadow
+    composite(&g, neck, dx: 0, dy: bob)
+
+    // ── head ──
     var head = emptyGrid(w: SW, h: SH)
     let hx = dir == 2 ? cx + 2 : cx
-    shadeEllipse(&head, cx: hx, cy: headCY, rx: headR, ry: headR * 0.95,
+    shadeEllipse(&head, cx: hx, cy: headCY, rx: headR, ry: headR * 0.98,
                  main: "a", hi: "-", lo: "d", loThresh: -0.52)
     if dir == 2 {
-        fillEllipse(&head, cx: hx + headR * 0.9, cy: headCY + 3, rx: 2.6 * sc, ry: 2.2 * sc, "a")
+        // nose bump
+        fillEllipse(&head, cx: hx + headR * 0.92, cy: headCY + 3, rx: 2.4 * sc, ry: 2.0 * sc, "a")
+        head[Int(headCY + 4)][Int(hx + headR * 0.95)] = "d"
     }
-    // hair: full back coverage on north, fringe with jagged bottom on south
     if r.hatStyle == "none" || dir == 1 {
         let hairLine = dir == 1 ? headCY + headR * 0.55 : headCY - headR * 0.30
         for y in 0..<SH { for x in 0..<SW where head[y][x] != "." {
             if Double(y) < hairLine { head[y][x] = "p" }
         } }
         if dir == 0 {
-            // jagged fringe
             for x in stride(from: Int(hx - headR * 0.8), to: Int(hx + headR * 0.8), by: 3) {
                 let yy = Int(headCY - headR * 0.30)
                 if head[yy][x] == "a" || head[yy][x] == "-" { head[yy][x] = "p" }
             }
+        }
+        if dir == 2 {
+            // hair wraps the back of the head in profile
+            for y in 0..<SH { for x in 0..<Int(hx - headR * 0.3) where head[y][x] != "." {
+                if Double(y) < headCY + headR * 0.4 { head[y][x] = "p" }
+            } }
         }
     }
     switch r.hatStyle {
@@ -1387,7 +1457,6 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         }
     }
     outlineShape(&head, body: ["a", "d", "-", "p", "n", "o"], outline: "d")
-    // face v2: eye whites + pupils + brows + mouth
     if dir == 0 {
         let eyeY = Int(headCY - 1 * sc)
         for ex in [Int(hx - 6 * sc), Int(hx + 3 * sc)] {
@@ -1395,22 +1464,22 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             for dy in 1..<4 { for dx in 1..<3 { head[eyeY + dy][ex + dx] = "E" } }
             for dx in 0..<3 { head[eyeY - 2][ex + dx] = "d" }
         }
-        for dx in -1...1 { head[Int(headCY + headR * 0.55)][Int(hx) + dx] = "d" }
+        for dx in -1...1 { head[Int(headCY + headR * 0.58)][Int(hx) + dx] = "d" }
     } else if dir == 2 {
         let ex = Int(hx + headR * 0.45), eyeY = Int(headCY - 1 * sc)
         for dy in 0..<4 { for dx in 0..<3 { head[eyeY + dy][ex + dx] = "W" } }
         for dy in 1..<4 { for dx in 1..<3 { head[eyeY + dy][ex + dx] = "E" } }
         for dx in 0..<3 { head[eyeY - 2][ex + dx] = "d" }
-        head[Int(headCY + headR * 0.55)][Int(hx + headR * 0.75)] = "d"
+        head[Int(headCY + headR * 0.58)][Int(hx + headR * 0.7)] = "d"
     }
     if r.name == "birdwatcher", dir == 0 {
-        fillEllipse(&head, cx: cx - 3, cy: bodyTop + 4, rx: 2.4, ry: 2.0, "E")
-        fillEllipse(&head, cx: cx + 3, cy: bodyTop + 4, rx: 2.4, ry: 2.0, "E")
+        fillEllipse(&head, cx: cx - 3, cy: shoulderY + 3, rx: 2.4, ry: 2.0, "E")
+        fillEllipse(&head, cx: cx + 3, cy: shoulderY + 3, rx: 2.4, ry: 2.0, "E")
     }
     if r.name == "ranger", dir == 0 {
-        for dy in 0..<2 { for dx in 0..<2 { head[Int(bodyTop + 6) + dy][Int(cx - 7) + dx] = "y" } }
+        for dy in 0..<2 { for dx in 0..<2 { head[Int(shoulderY + 5) + dy][Int(cx - 7) + dx] = "y" } }
     }
-    composite(&g, head, dx: 0, dy: 0)
+    composite(&g, head, dx: 0, dy: bob)
     return g
 }
 
@@ -3157,6 +3226,218 @@ func waspFrame(dir: String, step: Int) -> Grid {
 }
 
 
+
+// ─── PARK FILL KIT — gazebo, playground, picnic, cart, beds, signs ──────
+
+func propGazebo() -> Grid {
+    var g = emptyGrid(w: 160, h: 160)
+    fillEllipse(&g, cx: 80, cy: 148, rx: 62, ry: 8, "S")
+    // deck
+    for y in 118..<144 { for x in 24..<136 { g[y][x] = (y / 4) % 2 == 0 ? "T" : "h" } }
+    // posts
+    for px in [28, 76, 124] { rectFill(&g, px, 70, 6, 60, "m") ; rectFill(&g, px, 70, 2, 60, "M") }
+    // railing
+    rectFill(&g, 24, 104, 112, 4, "r")
+    for px in stride(from: 30, to: 132, by: 12) { rectFill(&g, px, 104, 3, 18, "r") }
+    // hexagonal shingled roof
+    for i in 0..<46 {
+        let half = 12 + i * 68 / 46
+        let y = 12 + i
+        for x in (80 - half)...(80 + half) { g[y][x] = (i / 6) % 2 == 0 ? "%" : "&" }
+    }
+    for x in 8...152 { g[58][x] = "r"; g[59][x] = "r" }   // eave
+    rectFill(&g, 76, 2, 8, 10, "Q")                        // finial
+    outlineShape(&g, body: ["T", "h", "m", "M", "r", "%", "&", "Q"], outline: "3")
+    return g
+}
+
+func propSlide() -> Grid {
+    var g = emptyGrid(w: 96, h: 96)
+    fillEllipse(&g, cx: 48, cy: 90, rx: 40, ry: 5, "S")
+    // ladder up the left
+    rectFill(&g, 14, 22, 4, 64, "5")
+    rectFill(&g, 30, 22, 4, 64, "5")
+    for y in stride(from: 28, to: 84, by: 10) { rectFill(&g, 14, y, 20, 3, "1") }
+    // platform + chute swooping right
+    rectFill(&g, 10, 14, 32, 8, "%")
+    for i in 0..<52 {
+        let x = 40 + i
+        let y = 20 + (i * i) / 52
+        rectFill(&g, x, y, 3, 10, "X")
+        if i % 2 == 0 { rectFill(&g, x, y, 3, 2, "2") }
+    }
+    rectFill(&g, 88, 72, 6, 14, "5")                       // chute foot
+    outlineShape(&g, body: ["5", "1", "%", "X", "2"], outline: "3")
+    return g
+}
+
+func propSwings() -> Grid {
+    var g = emptyGrid(w: 128, h: 80)
+    fillEllipse(&g, cx: 64, cy: 74, rx: 55, ry: 5, "S")
+    // A-frame
+    for i in 0..<58 {
+        g[12 + i][12 + i / 4] = "m"; g[12 + i][13 + i / 4] = "m"
+        g[12 + i][114 - i / 4] = "m"; g[12 + i][115 - i / 4] = "m"
+    }
+    rectFill(&g, 10, 8, 108, 5, "m")
+    rectFill(&g, 10, 8, 108, 2, "M")
+    // two swings
+    for sx in [44, 78] {
+        for y in 13..<52 { g[y][sx] = "1"; g[y][sx + 10] = "1" }
+        rectFill(&g, sx - 2, 52, 15, 4, "r")
+    }
+    outlineShape(&g, body: ["m", "M", "1", "r"], outline: "3")
+    return g
+}
+
+func propPicnic() -> Grid {
+    var g = emptyGrid(w: 64, h: 64)
+    // checkered blanket in slight perspective
+    for y in 16..<58 { for x in 4..<60 {
+        let check = ((x / 7) + (y / 7)) % 2 == 0
+        g[y][x] = check ? "%" : "W"
+    } }
+    for y in 16..<58 { g[y][4] = "&"; g[y][59] = "&" }
+    for x in 4..<60 { g[16][x] = "&"; g[57][x] = "&" }
+    // basket + sandwich
+    rectFill(&g, 38, 6, 16, 14, "T")
+    for x in 38..<54 where x % 3 == 0 { for y in 6..<20 { g[y][x] = "t" } }
+    for i in 0..<8 { g[4][41 + i / 2] = "r"; g[3 + i / 4][41 + i] = "r" }
+    rectFill(&g, 12, 26, 10, 6, "W")
+    rectFill(&g, 12, 28, 10, 2, "2")
+    return g
+}
+
+func propIceCreamCart() -> Grid {
+    var g = emptyGrid(w: 80, h: 112)
+    fillEllipse(&g, cx: 40, cy: 106, rx: 32, ry: 5, "S")
+    // umbrella
+    for i in 0..<18 {
+        let half = 6 + i * 30 / 18
+        for x in (40 - half)...(40 + half) {
+            g[8 + i][x] = ((x + 40) / 9) % 2 == 0 ? "%" : "W"
+        }
+    }
+    rectFill(&g, 38, 2, 4, 8, "1")
+    rectFill(&g, 39, 26, 3, 34, "1")                        // pole
+    // cart body
+    rectFill(&g, 12, 58, 56, 32, "W")
+    rectFill(&g, 12, 58, 56, 8, "w")
+    rectFill(&g, 12, 82, 56, 8, "w")
+    // cone + scoop sign
+    rectFill(&g, 20, 66, 10, 12, "T")
+    fillEllipse(&g, cx: 25, cy: 64, rx: 6, ry: 5, "!")
+    fillEllipse(&g, cx: 46, cy: 68, rx: 5, ry: 4.5, "*")
+    fillEllipse(&g, cx: 57, cy: 68, rx: 5, ry: 4.5, "2")
+    // wheels
+    fillEllipse(&g, cx: 24, cy: 98, rx: 7, ry: 7, "3")
+    fillEllipse(&g, cx: 56, cy: 98, rx: 7, ry: 7, "3")
+    fillEllipse(&g, cx: 24, cy: 98, rx: 2.5, ry: 2.5, "1")
+    fillEllipse(&g, cx: 56, cy: 98, rx: 2.5, ry: 2.5, "1")
+    outlineShape(&g, body: ["W", "w", "T", "!", "*", "2", "1", "%"], outline: "3")
+    return g
+}
+
+func propFlowerbed() -> Grid {
+    var g = emptyGrid(w: 96, h: 40)
+    // soil bed with brick rim
+    for y in 6..<36 { for x in 2..<94 { g[y][x] = "M" } }
+    for y in 6..<36 { for x in [2, 3, 92, 93] { g[y][x] = "r" } }
+    for x in 2..<94 { g[6][x] = "r"; g[35][x] = "r" }
+    // tulip rows
+    let tulipCols: [Character] = ["%", "2", "^", "!", "X"]
+    for (i, fx) in stride(from: 10, to: 88, by: 11).enumerated() {
+        for (row, fy) in [12, 24].enumerated() {
+            let ch = tulipCols[(i + row) % tulipCols.count]
+            rectFill(&g, fx, fy, 4, 4, ch)
+            g[fy + 4][fx + 1] = "G"; g[fy + 5][fx + 1] = "G"
+            g[fy + 4][fx - 1] = "H"; g[fy + 4][fx + 3] = "H"
+        }
+    }
+    outlineShape(&g, body: ["M", "r"], outline: "3")
+    return g
+}
+
+func propSign() -> Grid {
+    var g = emptyGrid(w: 32, h: 48)
+    fillEllipse(&g, cx: 16, cy: 44, rx: 10, ry: 2.6, "S")
+    rectFill(&g, 14, 20, 4, 22, "m")
+    rectFill(&g, 3, 4, 26, 16, "T")
+    rectFill(&g, 3, 4, 26, 2, "h")
+    for y in [8, 12, 15] { rectFill(&g, 6, y, 20, 2, "t") }
+    outlineShape(&g, body: ["T", "t", "h", "m"], outline: "3")
+    return g
+}
+
+func propLilypad(variant: Int) -> Grid {
+    var g = emptyGrid(w: 32, h: 32)
+    fillEllipse(&g, cx: 16, cy: 16, rx: 11, ry: 8.5, "G")
+    fillEllipse(&g, cx: 12, cy: 13, rx: 4, ry: 3, "H")
+    // notch wedge
+    for i in 0..<8 { for dy in 0...(i / 2) { g[16 + dy - i / 4][16 + i] = "." } }
+    if variant == 1 { fillEllipse(&g, cx: 20, cy: 10, rx: 3, ry: 2.6, "!") ; g[9][20] = "2" }
+    outlineShape(&g, body: ["G", "H", "!"], outline: "g")
+    return g
+}
+
+func propTallGrass(variant: Int) -> Grid {
+    var g = emptyGrid(w: 32, h: 32)
+    for i in 0..<7 {
+        let bx = 4 + i * 4 + speck(i, variant, 3) % 3
+        let h = 10 + speck(variant, i, 7) % 9
+        for j in 0..<h {
+            let sway = j > h / 2 ? (speck(i, variant, 11) % 3 - 1) * j / 8 : 0
+            let ch: Character = j > h - 4 ? "H" : (j % 5 == 0 ? "g" : "G")
+            let px = bx + sway
+            if px >= 0, px < 32, 30 - j >= 0 { g[30 - j][px] = ch }
+        }
+    }
+    return g
+}
+
+// mallard duck for the pond — the park's most important demographic
+func duckFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 36, h: 36)
+    let bob = step == 1 ? 1 : 0
+    fillEllipse(&g, cx: 18, cy: 32.5, rx: 8, ry: 2.2, "S")
+    let lLift = step == 0 ? 2 : 0, rLift = step == 2 ? 2 : 0
+    if dir != "east" {
+        birdLeg(&g, x: 14, top: 26, bottom: 31 - lLift)
+        birdLeg(&g, x: 20, top: 26, bottom: 31 - rLift)
+    } else {
+        birdLeg(&g, x: 14 + (step == 0 ? 2 : 0), top: 26, bottom: 31 - lLift)
+        birdLeg(&g, x: 19 + (step == 2 ? 2 : 0), top: 26, bottom: 31 - rLift)
+    }
+    var b = emptyGrid(w: 36, h: 36)
+    switch dir {
+    case "south", "north":
+        shadeEllipse(&b, cx: 18, cy: 21, rx: 8.5, ry: 7.5, main: "A", hi: "U", lo: "F")
+        // brown chest
+        for y in 17...24 { for x in 12...24 where b[y][x] != "." && y > 18 { b[y][x] = "M" } }
+        shadeEllipse(&b, cx: 18, cy: 10, rx: 5.5, ry: 5.0, main: "V", hi: "H", lo: "g")
+        for x in 14...22 where b[15][x] != "." { b[15][x] = "W" }   // neck ring
+        if dir == "south" {
+            b[9][15] = "E"; b[9][21] = "E"
+            b[8][15] = "W"; b[8][21] = "W"
+            for x in 16...20 { b[12][x] = "2" }
+            for x in 17...19 { b[13][x] = "2" }
+        }
+    default:
+        for i in 0..<7 {
+            for dy in 0..<(2 + i / 3) { b[18 + dy - i / 3][4 + i] = i < 2 ? "F" : "A" }
+        }
+        shadeEllipse(&b, cx: 17, cy: 21, rx: 9.5, ry: 7.0, main: "A", hi: "U", lo: "F")
+        for y in 22...27 { for x in 8...26 where b[y][x] != "." { b[y][x] = "M" } }
+        shadeEllipse(&b, cx: 24, cy: 10, rx: 5.2, ry: 4.8, main: "V", hi: "H", lo: "g")
+        for y in 13...14 { for x in 20...28 where b[y][x] != "." { b[y][x] = "W" } }
+        b[9][26] = "E"; b[8][26] = "W"
+        for dx in 0..<5 { b[10][29 + min(dx, 4)] = "2"; if dx < 3 { b[11][29 + dx] = "2" } }
+    }
+    outlineShape(&b, body: ["A", "U", "M", "V", "H", "W", "2"], outline: "F")
+    composite(&g, b, dx: 0, dy: bob)
+    return g
+}
+
 // ─── BOSS PORTRAITS (128×128, hand-built, hyper-detailed) ────────────────
 // Fixed palette chars only (no role slots): skin K/k/-hi via W dither,
 // outline "3" near-black.
@@ -3193,6 +3474,8 @@ func bossRanger() -> Grid {
     // torso: forest green uniform
     var torso = emptyGrid(w: 128, h: 128)
     shadeEllipse(&torso, cx: 64, cy: 66, rx: 20, ry: 21, main: "g", hi: "H", lo: "$")
+    rectFill(&torso, 59, 44, 10, 8, "K")
+    rectFill(&torso, 59, 44, 10, 1, "k")
     // chest pockets + badge
     rectFill(&torso, 52, 62, 8, 6, "$")
     rectFill(&torso, 68, 62, 8, 6, "$")
@@ -3238,6 +3521,8 @@ func bossGrumble() -> Grid {
     rectFill(&g, 61, 83, 6, 6, "Q")
     var torso = emptyGrid(w: 128, h: 128)
     shadeEllipse(&torso, cx: 64, cy: 66, rx: 22, ry: 22, main: "@", hi: "A", lo: "#")
+    rectFill(&torso, 59, 42, 10, 8, "K")
+    rectFill(&torso, 59, 42, 10, 1, "k")
     for y in stride(from: 52, to: 80, by: 6) { torso[y][64] = "L" }   // buttons
     rectFill(&torso, 46, 56, 6, 5, "Q")                 // chest badge
     // left arm down, right arm bent holding the last donut
@@ -3286,6 +3571,8 @@ func bossRex() -> Grid {
     rectFill(&g, 44, 81, 40, 6, "r")
     var torso = emptyGrid(w: 128, h: 128)
     shadeEllipse(&torso, cx: 64, cy: 64, rx: 23, ry: 22, main: "5", hi: "L", lo: "R")
+    rectFill(&torso, 58, 42, 12, 8, "K")
+    rectFill(&torso, 58, 42, 12, 1, "k")
     // hi-vis vest panels + silver reflex stripes
     for x0 in [46, 70] {
         rectFill(&torso, x0, 48, 12, 32, "X")
@@ -3336,6 +3623,8 @@ func bossMayor() -> Grid {
     }
     var torso = emptyGrid(w: 128, h: 128)
     shadeEllipse(&torso, cx: 64, cy: 66, rx: 21, ry: 22, main: "5", hi: "L", lo: "R")
+    rectFill(&torso, 60, 44, 8, 7, "K")
+    rectFill(&torso, 60, 44, 8, 1, "k")
     // white shirt V + red tie
     for i in 0..<10 { for dx in -(9 - i)...(9 - i) { torso[48 + i][64 + dx] = "W" } }
     rectFill(&torso, 62, 52, 5, 16, "%")
@@ -3405,6 +3694,8 @@ func bossMarshal() -> Grid {
     // jacked torso: wide shoulders, tapered waist
     shadeEllipse(&torso, cx: 60, cy: 62, rx: 22, ry: 18, main: "K", hi: "W", lo: "k")
     shadeEllipse(&torso, cx: 60, cy: 76, rx: 15, ry: 12, main: "K", hi: "K", lo: "k")
+    rectFill(&torso, 54, 40, 12, 8, "K")
+    rectFill(&torso, 54, 40, 12, 1, "k")
     // pec + ab definition
     for dx in -9...(-2) { torso[58][60 + dx] = "k" }
     for dx in 2...9 { torso[58][60 + dx] = "k" }
@@ -3554,6 +3845,39 @@ for (slug, w, h, frame) in critterSpecs {
         writePNG(render(mirrored(g)), to: "\(outDir)/critter-\(slug)-walk-west-f\(i + 1)-\(w)x\(h).png")
     }
     critterPreviewRows.append(row)
+}
+
+// park fill kit
+writePNG(render(propGazebo()), to: "\(outDir)/prop-gazebo-160x160.png")
+writePNG(render(propSlide()), to: "\(outDir)/prop-slide-96x96.png")
+writePNG(render(propSwings()), to: "\(outDir)/prop-swings-128x80.png")
+writePNG(render(propPicnic()), to: "\(outDir)/prop-picnic-64x64.png")
+writePNG(render(propIceCreamCart()), to: "\(outDir)/prop-icecream-80x112.png")
+writePNG(render(propFlowerbed()), to: "\(outDir)/prop-flowerbed-96x40.png")
+writePNG(render(propSign()), to: "\(outDir)/prop-sign-32x48.png")
+for v in 0..<2 {
+    writePNG(render(propLilypad(variant: v)), to: "\(outDir)/prop-lilypad-\(v)-32.png")
+    writePNG(render(propTallGrass(variant: v)), to: "\(outDir)/prop-tallgrass-\(v)-32.png")
+}
+for dir in ["south", "north", "east"] {
+    let steps = [duckFrame(dir: dir, step: 0), duckFrame(dir: dir, step: 1),
+                 duckFrame(dir: dir, step: 2), duckFrame(dir: dir, step: 1)]
+    for (i, gr) in steps.enumerated() {
+        writePNG(render(gr), to: "\(outDir)/critter-duck-walk-\(dir)-f\(i + 1)-36x36.png")
+    }
+}
+for (i, gr) in [duckFrame(dir: "east", step: 0), duckFrame(dir: "east", step: 1),
+                duckFrame(dir: "east", step: 2), duckFrame(dir: "east", step: 1)].enumerated() {
+    writePNG(render(mirrored(gr)), to: "\(outDir)/critter-duck-walk-west-f\(i + 1)-36x36.png")
+}
+do {
+    let previewDir = (previewPath as NSString).deletingLastPathComponent
+    writeSheet(rows: [
+        [propGazebo(), propSlide(), propSwings()],
+        [propIceCreamCart(), propPicnic(), propFlowerbed(), propSign()],
+        [propLilypad(variant: 0), propLilypad(variant: 1), propTallGrass(variant: 0),
+         propTallGrass(variant: 1), duckFrame(dir: "south", step: 1), duckFrame(dir: "east", step: 1)]
+    ], scale: 3, to: "\(previewDir)/park-fill-preview.png")
 }
 
 // battle portraits

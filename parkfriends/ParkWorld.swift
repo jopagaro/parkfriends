@@ -153,6 +153,73 @@ enum ParkWorld {
         painter.addBlockingRect(SpecRect(69, 42, 3, 2))
 
         // §4.9 — Pier: horizontal plank walkway extending east into the pond.
+        // ── Park fill: landmarks, playground, picnic spots, flowers, ducks ──
+        // Gazebo on the NE lawn
+        painter.placeSprite(SpecRect(68, 6, 5, 5),
+                            texture: ImportedArt.genTile("prop-gazebo-160x160"), layer: .props)
+        painter.addBlockingRect(SpecRect(68, 8, 5, 3))
+        // Playground on the SW lawn
+        painter.placeSprite(SpecRect(12, 54, 3, 3),
+                            texture: ImportedArt.genTile("prop-slide-96x96"), layer: .props)
+        painter.addBlockingRect(SpecRect(12, 55, 3, 2))
+        painter.placeSprite(SpecRect(18, 55, 4, 2),
+                            texture: ImportedArt.genTile("prop-swings-128x80"), layer: .props)
+        painter.addBlockingRect(SpecRect(18, 56, 4, 1))
+        // Ice cream cart by the plaza
+        painter.placeSprite(SpecRect(54, 27, 2, 3),
+                            texture: ImportedArt.genTile("prop-icecream-80x112"), layer: .props)
+        painter.addBlockingRect(SpecRect(54, 28, 2, 2))
+        // Picnic blankets (walkable)
+        for (px, py) in [(58, 32), (20, 36)] {
+            painter.placeSprite(SpecRect(px, py, 2, 2),
+                                texture: ImportedArt.genTile("prop-picnic-64x64"), layer: .decor)
+        }
+        // Flower beds edging the lawns
+        for (fx, fy) in [(35, 15), (53, 15), (30, 33), (58, 52)] {
+            painter.placeSprite(SpecRect(fx, fy, 3, 1),
+                                texture: ImportedArt.genTile("prop-flowerbed-96x40"), layer: .props)
+            painter.addBlockingRect(SpecRect(fx, fy, 3, 1))
+        }
+        // Signposts at the gates and the statue plaza
+        for (sx, sy) in [(42, 4), (48, 59), (64, 37)] {
+            painter.placeSprite(SpecRect(sx, sy, 1, 1),
+                                texture: ImportedArt.genTile("prop-sign-32x48"), layer: .props)
+        }
+        // Lily pads on the pond + resident mallards
+        for (lx, ly, v) in [(10, 17, 0), (16, 27, 1), (25, 16, 0), (12, 25, 1)] {
+            painter.placeSprite(SpecRect(lx, ly, 1, 1),
+                                texture: ImportedArt.genTile("prop-lilypad-\(v)-32"), layer: .decor)
+        }
+        for (dx, dy, dirRow) in [(13, 21, 6), (22, 24, 2), (18, 18, 0)] {
+            let frames = ImportedArt.genCritterFrames("duck", "36x36", directionRow: dirRow)
+            if !frames.isEmpty {
+                painter.placeAnimated(SpecRect(dx, dy, 1, 1), frames: frames, timePerFrame: 0.24)
+            }
+        }
+        // Second canopy pass for the open lawns
+        painter.placeTree(SpecRect(84, 44, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(92, 56, 3, 4), texture: ImportedArt.parkWideTree())
+        painter.placeTree(SpecRect(14, 40, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(86, 16, 3, 5), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(31, 25, 2, 3), texture: ImportedArt.parkSmallConifer())
+        painter.placeTree(SpecRect(63, 55, 3, 4), texture: ImportedArt.parkMediumTree())
+        for (rx, ry, v) in [(78, 52, 3), (20, 32, 1), (94, 30, 2)] {
+            painter.placeRock(SpecRect(rx, ry, 1, 1), variant: v)
+        }
+        painter.placeSprite(SpecRect(80, 20, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
+        painter.placeSprite(SpecRect(66, 12, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
+
+        // Tall grass tufts scattered on the lawns
+        for (i, (gx, gy)) in [(58, 8), (88, 12), (97, 20), (10, 36), (33, 43),
+                              (55, 45), (76, 30), (90, 52), (24, 47), (63, 15),
+                              (37, 57), (70, 56)].enumerated() {
+            painter.placeSprite(SpecRect(gx, gy, 1, 1),
+                                texture: ImportedArt.genTile("prop-tallgrass-\(i % 2)-32"),
+                                layer: .decor)
+        }
+
         painter.placeSprite(SpecRect(26, 19, 4, 1),
                             texture: ImportedArt.sproutBridgeHorizontal(),
                             layer: .props)
@@ -287,14 +354,16 @@ enum ParkWorld {
         let npcSpawns: [CGPoint] = [
             SpecRect(45, 35, 1, 1), SpecRect(24, 36, 1, 1),
             SpecRect(60, 44, 1, 1), SpecRect(76, 24, 1, 1),
-            SpecRect(36, 8, 1, 1)
+            SpecRect(36, 8, 1, 1), SpecRect(56, 29, 1, 1),
+            SpecRect(15, 57, 1, 1), SpecRect(70, 10, 1, 1)
         ].map(painter.center)
 
         // Consumable pickups from ItemKind.parkSpawnPool.
         let itemSpawns: [CGPoint] = [
             SpecRect(14, 8, 1, 1), SpecRect(70, 14, 1, 1),
             SpecRect(20, 44, 1, 1), SpecRect(52, 56, 1, 1),
-            SpecRect(86, 36, 1, 1), SpecRect(64, 20, 1, 1)
+            SpecRect(86, 36, 1, 1), SpecRect(64, 20, 1, 1),
+            SpecRect(60, 33, 1, 1), SpecRect(21, 37, 1, 1)
         ].map(painter.center)
 
         // Zone 1 roster: pigeons own the plaza, goose patrols the pond,
