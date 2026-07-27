@@ -3937,6 +3937,64 @@ func bossMarshal() -> Grid {
     return g
 }
 
+
+// ─── Lawn decor: bushes, flower clumps, reeds (replaces pack sprinkles) ──
+func propBush(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    fillEllipse(&g, cx: 24, cy: 42, rx: 15, ry: 3.4, "S")
+    shadeEllipse(&g, cx: 24, cy: 27, rx: 15, ry: 12, main: "G", hi: "H", lo: "g")
+    // leaf clumps along the top curve
+    for i in 0..<5 {
+        let a = Double(i) / 4.0 * 3.14159
+        let lx = 24 - cos(a) * 12, ly = 26 - sin(a) * 10
+        fillEllipse(&g, cx: lx, cy: ly, rx: 4.2, ry: 3.6, i % 2 == 0 ? "H" : "G")
+    }
+    if variant == 1 {
+        for (bx, by) in [(15, 22), (29, 18), (23, 30)] {
+            g[by][bx] = "O"; g[by][bx + 1] = "O"; g[by + 1][bx] = "%"
+        }
+    }
+    outlineShape(&g, body: ["G", "H", "g", "O", "%"], outline: "g")
+    return g
+}
+
+func propFlowerClump(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    let bloom: Character = ["%", "2", "w"][variant % 3]
+    // grass tuft base
+    for i in 0..<6 {
+        let bx = 10 + i * 5 + speck(i, variant, 51) % 3
+        let h = 8 + speck(variant, i, 53) % 6
+        for j in 0..<h { g[42 - j][bx] = j > h - 3 ? "H" : "G" }
+    }
+    // blooms on stems
+    for (fx, fy) in [(14, 26), (24, 20), (34, 27), (20, 32), (30, 33)] {
+        for j in 0..<8 { g[fy + 6 + j][fx + 1] = "G" }
+        fillEllipse(&g, cx: Double(fx) + 1, cy: Double(fy) + 2, rx: 3.2, ry: 3.0, bloom)
+        g[fy + 2][fx + 1] = "Q"
+    }
+    return g
+}
+
+func propReeds() -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for i in 0..<5 {
+        let bx = 10 + i * 7 + speck(i, 3, 57) % 3
+        let h = 22 + speck(3, i, 59) % 14
+        for j in 0..<h {
+            let sway = j > h / 2 ? (i % 2 == 0 ? j / 8 : -(j / 8)) : 0
+            let px = bx + sway
+            if px >= 0, px < TS { g[44 - j][px] = j > h - 5 ? "H" : "g" }
+        }
+        // cattail head on the two tallest
+        if i % 2 == 0 {
+            let top = 44 - h
+            for j in 0..<5 { g[top + j][bx + (h / 16)] = "r"; g[top + j][bx + (h / 16) + 1] = "r" }
+        }
+    }
+    return g
+}
+
 // ─── Battle portraits (128×128) ──────────────────────────────────────────
 func critterBattle(_ base: Grid, scale f: Double, stamp extra: ((inout Grid) -> Void)? = nil) -> Grid {
     var g = emptyGrid(w: 128, h: 128)
@@ -4054,6 +4112,11 @@ for (slug, w, h, frame) in critterSpecs {
     }
     critterPreviewRows.append(row)
 }
+
+// lawn decor
+for v in 0..<2 { writePNG(render(propBush(variant: v)), to: "\(outDir)/prop-bush-\(v)-32.png") }
+for v in 0..<3 { writePNG(render(propFlowerClump(variant: v)), to: "\(outDir)/prop-flower-\(v)-32.png") }
+writePNG(render(propReeds()), to: "\(outDir)/prop-reeds-32.png")
 
 // park fill kit
 writePNG(render(propGazebo()), to: "\(outDir)/prop-gazebo-160x160.png")

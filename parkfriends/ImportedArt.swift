@@ -298,7 +298,8 @@ enum ImportedArt {
 
     /// Curved grass blade tuft (pond reeds).
     static func parkGrassBlade() -> SKTexture? {
-        fileTexture(relativePath: "\(worldParkBase)pixel-art-small-curved-grass-blade-sprite-13x7.png")
+        genTile("prop-reeds-32")
+            ?? fileTexture(relativePath: "\(worldParkBase)pixel-art-small-curved-grass-blade-sprite-13x7.png")
     }
 
     /// Water surface shimmer (64×16 = 4 frames of 16×16) — fountain water.

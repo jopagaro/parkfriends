@@ -255,40 +255,32 @@ enum ParkWorld {
             painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
         }
 
-        // §4.10/§4.11 — Plaza flower beds (textured).
-        let flowerRed    = ImportedArt.parkBiomSprite(col: 1, row: 1)
-        let flowerYellow = ImportedArt.parkBiomSprite(col: 2, row: 1)
-        let flowerBlue   = ImportedArt.parkBiomSprite(col: 3, row: 1)
-        for (xT, yT, t) in [
-            (41, 21, flowerRed), (48, 21, flowerYellow),
-            (41, 29, flowerBlue), (48, 29, flowerRed),
-            (67, 44, flowerRed), (73, 44, flowerYellow),
-            (67, 41, flowerBlue), (73, 41, flowerRed),
-            // §4.6 — freestanding flower clusters
-            (50, 12, flowerRed), (52, 12, flowerYellow), (36, 50, flowerBlue)
+        // §4.10/§4.11 — Flower clumps (generated) on the plaza corner cuts
+        // and open grass — never on the stones themselves.
+        for (xT, yT, v) in [
+            (38, 18, 0), (50, 18, 1), (38, 30, 2), (50, 30, 0),
+            (65, 40, 1), (76, 40, 2), (65, 45, 0), (76, 45, 1),
+            (53, 10, 0), (56, 12, 1), (36, 48, 2)
         ] {
-            painter.placeSprite(SpecRect(xT, yT, 1, 1), texture: t, layer: .decor)
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-flower-\(v)-32"),
+                                layer: .decor)
         }
         // §4.11 — Bench facing the statue.
         painter.placeSprite(SpecRect(70, 47, 2, 1), texture: benchTex, layer: .props)
 
-        // §4.12 — Bushes scattered. Density pass: ~30 sprinkles.
-        let bushTextures = [
-            ImportedArt.parkBiomSprite(col: 0, row: 3),
-            ImportedArt.parkBiomSprite(col: 1, row: 3),
-            ImportedArt.parkBiomSprite(col: 2, row: 3),
-            ImportedArt.parkBiomSprite(col: 4, row: 3)
-        ]
+        // §4.12 — Bushes (generated), scattered on open grass only.
         let bushSpots: [(Int, Int)] = [
-            (6, 8), (18, 6), (56, 8), (88, 14), (12, 54), (78, 56), (32, 60),
-            (22, 12), (28, 22), (46, 56), (64, 12), (74, 28), (84, 6), (94, 22),
-            (6, 32), (4, 50), (16, 60), (40, 60), (68, 60), (88, 56), (96, 8),
+            (6, 8), (18, 6), (56, 8), (88, 14), (10, 58), (78, 56), (32, 60),
+            (22, 12), (32, 22), (42, 56), (64, 12), (74, 28), (84, 6), (94, 22),
+            (6, 32), (8, 55), (16, 60), (40, 60), (68, 60), (88, 56), (96, 8),
             (54, 24), (60, 32), (78, 14), (84, 50), (94, 50), (32, 48), (52, 60),
             (22, 4), (76, 4), (10, 40), (96, 50)
         ]
         for (i, spot) in bushSpots.enumerated() {
-            let tex = bushTextures[i % bushTextures.count]
-            painter.placeSprite(SpecRect(spot.0, spot.1, 1, 1), texture: tex, layer: .decor)
+            painter.placeSprite(SpecRect(spot.0, spot.1, 1, 1),
+                                texture: ImportedArt.genTile("prop-bush-\(i % 2)-32"),
+                                layer: .decor)
         }
 
         // §4.6 — Generic park benches (returned in benchPositions for the engine).
@@ -480,9 +472,10 @@ enum ParkWorld {
                            in: root, painter: painter)
             painter.placeTree(SpecRect(hx, 2, 3, 4),     texture: ImportedArt.parkMediumTree())
             painter.placeTree(SpecRect(hx + 4, 2, 3, 4), texture: ImportedArt.parkMediumTree())
-            for (fx, tex) in [(hx + 1, ImportedArt.parkBiomSprite(col: 1, row: 1)),
-                              (hx + 6, ImportedArt.parkBiomSprite(col: 3, row: 1))] {
-                painter.placeSprite(SpecRect(fx, 13, 1, 1), texture: tex, layer: .decor)
+            for (fx, v) in [(hx + 1, 0), (hx + 6, 2)] {
+                painter.placeSprite(SpecRect(fx, 13, 1, 1),
+                                    texture: ImportedArt.genTile("prop-flower-\(v)-32"),
+                                    layer: .decor)
             }
             painter.autotile(painter.tiles([SpecRect(hx + 3, 16, 2, 4)]),
                              z: PaintLayer.ground.z + 0.25,
@@ -512,9 +505,9 @@ enum ParkWorld {
         painter.placeTree(SpecRect(69, 40, 3, 4), texture: ImportedArt.parkMediumTree())
         painter.placeTree(SpecRect(87, 38, 3, 5), texture: ImportedArt.parkTallConifer())
         painter.placeTree(SpecRect(57, 42, 3, 4), texture: ImportedArt.parkWideTree())
-        for (bx, by) in [(30, 36), (55, 42), (78, 38), (16, 47), (68, 46)] {
+        for (i, (bx, by)) in [(30, 36), (55, 42), (78, 38), (16, 47), (68, 46)].enumerated() {
             painter.placeSprite(SpecRect(bx, by, 1, 1),
-                                texture: ImportedArt.parkBiomSprite(col: 6, row: 4),
+                                texture: ImportedArt.genTile("prop-bush-\(i % 2)-32"),
                                 layer: .decor)
         }
         painter.placeSprite(SpecRect(52, 44, 2, 1),
