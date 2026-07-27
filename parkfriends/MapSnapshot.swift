@@ -59,6 +59,11 @@ enum MapSnapshot {
         snap("interior-house-a", InteriorWorld.buildHouse(seed: 0).root, cols: 16, rows: 11)
         snap("interior-house-b", InteriorWorld.buildHouse(seed: 1).root, cols: 16, rows: 11)
         snap("interior-lab", InteriorWorld.buildLab().root, cols: 26, rows: 16)
+        snap("interior-cafe", InteriorWorld.buildCafe().root, cols: 18, rows: 12)
+        snap("interior-store", InteriorWorld.buildStore().root, cols: 18, rows: 12)
+        snap("interior-hospital", InteriorWorld.buildHospital().root, cols: 20, rows: 12)
+        snap("interior-police", InteriorWorld.buildPolice().root, cols: 18, rows: 12)
+        snap("interior-apartment", InteriorWorld.buildApartment().root, cols: 14, rows: 10)
         exit(0)
     }
 }

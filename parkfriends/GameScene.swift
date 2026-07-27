@@ -119,6 +119,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func buildWorld() {
+        if let interior = gameState?.currentInterior {
+            buildInterior(interior)
+            return
+        }
         let zone = gameState?.currentZone ?? .parkCenter
         switch zone {
         case .parkCenter: buildParkCenter()
@@ -127,6 +131,23 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case .cityCenter: buildCityCenter()
         case .cityNorth:  buildCityNorth()
         }
+    }
+
+    private func buildInterior(_ kind: InteriorKind) {
+        backgroundColor = SKColor(red: 0.08, green: 0.07, blue: 0.06, alpha: 1)
+        let result = kind.build()
+        finishWorldBuild(
+            root: result.root,
+            playerSpawn: result.playerSpawn,
+            itemSpawns: [],
+            fixedItems: [],
+            fixedNPCs: [],
+            npcSpawns: result.npcSpawns,
+            enemySpawns: [],
+            benchPositions: [],
+            zoneExitNodes: []
+        )
+        pressurePlate = nil; gate = nil; chest = nil; quackNode = nil
     }
 
     private func buildParkCenter() {
@@ -1183,6 +1204,84 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Zone transition
 
+    /// Enter or exit an interior through a DoorNode, with the same fade
+    /// treatment as zone transitions.
+    private func triggerDoorTransition(_ door: DoorNode) {
+        guard !isTransitioning, let state = gameState else { return }
+        isTransitioning = true
+        let entering = door.interior != nil
+        let title: String
+        let sub: String
+        if let kind = door.interior {
+            // Return one tile south of the door so the respawn doesn't sit
+            // inside the trigger and immediately re-enter.
+            let doorScenePos = door.parent.map { convert(door.position, from: $0) } ?? door.position
+            state.interiorReturnPoint = CGPoint(x: doorScenePos.x,
+                                                y: doorScenePos.y - GameConstants.tileSize * 1.2)
+            state.currentInterior = kind
+            title = kind.displayTitle
+            sub = kind.subtitle
+        } else {
+            state.currentInterior = nil
+            title = state.currentZone.displayTitle
+            sub = state.currentZone.zoneSubtitle
+        }
+
+        let overlay = SKSpriteNode(color: .black,
+                                   size: CGSize(width: max(size.width, 900),
+                                                height: max(size.height, 900)))
+        overlay.position  = .zero
+        overlay.zPosition = GameConstants.ZPos.ui + 100
+        overlay.alpha     = 0
+        cam.addChild(overlay)
+        fadeOverlay = overlay
+
+        let titleLabel = SKLabelNode(text: title)
+        titleLabel.fontName                = "Helvetica Neue Bold"
+        titleLabel.fontSize                = 24
+        titleLabel.fontColor               = .white
+        titleLabel.horizontalAlignmentMode = .center
+        titleLabel.verticalAlignmentMode   = .center
+        titleLabel.position                = CGPoint(x: 0, y: 14)
+        titleLabel.zPosition               = 1
+        titleLabel.alpha                   = 0
+        overlay.addChild(titleLabel)
+
+        let subLabel = SKLabelNode(text: sub)
+        subLabel.fontName                = "Helvetica Neue"
+        subLabel.fontSize                = 13
+        subLabel.fontColor               = SKColor(white: 0.60, alpha: 1)
+        subLabel.horizontalAlignmentMode = .center
+        subLabel.verticalAlignmentMode   = .center
+        subLabel.position                = CGPoint(x: 0, y: -8)
+        subLabel.zPosition               = 1
+        subLabel.alpha                   = 0
+        overlay.addChild(subLabel)
+
+        overlay.run(.sequence([
+            .fadeIn(withDuration: 0.30),
+            .run {
+                titleLabel.run(.fadeIn(withDuration: 0.20))
+                subLabel.run(.sequence([.wait(forDuration: 0.08), .fadeIn(withDuration: 0.20)]))
+            },
+            .wait(forDuration: 0.55),
+            .run { [weak self] in
+                guard let self else { return }
+                self.tearDownWorld()
+                self.buildWorld()
+                if !entering, let ret = state.interiorReturnPoint {
+                    self.pendingSpawn = ret
+                }
+                self.buildPlayerAndFollowers()
+                self.cam.position = self.pendingSpawn
+            },
+            .wait(forDuration: 0.08),
+            .fadeOut(withDuration: 0.35),
+            .removeFromParent(),
+            .run { [weak self] in self?.isTransitioning = false }
+        ]))
+    }
+
     private func triggerZoneTransition(to destination: GameZone) {
         guard !isTransitioning, let state = gameState else { return }
 
@@ -1535,6 +1634,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if second.categoryBitMask == GameConstants.Category.zoneExit,
                let exitNode = second.node as? ZoneExitNode {
                 triggerZoneTransition(to: exitNode.destination)
+            }
+
+            if second.categoryBitMask == GameConstants.Category.zoneExit,
+               let door = second.node as? DoorNode {
+                triggerDoorTransition(door)
             }
 
         case GameConstants.Category.attack:

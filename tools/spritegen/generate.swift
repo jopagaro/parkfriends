@@ -2427,6 +2427,95 @@ func furnLabConsole() -> RGBCanvas {
     return c
 }
 
+/// Shop shelf stocked with colorful goods.
+func furnShelfGoods() -> RGBCanvas {
+    let c = RGBCanvas(64, 96)
+    let wood = RGB(r: 0x8B, g: 0x5C, b: 0x28), woodSh = RGB(r: 0x6E, g: 0x48, b: 0x1E)
+    c.rect(2, 2, 60, 90, wood)
+    c.rect(2, 2, 60, 4, woodSh)
+    let goods: [RGB] = [RGB(r: 0xC8, g: 0x30, b: 0x30), RGB(r: 0x3A, g: 0x5F, b: 0xA0),
+                        RGB(r: 0xE8, g: 0xC0, b: 0x40), RGB(r: 0x3D, g: 0x72, b: 0x20),
+                        RGB(r: 0xE8, g: 0x7A, b: 0x2A), RGB(r: 0xF0, g: 0xEC, b: 0xE0)]
+    for (row, shelfY) in [(0, 14), (1, 40), (2, 66)] {
+        c.rect(6, shelfY + 18, 52, 4, woodSh)
+        var x = 8
+        var i = 0
+        while x < 52 {
+            let g = goods[(row * 3 + i) % goods.count]
+            let gw = 8 + (i % 2) * 3
+            c.rect(x, shelfY + 4, gw, 14, g)
+            c.rect(x, shelfY + 4, gw, 3, RGB(r: min(255, UInt8(min(Int(g.r) + 40, 255))), g: min(255, UInt8(min(Int(g.g) + 40, 255))), b: min(255, UInt8(min(Int(g.b) + 40, 255)))))
+            x += gw + 4
+            i += 1
+        }
+    }
+    return c
+}
+
+func furnRegister() -> RGBCanvas {
+    let c = RGBCanvas(32, 32)
+    c.rect(4, 12, 24, 16, RGB(r: 0x3A, g: 0x3A, b: 0x4A))
+    c.rect(4, 12, 24, 4, RGB(r: 0x2A, g: 0x2A, b: 0x36))
+    c.rect(8, 4, 16, 9, RGB(r: 0x2A, g: 0x2A, b: 0x36))
+    c.rect(10, 6, 12, 5, RGB(r: 0x3A, g: 0x8A, b: 0x8A))
+    for i in 0..<3 { c.rect(8 + i * 6, 18, 4, 3, RGB(r: 0xB8, g: 0xB8, b: 0xB8)) }
+    c.rect(8, 24, 16, 2, RGB(r: 0xB8, g: 0xB8, b: 0xB8))
+    return c
+}
+
+func furnMenuBoard() -> RGBCanvas {
+    let c = RGBCanvas(64, 40)
+    c.rect(2, 2, 60, 36, RGB(r: 0x2E, g: 0x2A, b: 0x26))
+    c.rect(2, 2, 60, 3, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    c.rect(2, 35, 60, 3, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    let chalk = RGB(r: 0xE0, g: 0xD8, b: 0xC0)
+    for (y, w) in [(9, 30), (16, 40), (23, 26), (29, 36)] {
+        c.rect(8, y, w, 2, chalk)
+    }
+    c.rect(46, 8, 10, 8, RGB(r: 0xE8, g: 0xC0, b: 0x40))
+    return c
+}
+
+/// Hospital bed: white sheets, blue blanket.
+func furnBedWhite() -> RGBCanvas {
+    let c = RGBCanvas(64, 96)
+    let frame = RGB(r: 0x9A, g: 0x9A, b: 0xA2)
+    c.rect(2, 2, 60, 16, frame)
+    c.rect(2, 84, 60, 10, frame)
+    c.rect(6, 12, 52, 76, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    c.rect(10, 16, 44, 12, RGB(r: 0xE0, g: 0xE0, b: 0xE4))
+    c.rect(6, 34, 52, 54, RGB(r: 0x3A, g: 0x5F, b: 0xA0))
+    c.rect(6, 34, 52, 6, RGB(r: 0x2A, g: 0x46, b: 0x78))
+    return c
+}
+
+/// Red phone booth — EarthBound street furniture staple.
+func propPhoneBooth() -> RGBCanvas {
+    let c = RGBCanvas(40, 80)
+    let red = RGB(r: 0xB8, g: 0x2E, b: 0x2E), redSh = RGB(r: 0x8E, g: 0x22, b: 0x22)
+    c.rect(2, 6, 36, 70, red)
+    c.rect(2, 6, 36, 8, redSh)
+    c.rect(0, 2, 40, 5, redSh)
+    c.rect(8, 18, 24, 34, RGB(r: 0x2A, g: 0x3A, b: 0x4A))
+    c.rect(8, 18, 24, 4, RGB(r: 0xC8, g: 0xD8, b: 0xE0))
+    c.rect(18, 20, 4, 30, red)
+    c.rect(6, 60, 28, 3, redSh)
+    return c
+}
+
+func propPlanter() -> RGBCanvas {
+    let c = RGBCanvas(64, 48)
+    c.rect(2, 24, 60, 20, RGB(r: 0x8B, g: 0x5C, b: 0x28))
+    c.rect(2, 24, 60, 4, RGB(r: 0x6E, g: 0x48, b: 0x1E))
+    for (fx, fc) in [(10, RGB(r: 0xC8, g: 0x30, b: 0x30)), (24, RGB(r: 0xE8, g: 0xC0, b: 0x40)),
+                     (38, RGB(r: 0xE8, g: 0xA0, b: 0x80)), (52, RGB(r: 0xC8, g: 0x30, b: 0x30))] {
+        c.rect(fx - 4, 14, 3, 10, RGB(r: 0x3D, g: 0x72, b: 0x20))
+        c.rect(fx - 6, 10, 6, 6, fc)
+        c.rect(fx - 5, 9, 4, 2, RGB(r: 0xF0, g: 0xEC, b: 0xE0))
+    }
+    return c
+}
+
 func writeCanvas(_ c: RGBCanvas, to path: String) {
     let url = URL(fileURLWithPath: path)
     try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
@@ -2573,6 +2662,13 @@ for v in 0..<3 {
     writePNG(render(tileStone(variant: v)), to: "\(outDir)/tile-stonefill-\(v)-32.png")
 }
 writePNG(render(tileRoad(variant: 0, dash: true)), to: "\(outDir)/tile-road-dash-32.png")
+do {
+    var cw = tileRoad(variant: 1)
+    for band in stride(from: 2, to: TS, by: 8) {
+        for y in band..<(band + 4) { for x in 0..<TS where (x + y) % 9 != 8 { cw[y][x] = "W" } }
+    }
+    writePNG(render(cw), to: "\(outDir)/tile-road-cross-32.png")
+}
 
 writePNG(render(blobSheet(fillVariant: { tileDirt(variant: $0) }, rim: "r", fringe: nil, midRim: "t")),
          to: "\(outDir)/sheet-dirt-blob-128.png")
@@ -2617,6 +2713,12 @@ writeCanvas(furnRug(), to: "\(outDir)/furn-rug-96x64.png")
 writeCanvas(furnPlant(), to: "\(outDir)/furn-plant-32x64.png")
 writeCanvas(furnCounter(), to: "\(outDir)/furn-counter-96x48.png")
 writeCanvas(furnLabConsole(), to: "\(outDir)/furn-labconsole-128x96.png")
+writeCanvas(furnShelfGoods(), to: "\(outDir)/furn-shelfgoods-64x96.png")
+writeCanvas(furnRegister(), to: "\(outDir)/furn-register-32x32.png")
+writeCanvas(furnMenuBoard(), to: "\(outDir)/furn-menuboard-64x40.png")
+writeCanvas(furnBedWhite(), to: "\(outDir)/furn-bedwhite-64x96.png")
+writeCanvas(propPhoneBooth(), to: "\(outDir)/prop-phonebooth-40x80.png")
+writeCanvas(propPlanter(), to: "\(outDir)/prop-planter-64x48.png")
 
 // ---- Props ----
 writePNG(render(propBench()), to: "\(outDir)/prop-bench-64x40.png")

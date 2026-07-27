@@ -382,6 +382,7 @@ enum ParkWorld {
         painter.autotile(painter.tiles([SpecRect(10, 9, 2, 12)]),
                          z: PaintLayer.ground.z + 0.25,
                          tile: ImportedArt.parkStoneBlobTile)
+        DoorNode.place(.lab, at: SpecRect(10, 9, 2, 1), in: root, painter: painter)
 
         // §3.3 — Hedge separator between lab plot and the main suburb row.
         painter.autotile(painter.tiles([SpecRect(21, 2, 1, 13)]),
@@ -395,11 +396,14 @@ enum ParkWorld {
             (24, "blue"), (37, "brown"), (50, "green"),
             (63, "red_brown"), (76, "dark_red"), (89, "charcoal")
         ]
-        for (hx, roof) in topRow {
+        for (seed, (hx, roof)) in topRow.enumerated() {
             painter.placeSprite(SpecRect(hx, 6, 7, 5),
                                 texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
             painter.addBlockingRect(SpecRect(hx, 6, 7, 5))
-            fenceRing(painter, SpecRect(hx - 1, 11, 9, 5), gateXs: [hx + 3, hx + 4])
+            fenceRing(painter, SpecRect(hx - 1, 11, 9, 5), gateXs: [hx + 3, hx + 4],
+                      topGateXs: [hx + 3, hx + 4])
+            DoorNode.place(.house(seed: seed), at: SpecRect(hx + 3, 11, 2, 1),
+                           in: root, painter: painter)
             painter.placeTree(SpecRect(hx, 2, 3, 4),     texture: ImportedArt.parkMediumTree())
             painter.placeTree(SpecRect(hx + 4, 2, 3, 4), texture: ImportedArt.parkMediumTree())
             for (fx, tex) in [(hx + 1, ImportedArt.parkBiomSprite(col: 1, row: 1)),
@@ -412,11 +416,14 @@ enum ParkWorld {
         }
 
         // §3.4/§3.15 — Lower suburb: two houses + a small cottage.
-        for (hx, roof) in [(8, "brown"), (22, "tan")] {
+        for (i, (hx, roof)) in [(8, "brown"), (22, "tan")].enumerated() {
             painter.placeSprite(SpecRect(hx, 30, 7, 5),
                                 texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
             painter.addBlockingRect(SpecRect(hx, 30, 7, 5))
-            fenceRing(painter, SpecRect(hx - 1, 35, 9, 5), gateXs: [hx + 3, hx + 4])
+            fenceRing(painter, SpecRect(hx - 1, 35, 9, 5), gateXs: [hx + 3, hx + 4],
+                      topGateXs: [hx + 3, hx + 4])
+            DoorNode.place(.house(seed: 6 + i), at: SpecRect(hx + 3, 35, 2, 1),
+                           in: root, painter: painter)
             painter.autotile(painter.tiles([SpecRect(hx + 3, 27, 2, 3)]),
                              z: PaintLayer.ground.z + 0.25,
                              tile: ImportedArt.parkStoneBlobTile)
@@ -424,6 +431,7 @@ enum ParkWorld {
         painter.placeSprite(SpecRect(4, 42, 5, 4),
                             texture: ImportedArt.generatedHouse(variant: "tan"), layer: .props)
         painter.addBlockingRect(SpecRect(4, 42, 5, 4))
+        DoorNode.place(.house(seed: 8), at: SpecRect(5, 46, 2, 1), in: root, painter: painter)
 
         // Lawn dressing: scattered trees, bushes, and a bench by the path.
         painter.placeTree(SpecRect(33, 38, 4, 6), texture: ImportedArt.parkLargeTree())
@@ -502,20 +510,27 @@ enum ParkWorld {
 
     /// Paints a 1-thick fence ring with gate gaps on the bottom edge, and
     /// adds matching collision segments.
-    private static func fenceRing(_ painter: ScenePainter, _ rect: SpecRect, gateXs: [Int]) {
+    private static func fenceRing(_ painter: ScenePainter, _ rect: SpecRect, gateXs: [Int],
+                                  topGateXs: [Int] = []) {
         let x2 = rect.x + rect.w - 1, y2 = rect.y + rect.h - 1
         var ring = painter.tiles([
             SpecRect(rect.x, rect.y, rect.w, 1), SpecRect(rect.x, y2, rect.w, 1),
             SpecRect(rect.x, rect.y, 1, rect.h), SpecRect(x2, rect.y, 1, rect.h)
         ])
         for gx in gateXs { ring.remove(TileXY(x: gx, y: y2)) }
+        for gx in topGateXs { ring.remove(TileXY(x: gx, y: rect.y)) }
         painter.autotile(ring, z: PaintLayer.decor.z + 0.5) {
             ImportedArt.genBlobTile("sheet-picket-blob-128", col: $0, rowFromTop: $1)
                 ?? ImportedArt.suburbFenceBlobTile(col: $0, rowFromTop: $1)
         }
         let gateMin = gateXs.min() ?? x2 + 1
         let gateMax = gateXs.max() ?? x2 + 1
-        painter.addBlockingRect(SpecRect(rect.x, rect.y, rect.w, 1))
+        if let tMin = topGateXs.min(), let tMax = topGateXs.max() {
+            painter.addBlockingRect(SpecRect(rect.x, rect.y, tMin - rect.x, 1))
+            painter.addBlockingRect(SpecRect(tMax + 1, rect.y, x2 - tMax, 1))
+        } else {
+            painter.addBlockingRect(SpecRect(rect.x, rect.y, rect.w, 1))
+        }
         painter.addBlockingRect(SpecRect(rect.x, rect.y, 1, rect.h))
         painter.addBlockingRect(SpecRect(x2, rect.y, 1, rect.h))
         if gateMin > rect.x + 1 {

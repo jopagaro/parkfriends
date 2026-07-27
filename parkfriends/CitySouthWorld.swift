@@ -46,6 +46,12 @@ enum CitySouthWorld {
                 : ImportedArt.genTile("tile-road-\((xT + yT) % 2)-32")
             painter.place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z + 0.1)
         } }
+        // zebra crosswalk where the park path crosses the road
+        for yT in 14..<18 { for xT in 44..<48 {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-road-cross-32"),
+                             z: PaintLayer.ground.z + 0.15)
+        } }
         // south spur to city center
         for yT in 18..<rows { for xT in 44..<48 {
             painter.place1x1(at: xT, yT,
@@ -53,24 +59,30 @@ enum CitySouthWorld {
                              z: PaintLayer.ground.z + 0.1)
         } }
 
-        func building(_ name: String, _ rect: SpecRect) {
+        func building(_ name: String, _ rect: SpecRect, door interior: InteriorKind? = nil) {
             painter.placeSprite(rect, texture: ImportedArt.genTile(name), layer: .props)
             painter.addBlockingRect(rect)
+            if let interior {
+                DoorNode.place(interior,
+                               at: SpecRect(rect.x + rect.w / 2 - 1, rect.y + rect.h, 2, 1),
+                               in: root, painter: painter)
+            }
         }
         // Corner store (shopkeeper NPC stands at its door — GameScene pins
         // them at tile (22, SK y=8) ≈ row 34).
-        building("bldg-store-256x192", SpecRect(17, 26, 8, 6))
+        building("bldg-store-256x192", SpecRect(17, 26, 8, 6), door: .store)
         // Alley block: two brownstones with a dumpster alley between.
-        building("bldg-apartment-256x256", SpecRect(54, 22, 8, 8))
-        building("bldg-apartment-256x256", SpecRect(66, 22, 8, 8))
+        building("bldg-apartment-256x256", SpecRect(54, 22, 8, 8), door: .apartment)
+        building("bldg-apartment-256x256", SpecRect(66, 22, 8, 8), door: .apartment)
         painter.placeSprite(SpecRect(62, 24, 3, 2),
                             texture: ImportedArt.genTile("prop-dumpster-96x64"), layer: .props)
         painter.addBlockingRect(SpecRect(62, 24, 3, 2))
         painter.placeSprite(SpecRect(63, 27, 1, 1),
                             texture: ImportedArt.genTile("prop-trashcan-32x48"), layer: .props)
-        // North-row buildings framing the park entrance.
-        building("bldg-apartment-256x256", SpecRect(6, 6, 8, 8))
-        building("bldg-cafe-256x192", SpecRect(70, 7, 8, 6))
+        // North-row buildings framing the park entrance (kept one row off
+        // the road so the door trigger sits on sidewalk, not asphalt).
+        building("bldg-apartment-256x256", SpecRect(6, 5, 8, 8), door: .apartment)
+        building("bldg-cafe-256x192", SpecRect(70, 6, 8, 6), door: .cafe)
 
         // Street furniture.
         for (xT, yT) in [(6, 13), (30, 13), (60, 13), (80, 13), (30, 31), (70, 31)] {
@@ -81,6 +93,14 @@ enum CitySouthWorld {
                             texture: ImportedArt.genTile("prop-car-blue-96x48"), layer: .props)
         painter.placeSprite(SpecRect(12, 19, 1, 1),
                             texture: ImportedArt.genTile("prop-hydrant-24x36"), layer: .props)
+        painter.placeSprite(SpecRect(28, 11, 1, 2),
+                            texture: ImportedArt.genTile("prop-phonebooth-40x80"), layer: .props)
+        painter.addBlockingRect(SpecRect(28, 12, 1, 1))
+        for (xT, yT) in [(30, 20), (68, 20)] {
+            painter.placeSprite(SpecRect(xT, yT, 2, 1),
+                                texture: ImportedArt.genTile("prop-planter-64x48"), layer: .props)
+            painter.addBlockingRect(SpecRect(xT, yT, 2, 1))
+        }
         for (xT, yT) in [(52, 8), (32, 34)] {
             painter.placeTree(SpecRect(xT, yT, 2, 3), texture: ImportedArt.parkSmallConifer())
         }

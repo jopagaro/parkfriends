@@ -149,6 +149,11 @@ final class GameState {
     var mapOverviewOpen: Bool            = false   // whole-world debug overview
     var queueTitleReturn: Bool           = false   // signal GameView to fade back to title
     var currentZone:     GameZone        = .parkCenter
+
+    // Interior state — transient, never persisted. Saving inside a building
+    // records the outdoor zone; reload puts you back outside its door.
+    var currentInterior: InteriorKind?   = nil
+    var interiorReturnPoint: CGPoint?    = nil
     var storyProgress:   StoryProgress   = .introCheckFountain
 
     // MARK: - "Find Quack" story
