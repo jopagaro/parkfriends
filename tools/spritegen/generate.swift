@@ -1172,6 +1172,19 @@ let npcRoles: [NPCRole] = [
     NPCRole(name: "shopkeeper", skin: (0xE8,0xC0,0x98), shirt: (0xF0,0xEC,0xE0), shirtDark: (0xC8,0xC0,0xB0),
             pants: (0x2E,0x2E,0x32), hair: (0x4A,0x30,0x18), hat: nil, hatDark: (0x4A,0x30,0x18),
             accent: (0xC8,0x30,0x30), hatStyle: "none", vest: false, apron: true, scale: 1.0),
+    // ── Human enemies (battle + overworld via the same rig) ─────────────
+    NPCRole(name: "sternadult", skin: (0xE0,0xB0,0x88), shirt: (0x6E,0x6E,0x78), shirtDark: (0x52,0x52,0x5C),
+            pants: (0x3A,0x3A,0x42), hair: (0x4A,0x38,0x28), hat: nil, hatDark: (0x4A,0x38,0x28),
+            accent: (0xC8,0x30,0x30), hatStyle: "none", vest: false, apron: false, scale: 1.0),
+    NPCRole(name: "skaterkid", skin: (0xF0,0xCC,0xA6), shirt: (0x40,0xB0,0xA0), shirtDark: (0x2E,0x84,0x78),
+            pants: (0x2E,0x2E,0x32), hair: (0xE8,0xC0,0x40), hat: (0xC8,0x30,0x30), hatDark: (0x9A,0x24,0x24),
+            accent: (0xE8,0xC0,0x40), hatStyle: "cap", vest: false, apron: false, scale: 0.85),
+    NPCRole(name: "officer", skin: (0xD8,0xA8,0x80), shirt: (0x2E,0x3E,0x6E), shirtDark: (0x20,0x2C,0x52),
+            pants: (0x24,0x30,0x56), hair: (0x2E,0x22,0x16), hat: (0x2E,0x3E,0x6E), hatDark: (0x20,0x2C,0x52),
+            accent: (0xD4,0xB0,0x30), hatStyle: "cap", vest: false, apron: false, scale: 1.0),
+    NPCRole(name: "foreman", skin: (0xE0,0xB0,0x88), shirt: (0xC4,0x95,0x5A), shirtDark: (0xA0,0x78,0x40),
+            pants: (0x48,0x48,0x60), hair: (0x2E,0x22,0x16), hat: (0xE8,0xC0,0x40), hatDark: (0xC4,0x9A,0x20),
+            accent: (0xE8,0x60,0x20), hatStyle: "hard", vest: true, apron: false, scale: 1.05),
 ]
 
 func applyRolePalette(_ r: NPCRole) {
@@ -2623,6 +2636,481 @@ let characters: [CharacterSet] = [
 ]
 for c in characters { emit(c) }
 
+
+// MARK: - CRITTERS (enemy + ambient animals) — replaces the last pack sheets
+// EB grammar: chunky silhouette, big head, 2-tone form shading, 1px dark
+// outline, soft drop shadow. Walk = 4 frames (stepA, mid, stepB, mid).
+
+let critterPalette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
+    "A": (0x8E, 0x9A, 0xAC, 255), // pigeon slate
+    "F": (0x55, 0x60, 0x74, 255), // pigeon dark / outline
+    "U": (0xB8, 0xC2, 0xCE, 255), // pigeon light
+    "V": (0x4E, 0xA0, 0x72, 255), // iridescent neck green
+    "X": (0xE0, 0x88, 0x30, 255), // beak / feet orange
+    "Z": (0xF2, 0xF0, 0xE8, 255), // goose white
+    "c": (0xC6, 0xC2, 0xB4, 255), // goose shadow
+    "q": (0x9A, 0x9A, 0xA0, 255), // raccoon gray
+    "s": (0x42, 0x42, 0x4A, 255), // raccoon dark / mask
+    "2": (0xE8, 0xC0, 0x30, 255), // wasp yellow
+    "3": (0x2E, 0x2E, 0x34, 255), // wasp black
+    "4": (0xD8, 0xE8, 0xF0, 150), // wing membrane (translucent)
+    "7": (0xA0, 0x96, 0x8A, 255), // cat warm gray
+    "8": (0x6E, 0x64, 0x58, 255), // cat dark
+    "%": (0xC0, 0x30, 0x38, 255), // vending red
+    "&": (0x8E, 0x20, 0x28, 255), // vending red dark
+    "*": (0x7A, 0xE0, 0xD4, 255), // possessed glow
+]
+for (k, v) in critterPalette { palette[k] = v }
+
+/// Nearest-neighbor scale (for battle portraits built from smaller parts).
+func scaleGrid(_ g: Grid, _ f: Double) -> Grid {
+    let h = max(1, Int(Double(g.count) * f)), w = max(1, Int(Double(g[0].count) * f))
+    var out = emptyGrid(w: w, h: h)
+    for y in 0..<h { for x in 0..<w {
+        out[y][x] = g[min(g.count - 1, Int(Double(y) / f))][min(g[0].count - 1, Int(Double(x) / f))]
+    } }
+    return out
+}
+
+/// Vertical 2px-wide bird leg with splayed toes.
+func birdLeg(_ g: inout Grid, x: Int, top: Int, bottom: Int) {
+    for y in top...bottom { g[y][x] = "X"; g[y][x + 1] = "X" }
+    if bottom + 1 < g.count {
+        for dx in [-1, 0, 2] { g[bottom][x + dx] = "X" }
+    }
+}
+
+// ─── PIGEON (40×40) ──────────────────────────────────────────────────────
+func pigeonFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 40, h: 40)
+    let bob = step == 1 ? 1 : 0
+    fillEllipse(&g, cx: 20, cy: 36.5, rx: 9, ry: 2.4, "S")
+
+    // legs under the body — alternate lift
+    let lLift = step == 0 ? 2 : 0, rLift = step == 2 ? 2 : 0
+    if dir != "east" {
+        birdLeg(&g, x: 15, top: 28, bottom: 35 - lLift)
+        birdLeg(&g, x: 23, top: 28, bottom: 35 - rLift)
+    } else {
+        birdLeg(&g, x: 15 + (step == 0 ? 3 : 0), top: 28, bottom: 35 - lLift)
+        birdLeg(&g, x: 22 + (step == 2 ? 3 : 0), top: 28, bottom: 35 - rLift)
+    }
+
+    var b = emptyGrid(w: 40, h: 40)
+    switch dir {
+    case "south", "north":
+        // plump front/back: body + head reading as one chunky bowling pin
+        shadeEllipse(&b, cx: 20, cy: 23, rx: 9.5, ry: 8.5, main: "A", hi: "U", lo: "F")
+        shadeEllipse(&b, cx: 20, cy: 12, rx: 6.5, ry: 6.0, main: "A", hi: "U", lo: "F")
+        // folded wing seams
+        for y in 18...28 {
+            let inset = Int(Double(y - 18) * 0.35)
+            if b[y][12 + inset] != "." { b[y][12 + inset] = "F" }
+            if b[y][27 - inset] != "." { b[y][27 - inset] = "F" }
+        }
+        if dir == "south" {
+            // iridescent throat
+            for y in 17...18 { for x in 16...24 where b[y][x] != "." && b[y][x] != "F" { b[y][x] = "V" } }
+            b[11][17] = "E"; b[11][23] = "E"
+            b[10][17] = "W"; b[10][23] = "W"
+            // wedge beak
+            for x in 18...21 { b[13][x] = "X" }
+            for x in 19...20 { b[14][x] = "X" }
+            b[15][19] = "X"
+        } else {
+            // tail fan pokes below the body
+            for (dy, w) in [(0, 3), (1, 4), (2, 5)] {
+                for x in (20 - w / 2 - 1)...(20 + w / 2) { b[29 + dy][x] = dy == 2 ? "F" : "A" }
+            }
+        }
+    default: // east (west is mirrored)
+        // tail wedge sweeping back-left
+        for i in 0..<9 {
+            let w = 2 + i / 3
+            for dy in 0..<w { b[20 + dy - i / 4][5 + i] = i < 3 ? "F" : "A" }
+        }
+        shadeEllipse(&b, cx: 20, cy: 23, rx: 10.5, ry: 8.0, main: "A", hi: "U", lo: "F")
+        shadeEllipse(&b, cx: 27, cy: 12, rx: 6.0, ry: 5.8, main: "A", hi: "U", lo: "F")
+        // folded wing on the flank
+        shadeEllipse(&b, cx: 18, cy: 23, rx: 6.0, ry: 4.6, main: "U", hi: "U", lo: "A")
+        outlineShape(&b, body: [], outline: "F")
+        for y in 15...17 { for x in 24...30 where b[y][x] != "." { b[y][x] = "V" } }
+        b[11][29] = "E"; b[10][29] = "W"
+        b[12][33] = "X"; b[12][34] = "X"; b[13][33] = "X"
+    }
+    outlineShape(&b, body: ["A", "U", "V"], outline: "F")
+    composite(&g, b, dx: 0, dy: bob)
+    return g
+}
+
+// ─── GOOSE (48×56) ───────────────────────────────────────────────────────
+func gooseFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 48, h: 56)
+    let bob = step == 1 ? 1 : 0
+    fillEllipse(&g, cx: 24, cy: 52, rx: 11, ry: 2.6, "S")
+
+    let lLift = step == 0 ? 2 : 0, rLift = step == 2 ? 2 : 0
+    if dir == "east" {
+        birdLeg(&g, x: 18 + (step == 0 ? 4 : 0), top: 42, bottom: 50 - lLift)
+        birdLeg(&g, x: 26 + (step == 2 ? 4 : 0), top: 42, bottom: 50 - rLift)
+    } else {
+        birdLeg(&g, x: 19, top: 42, bottom: 50 - lLift)
+        birdLeg(&g, x: 27, top: 42, bottom: 50 - rLift)
+    }
+
+    var b = emptyGrid(w: 48, h: 56)
+    switch dir {
+    case "south", "north":
+        shadeEllipse(&b, cx: 24, cy: 36, rx: 12.0, ry: 10.5, main: "Z", hi: "W", lo: "c")
+        // neck column
+        for y in 14...30 {
+            let hw = 4.0 - Double(30 - y) * 0.04
+            for x in Int(24 - hw)...Int(24 + hw) { b[y][x] = "Z" }
+        }
+        for y in 14...30 { if b[y][Int(24 + 3)] == "Z" { b[y][27] = "c" } }
+        shadeEllipse(&b, cx: 24, cy: 10, rx: 6.2, ry: 5.6, main: "Z", hi: "W", lo: "c")
+        if dir == "south" {
+            b[9][21] = "E"; b[9][27] = "E"
+            b[8][21] = "W"; b[8][27] = "W"
+            // bill pointing down at the viewer
+            for (dy, w) in [(0, 4), (1, 3), (2, 2)] {
+                for x in (24 - w / 2)...(24 + w / 2) { b[13 + dy][x] = "X" }
+            }
+        } else {
+            // tail nub
+            for x in 21...27 { b[45][x] = "c" }
+            for x in 22...26 { b[46][x] = "c" }
+        }
+    default:
+        // tail kick at the back-left
+        for i in 0..<8 {
+            for dy in 0..<(2 + i / 3) { b[34 + dy - i / 2][7 + i] = "Z" }
+        }
+        shadeEllipse(&b, cx: 22, cy: 38, rx: 14.0, ry: 9.5, main: "Z", hi: "W", lo: "c")
+        // S-curve neck up to the right
+        for t in stride(from: 0.0, through: 1.0, by: 0.05) {
+            let x = 30 + t * 6 + sin(t * 3.14) * 2.5
+            let y = 32 - t * 22
+            fillEllipse(&b, cx: x, cy: y, rx: 3.4, ry: 3.4, "Z")
+        }
+        shadeEllipse(&b, cx: 37, cy: 9, rx: 5.8, ry: 5.2, main: "Z", hi: "W", lo: "c")
+        b[8][38] = "E"; b[7][38] = "W"
+        for dx in 0..<6 { b[9][42 + min(dx, 5)] = "X"; if dx < 4 { b[10][42 + dx] = "X" } }
+    }
+    outlineShape(&b, body: ["Z", "c"], outline: "F")
+    composite(&g, b, dx: 0, dy: bob)
+    return g
+}
+
+// ─── RACCOON (48×48) ─────────────────────────────────────────────────────
+func raccoonTail(_ b: inout Grid, from: (Double, Double), dir: Double) {
+    // ringed tail: sausage of alternating gray/dark rings
+    for i in 0..<12 {
+        let t = Double(i)
+        let x = from.0 + dir * t * 1.4
+        let y = from.1 - t * 0.9 + (t * t) * 0.04
+        let r = 3.6 - t * 0.12
+        fillEllipse(&b, cx: x, cy: y, rx: r, ry: r, (i / 3) % 2 == 0 ? "q" : "s")
+    }
+}
+
+func raccoonFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 48, h: 48)
+    let bob = step == 1 ? 1 : 0
+    fillEllipse(&g, cx: 24, cy: 44.5, rx: 12, ry: 2.6, "S")
+    var b = emptyGrid(w: 48, h: 48)
+
+    func maskFace(_ cx: Int, _ cy: Int) {
+        // black bandit band with white eyes inside
+        for y in (cy - 1)...(cy + 2) {
+            for x in (cx - 8)...(cx + 8) where b[y][x] != "." { b[y][x] = "s" }
+        }
+        b[cy][cx - 4] = "W"; b[cy][cx + 4] = "W"
+        b[cy + 1][cx - 4] = "E"; b[cy + 1][cx + 4] = "E"
+        // pale muzzle + nose
+        fillEllipse(&b, cx: Double(cx), cy: Double(cy) + 5.5, rx: 4.2, ry: 3.2, "K")
+        b[cy + 4][cx] = "E"; b[cy + 4][cx + 1] = "E"
+    }
+
+    switch dir {
+    case "south", "north":
+        raccoonTail(&b, from: (34, 36), dir: 1.0)
+        shadeEllipse(&b, cx: 24, cy: 31, rx: 11.0, ry: 9.0, main: "q", hi: "L", lo: "s")
+        shadeEllipse(&b, cx: 24, cy: 15, rx: 9.5, ry: 8.5, main: "q", hi: "L", lo: "s")
+        // ears
+        for (ex, sign) in [(16, 1), (32, -1)] {
+            for i in 0..<4 {
+                for x in 0...(3 - i) { b[6 + i][ex + sign * 0 + x - 1] = "s" }
+            }
+            _ = sign
+        }
+        if dir == "south" {
+            maskFace(24, 13)
+        } else {
+            // back stripe
+            for y in 24...38 { b[y][23] = "s"; b[y][24] = "s" }
+        }
+        // legs alternate
+        let lLift = step == 0 ? 2 : 0, rLift = step == 2 ? 2 : 0
+        for (x, lift) in [(17, lLift), (28, rLift)] {
+            for y in 37...(42 - lift) { b[y][x] = "q"; b[y][x + 1] = "q"; b[y][x + 2] = "s" }
+        }
+    default:
+        raccoonTail(&b, from: (8, 32), dir: -0.2)
+        shadeEllipse(&b, cx: 24, cy: 31, rx: 13.0, ry: 8.0, main: "q", hi: "L", lo: "s")
+        shadeEllipse(&b, cx: 34, cy: 17, rx: 8.5, ry: 7.5, main: "q", hi: "L", lo: "s")
+        for i in 0..<4 { for x in 0...(3 - i) { b[8 + i][30 + x] = "s" } }
+        for i in 0..<4 { for x in 0...(3 - i) { b[8 + i][37 - x] = "s" } }
+        // profile mask + snout
+        for y in 15...18 { for x in 28...42 where b[y][x] != "." { b[y][x] = "s" } }
+        b[16][36] = "W"; b[17][36] = "E"
+        fillEllipse(&b, cx: 41, cy: 20, rx: 3.6, ry: 2.8, "K")
+        b[19][43] = "E"; b[19][44] = "E"
+        // four legs, alternating pairs
+        let aLift = step == 0 ? 2 : 0, bLift = step == 2 ? 2 : 0
+        for (x, lift) in [(14, aLift), (20, bLift), (28, bLift), (34, aLift)] {
+            for y in 36...(43 - lift) { b[y][x] = "q"; b[y][x + 1] = "q" }
+            b[43 - lift][x] = "s"; b[43 - lift][x + 1] = "s"
+        }
+    }
+    outlineShape(&b, body: ["q", "L", "K"], outline: "s")
+    composite(&g, b, dx: 0, dy: bob)
+    return g
+}
+
+// ─── CAT (44×44, warm gray) ──────────────────────────────────────────────
+func catFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 44, h: 44)
+    let bob = step == 1 ? 1 : 0
+    fillEllipse(&g, cx: 22, cy: 41, rx: 10, ry: 2.3, "S")
+    var b = emptyGrid(w: 44, h: 44)
+
+    func earPair(_ cx: Int, _ topY: Int, spread: Int) {
+        for (ex, dirn) in [(cx - spread, 1), (cx + spread, -1)] {
+            for i in 0..<6 {
+                let w = max(0, 4 - i * 4 / 6)
+                for x in (-w)...w { b[topY + i][ex + x + dirn * (i / 3)] = "7" }
+            }
+            b[topY + 3][ex] = "P"; b[topY + 4][ex] = "P"
+        }
+    }
+
+    switch dir {
+    case "south", "north":
+        // tail curls up beside the body
+        for i in 0..<10 {
+            let t = Double(i)
+            fillEllipse(&b, cx: 33 + sin(t * 0.45) * 2.0, cy: 34 - t * 1.6, rx: 2.0, ry: 2.0, "7")
+        }
+        b[18][33] = "8"
+        shadeEllipse(&b, cx: 22, cy: 30, rx: 8.5, ry: 8.0, main: "7", hi: "K", lo: "8")
+        shadeEllipse(&b, cx: 22, cy: 15, rx: 9.5, ry: 8.0, main: "7", hi: "K", lo: "8")
+        earPair(22, 4, spread: 7)
+        if dir == "south" {
+            b[14][18] = "I"; b[14][26] = "I"
+            b[15][18] = "E"; b[15][26] = "E"
+            b[17][22] = "O"
+            b[18][20] = "8"; b[18][24] = "8"   // muzzle
+            for x in [11, 12, 13] { b[16][x] = "8" }   // whiskers
+            for x in [31, 32, 33] { b[16][x] = "8" }
+        }
+        let lLift = step == 0 ? 2 : 0, rLift = step == 2 ? 2 : 0
+        for (x, lift) in [(17, lLift), (25, rLift)] {
+            for y in 35...(39 - lift) { b[y][x] = "7"; b[y][x + 1] = "7" }
+        }
+    default:
+        // tail S-curve up behind
+        for i in 0..<11 {
+            let t = Double(i)
+            fillEllipse(&b, cx: 7 + sin(t * 0.5) * 2.2, cy: 30 - t * 1.8, rx: 1.9, ry: 1.9, "7")
+        }
+        b[10][7] = "8"
+        shadeEllipse(&b, cx: 21, cy: 30, rx: 11.0, ry: 7.0, main: "7", hi: "K", lo: "8")
+        shadeEllipse(&b, cx: 31, cy: 16, rx: 7.5, ry: 7.0, main: "7", hi: "K", lo: "8")
+        for i in 0..<4 { for x in 0...(3 - i) { b[7 + i][28 + x] = "7" } }
+        for i in 0..<4 { for x in 0...(3 - i) { b[7 + i][35 - x] = "7" } }
+        b[15][33] = "I"; b[16][33] = "E"
+        b[18][37] = "O"
+        let aLift = step == 0 ? 2 : 0, bLift = step == 2 ? 2 : 0
+        for (x, lift) in [(13, aLift), (18, bLift), (25, bLift), (30, aLift)] {
+            for y in 34...(40 - lift) { b[y][x] = "7"; b[y][x + 1] = "7" }
+        }
+    }
+    outlineShape(&b, body: ["7", "K"], outline: "8")
+    composite(&g, b, dx: 0, dy: bob)
+    return g
+}
+
+// ─── DOG (44×44, warm brown w/ floppy ears) ──────────────────────────────
+func dogFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 44, h: 44)
+    let bob = step == 1 ? 1 : 0
+    fillEllipse(&g, cx: 22, cy: 41, rx: 10.5, ry: 2.4, "S")
+    var b = emptyGrid(w: 44, h: 44)
+    let wag = step == 1 ? 0.0 : (step == 0 ? -1.6 : 1.6)
+
+    switch dir {
+    case "south", "north":
+        // wagging tail peeks out one side
+        for i in 0..<7 {
+            let t = Double(i)
+            fillEllipse(&b, cx: 32 + t * 0.9 + wag, cy: 33 - t * 1.5, rx: 1.8, ry: 1.8, "B")
+        }
+        shadeEllipse(&b, cx: 22, cy: 30, rx: 9.5, ry: 8.5, main: "B", hi: "N", lo: "b")
+        shadeEllipse(&b, cx: 22, cy: 14, rx: 9.0, ry: 8.0, main: "B", hi: "N", lo: "b")
+        // floppy ears hang from the top of the head down its sides
+        for ex in [14.0, 30.0] {
+            fillEllipse(&b, cx: ex, cy: 15.5, rx: 2.2, ry: 5.0, "b")
+        }
+        if dir == "south" {
+            b[13][18] = "E"; b[13][26] = "E"
+            b[12][18] = "W"; b[12][26] = "W"
+            fillEllipse(&b, cx: 22, cy: 18.5, rx: 4.0, ry: 3.2, "K")
+            b[17][21] = "E"; b[17][22] = "E"; b[16][21] = "E"; b[16][22] = "E"
+            b[20][22] = "O"   // tongue tip
+        } else {
+            for y in 24...36 { b[y][22] = "b" }   // back seam
+        }
+        let lLift = step == 0 ? 2 : 0, rLift = step == 2 ? 2 : 0
+        for (x, lift) in [(16, lLift), (25, rLift)] {
+            for y in 35...(39 - lift) { b[y][x] = "B"; b[y][x + 1] = "B" }
+        }
+    default:
+        // tail wag up behind
+        for i in 0..<8 {
+            let t = Double(i)
+            fillEllipse(&b, cx: 8 - t * 0.5 + wag, cy: 30 - t * 1.7, rx: 1.9, ry: 1.9, "B")
+        }
+        shadeEllipse(&b, cx: 21, cy: 30, rx: 11.5, ry: 7.5, main: "B", hi: "N", lo: "b")
+        shadeEllipse(&b, cx: 31, cy: 15, rx: 8.0, ry: 7.5, main: "B", hi: "N", lo: "b")
+        fillEllipse(&b, cx: 27, cy: 13, rx: 2.6, ry: 5.2, "b")  // floppy ear
+        b[13][33] = "E"; b[12][33] = "W"
+        fillEllipse(&b, cx: 38, cy: 19, rx: 3.6, ry: 2.8, "K")  // snout
+        b[17][40] = "E"; b[17][41] = "E"
+        let aLift = step == 0 ? 2 : 0, bLift = step == 2 ? 2 : 0
+        for (x, lift) in [(12, aLift), (18, bLift), (25, bLift), (31, aLift)] {
+            for y in 34...(40 - lift) { b[y][x] = "B"; b[y][x + 1] = "B" }
+        }
+    }
+    outlineShape(&b, body: ["B", "N", "K"], outline: "b")
+    composite(&g, b, dx: 0, dy: bob)
+    return g
+}
+
+// ─── WASP (40×40, hovering — frames flap the wings) ──────────────────────
+func waspFrame(dir: String, step: Int) -> Grid {
+    var g = emptyGrid(w: 40, h: 40)
+    fillEllipse(&g, cx: 20, cy: 36, rx: 7, ry: 2.0, "S")
+    var b = emptyGrid(w: 40, h: 40)
+    let hover = step == 1 ? 1 : 0
+    let wingUp = step != 1
+
+    switch dir {
+    case "south", "north":
+        // wings out to the sides
+        for (wx, sgn) in [(9.0, -1.0), (31.0, 1.0)] {
+            fillEllipse(&b, cx: wx + sgn * (wingUp ? 1.0 : 0.0), cy: wingUp ? 13 : 16,
+                        rx: 6.5, ry: wingUp ? 3.0 : 4.2, "4")
+        }
+        // banded abdomen below the head
+        shadeEllipse(&b, cx: 20, cy: 25, rx: 7.5, ry: 8.5, main: "2", hi: "W", lo: "3")
+        for y in [20, 25, 30] { for x in 12...28 where y < 40 && b[y][x] != "." { b[y][x] = "3" } }
+        shadeEllipse(&b, cx: 20, cy: 12, rx: 6.5, ry: 6.0, main: "2", hi: "W", lo: "3")
+        if dir == "south" {
+            fillEllipse(&b, cx: 16.5, cy: 12, rx: 2.4, ry: 3.2, "E")
+            fillEllipse(&b, cx: 23.5, cy: 12, rx: 2.4, ry: 3.2, "E")
+            b[10][16] = "W"; b[10][23] = "W"
+            b[5][16] = "3"; b[4][15] = "3"; b[5][23] = "3"; b[4][24] = "3"
+        }
+    default:
+        for wOff in [0] {
+            _ = wOff
+            fillEllipse(&b, cx: 20, cy: wingUp ? 8 : 11, rx: 8.5, ry: wingUp ? 2.8 : 3.8, "4")
+        }
+        // abdomen tapers back-left to a stinger
+        shadeEllipse(&b, cx: 15, cy: 24, rx: 9.0, ry: 6.5, main: "2", hi: "W", lo: "3")
+        for x in [10, 15, 20] { for y in 18...30 where b[y][x] != "." { b[y][x] = "3" } }
+        b[27][5] = "3"; b[28][4] = "3"; b[29][3] = "E"   // stinger
+        shadeEllipse(&b, cx: 27, cy: 16, rx: 5.5, ry: 5.0, main: "2", hi: "W", lo: "3")
+        fillEllipse(&b, cx: 29, cy: 15, rx: 2.2, ry: 2.8, "E")
+        b[13][29] = "W"
+        b[9][29] = "3"; b[8][30] = "3"
+    }
+    outlineShape(&b, body: ["2"], outline: "3")
+    composite(&g, b, dx: 0, dy: hover)
+    return g
+}
+
+// ─── Battle portraits (128×128) ──────────────────────────────────────────
+func critterBattle(_ base: Grid, scale f: Double, stamp extra: ((inout Grid) -> Void)? = nil) -> Grid {
+    var g = emptyGrid(w: 128, h: 128)
+    let s = scaleGrid(base, f)
+    composite(&g, s, dx: max(0, (128 - s[0].count) / 2), dy: max(0, 128 - s.count - 4))
+    extra?(&g)
+    return g
+}
+
+func geraldCrown(_ g: inout Grid) {
+    // find the head top: first opaque column near center
+    var topY = 0
+    outer: for y in 0..<128 { for x in 50..<78 where g[y][x] != "." { topY = y; break outer } }
+    let cx = 64
+    func put(_ y: Int, _ x: Int) {
+        if y >= 0, y < g.count, x >= 0, x < g[0].count { g[y][x] = "Q" }
+    }
+    for i in 0..<5 { for x in (cx - 9)...(cx + 9) { put(topY - 2 - i, x) } }
+    for spike in [-9, -3, 3, 9] {
+        for i in 0..<5 { put(topY - 7 - i, cx + spike) }
+    }
+}
+
+func vendingMachineGrid(possessed: Bool) -> Grid {
+    var g = emptyGrid(w: 64, h: 96)
+    // cabinet
+    for y in 6..<92 { for x in 8..<56 {
+        g[y][x] = x < 12 || x >= 52 || y < 10 || y >= 88 ? "&" : "%"
+    } }
+    // glass window with shelves of cans
+    for y in 14..<52 { for x in 16..<44 { g[y][x] = "R" } }
+    let canColors: [Character] = ["G", "X", "w", "2", "O", "H"]
+    for (row, shelfY) in [14, 26, 38].enumerated() {
+        for i in 0..<4 {
+            let cx = 18 + i * 7
+            for y in (shelfY + 4)..<(shelfY + 10) { for x in cx..<(cx + 5) {
+                g[y][x] = canColors[(row * 4 + i) % canColors.count]
+            } }
+        }
+        for x in 16..<44 { g[shelfY + 10][x] = "x" }
+    }
+    if possessed {
+        // glowing face floats in the glass
+        for (dx, dy) in [(-6, 0), (6, 0)] {
+            fillEllipse(&g, cx: Double(30 + dx), cy: Double(30 + dy), rx: 3.4, ry: 4.4, "*")
+        }
+        for x in 24..<37 { g[42][x] = "*" }
+        for x in [24, 36] { g[41][x] = "*" }
+        g[40][23] = "*"; g[40][37] = "*"
+    }
+    // selection buttons + coin slot
+    for i in 0..<4 { for y in (16 + i * 8)..<(20 + i * 8) { g[y][47] = "1"; g[y][48] = "1"; g[y][49] = "9" } }
+    for y in 50..<56 { g[y][48] = "E" }
+    // dispense hatch
+    for y in 66..<80 { for x in 16..<44 { g[y][x] = "&" } }
+    for y in 68..<78 { for x in 18..<42 { g[y][x] = "R" } }
+    // feet
+    for x in [10, 50] { for y in 92..<95 { g[y][x] = "E"; g[y][x + 1] = "E" } }
+    outlineShape(&g, body: ["%", "&"], outline: "E")
+    return g
+}
+
+func humanEnemyBattle(_ role: NPCRole) -> Grid {
+    let f = humanFrame(role, dir: 0, step: 1)
+    var g = emptyGrid(w: 128, h: 128)
+    let s = scaleGrid(f, 1.3)
+    composite(&g, s, dx: (128 - s[0].count) / 2, dy: 128 - s.count)
+    return g
+}
+
 // ---- Human NPCs ----
 var npcPreviewRows: [[Grid]] = []
 for role in npcRoles {
@@ -2645,6 +3133,76 @@ do {
     let previewDir = (previewPath as NSString).deletingLastPathComponent
     writeSheet(rows: npcPreviewRows, scale: 3, to: "\(previewDir)/npc-preview.png")
 }
+
+// ---- Critters (enemy + ambient animals) ----
+let critterSpecs: [(String, Int, Int, (String, Int) -> Grid)] = [
+    ("pigeon",  40, 40, { pigeonFrame(dir: $0, step: $1) }),
+    ("goose",   48, 56, { gooseFrame(dir: $0, step: $1) }),
+    ("raccoon", 48, 48, { raccoonFrame(dir: $0, step: $1) }),
+    ("cat",     44, 44, { catFrame(dir: $0, step: $1) }),
+    ("dog",     44, 44, { dogFrame(dir: $0, step: $1) }),
+    ("wasp",    40, 40, { waspFrame(dir: $0, step: $1) }),
+]
+var critterPreviewRows: [[Grid]] = []
+for (slug, w, h, frame) in critterSpecs {
+    var row: [Grid] = []
+    for dir in ["south", "north", "east"] {
+        let steps = [frame(dir, 0), frame(dir, 1), frame(dir, 2), frame(dir, 1)]
+        for (i, g) in steps.enumerated() {
+            writePNG(render(g), to: "\(outDir)/critter-\(slug)-walk-\(dir)-f\(i + 1)-\(w)x\(h).png")
+        }
+        row.append(steps[1]); row.append(steps[0])
+    }
+    for (i, g) in [frame("east", 0), frame("east", 1), frame("east", 2), frame("east", 1)].enumerated() {
+        writePNG(render(mirrored(g)), to: "\(outDir)/critter-\(slug)-walk-west-f\(i + 1)-\(w)x\(h).png")
+    }
+    critterPreviewRows.append(row)
+}
+
+// battle portraits
+let pigeonS  = pigeonFrame(dir: "south", step: 1)
+let gooseS   = gooseFrame(dir: "south", step: 1)
+let raccoonS = raccoonFrame(dir: "south", step: 1)
+let waspS    = waspFrame(dir: "south", step: 1)
+writePNG(render(critterBattle(pigeonS,  scale: 2.6)), to: "\(outDir)/enemy-pigeon-battle-128x128.png")
+writePNG(render(critterBattle(gooseS,   scale: 2.1)), to: "\(outDir)/enemy-goose-battle-128x128.png")
+writePNG(render(critterBattle(raccoonS, scale: 2.4)), to: "\(outDir)/enemy-raccoon-battle-128x128.png")
+writePNG(render(critterBattle(waspS,    scale: 2.6)), to: "\(outDir)/enemy-wasp-battle-128x128.png")
+writePNG(render(critterBattle(gooseS,   scale: 1.85, stamp: geraldCrown)),
+         to: "\(outDir)/enemy-gerald-battle-128x128.png")
+// flock leader: pigeon with a feather crest + red neckerchief
+writePNG(render(critterBattle(pigeonS, scale: 2.9, stamp: { g in
+    var topY = 0
+    outer: for y in 0..<128 { for x in 50..<78 where g[y][x] != "." { topY = y; break outer } }
+    for (i, dx) in [-4, 0, 4].enumerated() {
+        for j in 0..<(5 + (i == 1 ? 3 : 0)) { g[max(0, topY - 1 - j)][64 + dx] = "F" }
+    }
+    for y in 44...48 { for x in 50...78 where g[y][x] != "." { g[y][x] = "%" } }
+})), to: "\(outDir)/enemy-flockleader-battle-128x128.png")
+// possessed vending machine — battle + overworld
+let vend = vendingMachineGrid(possessed: true)
+writePNG(render(vend), to: "\(outDir)/enemy-vending-64x96.png")
+do {
+    var g = emptyGrid(w: 128, h: 128)
+    let sVend = scaleGrid(vend, 1.3)
+    composite(&g, sVend, dx: (128 - sVend[0].count) / 2, dy: 128 - sVend.count)
+    writePNG(render(g), to: "\(outDir)/enemy-vending-battle-128x128.png")
+}
+// human enemies via the NPC rig
+for role in npcRoles where ["ranger", "sternadult", "skaterkid", "officer", "foreman"].contains(role.name) {
+    writePNG(render(humanEnemyBattle(role)), to: "\(outDir)/enemy-\(role.name)-battle-128x128.png")
+}
+do {
+    let previewDir = (previewPath as NSString).deletingLastPathComponent
+    writeSheet(rows: critterPreviewRows, scale: 4, to: "\(previewDir)/critters-preview.png")
+    let battles: [Grid] = [
+        critterBattle(pigeonS, scale: 2.6), critterBattle(gooseS, scale: 2.1),
+        critterBattle(raccoonS, scale: 2.4), critterBattle(waspS, scale: 2.6),
+        critterBattle(gooseS, scale: 1.85, stamp: geraldCrown), vendingMachineGrid(possessed: true)
+    ]
+    writeSheet(rows: [battles], scale: 3, to: "\(previewDir)/enemy-battle-preview.png")
+}
+print("critters-ok")
 
 // ---- World tiles ----
 for v in 0..<4 {

@@ -582,9 +582,20 @@ final class EnemyNode: SKSpriteNode {
         self.hp   = kind.maxHP
 
         let tex = WorldSprites.overworldTexture(enemy: kind)
-        let size = kind.isBoss
-            ? CGSize(width: 72, height: 72)
-            : CGSize(width: 48, height: 48)
+        let isHuman: Bool
+        switch kind {
+        case .ranger, .sternAdult, .skateboardKid, .officerGrumble, .foremanRex: isHuman = true
+        default: isHuman = false
+        }
+        let size: CGSize
+        if isHuman {
+            size = kind.isBoss ? CGSize(width: 60, height: 90) : CGSize(width: 50, height: 74)
+        } else if kind == .goose || kind == .grandGooseGerald {
+            // goose art is 48×56 — keep the tall aspect
+            size = kind.isBoss ? CGSize(width: 66, height: 77) : CGSize(width: 46, height: 54)
+        } else {
+            size = kind.isBoss ? CGSize(width: 72, height: 72) : CGSize(width: 48, height: 48)
+        }
         super.init(texture: tex, color: .clear, size: size)
         name      = "enemy"
         zPosition = GameConstants.ZPos.entity
@@ -668,6 +679,20 @@ final class EnemyNode: SKSpriteNode {
             return ImportedArt.birdFrames(white: true, directionRow: currentDirectionRow)
         case .raccoon:
             return ImportedArt.raccoonFrames(directionRow: currentDirectionRow)
+        case .wasp:
+            return ImportedArt.genCritterFrames("wasp", "40x40", directionRow: currentDirectionRow)
+        case .flockLeader:
+            return ImportedArt.genCritterFrames("pigeon", "40x40", directionRow: currentDirectionRow)
+        case .ranger:
+            return ImportedArt.genRoleWalkFrames(role: "ranger", directionRow: currentDirectionRow)
+        case .sternAdult:
+            return ImportedArt.genRoleWalkFrames(role: "sternadult", directionRow: currentDirectionRow)
+        case .skateboardKid:
+            return ImportedArt.genRoleWalkFrames(role: "skaterkid", directionRow: currentDirectionRow)
+        case .officerGrumble:
+            return ImportedArt.genRoleWalkFrames(role: "officer", directionRow: currentDirectionRow)
+        case .foremanRex:
+            return ImportedArt.genRoleWalkFrames(role: "foreman", directionRow: currentDirectionRow)
         default:
             return []
         }

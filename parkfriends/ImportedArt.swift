@@ -557,27 +557,38 @@ enum ImportedArt {
     }
 
     static func enemyTexture(kind: EnemyKind) -> SKTexture? {
+        func gen(_ name: String) -> SKTexture? {
+            fileTexture(relativePath: "textures.downloaded.sprites/world.generated/\(name).png")
+        }
         switch kind {
         case .pigeon:
-            return critterFrontTexture(sheet: "BIRDSPRITESHEET_Blue.png")
-        case .goose, .grandGooseGerald:
-            return critterFrontTexture(sheet: "BIRDSPRITESHEET_White.png")
+            return gen("enemy-pigeon-battle-128x128")
+                ?? critterFrontTexture(sheet: "BIRDSPRITESHEET_Blue.png")
+        case .goose:
+            return gen("enemy-goose-battle-128x128")
+                ?? critterFrontTexture(sheet: "BIRDSPRITESHEET_White.png")
+        case .grandGooseGerald:
+            return gen("enemy-gerald-battle-128x128")
+                ?? critterFrontTexture(sheet: "BIRDSPRITESHEET_White.png")
         case .raccoon:
-            return critterFrontTexture(sheet: "RACCOONSPRITESHEET.png")
+            return gen("enemy-raccoon-battle-128x128")
+                ?? critterFrontTexture(sheet: "RACCOONSPRITESHEET.png")
         case .wasp:
-            return fileTexture(
+            return gen("enemy-wasp-battle-128x128") ?? fileTexture(
                 relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/mobs/boss_bee.png"
             )
-        case .ranger:        return npcTexture(kind: .rangerGuide)
-        case .sternAdult:    return gabeFrame(5)
-        case .flockLeader:   return critterTexture(sheet: "BIRDSPRITESHEET_Blue.png", frame: 12)
+        case .flockLeader:
+            return gen("enemy-flockleader-battle-128x128")
+                ?? critterTexture(sheet: "BIRDSPRITESHEET_Blue.png", frame: 12)
         case .vendingMachine:
-            return fileTexture(
+            return gen("enemy-vending-battle-128x128") ?? fileTexture(
                 relativePath: "textures.downloaded.sprites/generic-rpg-pack_v0.4_(alpha-release)_vacaroxa/rpg-pack/props n decorations/generic-rpg-house-inn.png"
             )
-        case .skateboardKid: return maniFrame(4)
-        case .officerGrumble: return senseiTexture()      // single-frame; was broken frame 3
-        case .foremanRex:    return hatGuyTexture()       // single-frame; was broken frame 4
+        case .ranger:         return gen("enemy-ranger-battle-128x128")     ?? npcTexture(kind: .rangerGuide)
+        case .sternAdult:     return gen("enemy-sternadult-battle-128x128") ?? gabeFrame(5)
+        case .skateboardKid:  return gen("enemy-skaterkid-battle-128x128")  ?? maniFrame(4)
+        case .officerGrumble: return gen("enemy-officer-battle-128x128")    ?? senseiTexture()
+        case .foremanRex:     return gen("enemy-foreman-battle-128x128")    ?? hatGuyTexture()
         }
     }
 
@@ -687,14 +698,47 @@ enum ImportedArt {
         }
     }
 
-    /// Cat walk-south frames (gray cat, 4-frame cycle).
-    static func catFrames(directionRow: Int = 0) -> [SKTexture] {
-        animFrames(sheet: "CATSPRITESHEET_Gray.png", row: directionRow, count: 4, fromTop: true)
+    /// Maps a pack-sheet direction row (0=S,1=SW,2=W,3=NW,4=N,5=NE,6=E,7=SE)
+    /// onto the four generated-art directions.
+    static func genCritterDir(_ row: Int) -> String {
+        switch ((row % 8) + 8) % 8 {
+        case 0:       return "south"
+        case 4:       return "north"
+        case 1, 2, 3: return "west"
+        default:      return "east"
+        }
     }
 
-    /// Raccoon walk-south frames (4-frame cycle).
+    /// 4-frame generated critter walk cycle; empty if the PNGs are missing.
+    static func genCritterFrames(_ slug: String, _ size: String, directionRow: Int) -> [SKTexture] {
+        (1...4).compactMap {
+            fileTexture(relativePath:
+                "textures.downloaded.sprites/world.generated/critter-\(slug)-walk-\(genCritterDir(directionRow))-f\($0)-\(size).png")
+        }
+    }
+
+    /// 2-frame generated human walk cycle addressed by role slug + direction row.
+    static func genRoleWalkFrames(role: String, directionRow: Int) -> [SKTexture] {
+        (1...2).compactMap {
+            fileTexture(relativePath:
+                "textures.downloaded.sprites/world.generated/npc-\(role)-\(genCritterDir(directionRow))-f\($0)-64x96.png")
+        }
+    }
+
+    /// Cat walk frames (generated art; pack sheet fallback).
+    static func catFrames(directionRow: Int = 0) -> [SKTexture] {
+        let gen = genCritterFrames("cat", "44x44", directionRow: directionRow)
+        return gen.isEmpty
+            ? animFrames(sheet: "CATSPRITESHEET_Gray.png", row: directionRow, count: 4, fromTop: true)
+            : gen
+    }
+
+    /// Raccoon walk frames (generated art; pack sheet fallback).
     static func raccoonFrames(directionRow: Int = 0) -> [SKTexture] {
-        animFrames(sheet: "RACCOONSPRITESHEET.png", row: directionRow, count: 4, fromTop: true)
+        let gen = genCritterFrames("raccoon", "48x48", directionRow: directionRow)
+        return gen.isEmpty
+            ? animFrames(sheet: "RACCOONSPRITESHEET.png", row: directionRow, count: 4, fromTop: true)
+            : gen
     }
 
     /// One static dog sprite — 48DogSpriteSheet has 8 different breeds in a
@@ -709,6 +753,8 @@ enum ImportedArt {
     /// Dog walk cycle — 56Dogs.png is 7 cols × 8 rows of 16×16 frames.
     /// Each row = a breed; cols 0-6 = a 7-frame walk cycle. `variant` picks the breed.
     static func dogFrames(variant: Int = 0) -> [SKTexture] {
+        let gen = genCritterFrames("dog", "44x44", directionRow: 0)
+        if !gen.isEmpty { return gen }
         let breed = abs(variant) % 8
         return (0..<7).compactMap {
             sheetTexture(relativePath: "textures.downloaded.sprites/56Dogs.png",
@@ -720,13 +766,23 @@ enum ImportedArt {
     /// Bird walk frames — BIRDSPRITESHEET is 4 cols × 13 rows of 32×32.
     /// Row 0 = south-facing walk (toward camera), matching the cat/fox/raccoon layout.
     static func birdFrames(white: Bool = false, directionRow: Int = 0) -> [SKTexture] {
+        let gen = white
+            ? genCritterFrames("goose", "48x56", directionRow: directionRow)
+            : genCritterFrames("pigeon", "40x40", directionRow: directionRow)
+        if !gen.isEmpty { return gen }
         let sheet = white ? "BIRDSPRITESHEET_White.png" : "BIRDSPRITESHEET_Blue.png"
         return animFrames(sheet: sheet, row: directionRow, count: 4, fromTop: true)
     }
 
-    /// Fox frames (used for Hazel NPC).
+    /// Hazel-the-NPC frames — her own generated walk cycle (fox sheet fallback).
     static func foxFrames(directionRow: Int = 0) -> [SKTexture] {
-        animFrames(sheet: "FOXSPRITESHEET.png", row: directionRow, count: 4, fromTop: true)
+        let gen = (1...4).compactMap {
+            fileTexture(relativePath:
+                "textures.downloaded.sprites/world.generated/hazel-walk-\(genCritterDir(directionRow))-f\($0)-64x96.png")
+        }
+        return gen.isEmpty
+            ? animFrames(sheet: "FOXSPRITESHEET.png", row: directionRow, count: 4, fromTop: true)
+            : gen
     }
 
     static func lampTexture(city: Bool) -> SKTexture? {
