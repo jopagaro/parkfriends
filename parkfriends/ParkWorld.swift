@@ -145,6 +145,7 @@ enum ParkWorld {
         painter.placeSprite(SpecRect(43, 22, 4, 5),
                             texture: ImportedArt.genTile("prop-fountain-128x160"),
                             layer: .props)
+        painter.addBlockingRect(SpecRect(43, 23, 4, 4))
 
         // §4.4 — Statue: stone duck memorial. Nobody explains it.
         painter.placeSprite(SpecRect(69, 40, 3, 4),
@@ -175,7 +176,7 @@ enum ParkWorld {
                                 texture: ImportedArt.genTile("prop-picnic-64x64"), layer: .decor)
         }
         // Flower beds edging the lawns
-        for (fx, fy) in [(35, 15), (53, 15), (30, 33), (58, 52)] {
+        for (fx, fy) in [(34, 22), (53, 15), (30, 33), (58, 52)] {
             painter.placeSprite(SpecRect(fx, fy, 3, 1),
                                 texture: ImportedArt.genTile("prop-flowerbed-96x40"), layer: .props)
             painter.addBlockingRect(SpecRect(fx, fy, 3, 1))
@@ -299,8 +300,11 @@ enum ParkWorld {
             painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
         }
 
-        // Pond collision: one big rectangular wall covering the pond bounds.
-        painter.addBlockingRect(pondRect)
+        // Pond collision: walls around the water, leaving the pier row
+        // (x=26..29, y=19) open so you can actually walk out on the dock.
+        painter.addBlockingRect(SpecRect(8, 14, 22, 5))     // north band
+        painter.addBlockingRect(SpecRect(8, 19, 18, 1))     // pier row, west of planks
+        painter.addBlockingRect(SpecRect(8, 20, 22, 10))    // south band
         // Creek collision — everything except the bridge band (x=44..47,
         // y=12..14) so the main path stays crossable.
         painter.addBlockingRect(SpecRect(49, 0, 2, 12))     // north arm
@@ -311,19 +315,20 @@ enum ParkWorld {
         painter.addBlockingRect(SpecRect(30, 16, 5, 2))
         painter.addBlockingRect(SpecRect(27, 17, 3, 2))
 
-        // §4.7 — Ambient creatures (animated decor; not battle actors).
-        painter.placeAnimated(SpecRect(58, 30, 1, 1),
-                              frames: ImportedArt.parkChickenFrames(),
-                              timePerFrame: 0.18)
-        painter.placeAnimated(SpecRect(59, 31, 1, 1),
-                              frames: ImportedArt.parkChicksFrames(),
-                              timePerFrame: 0.16)
-        painter.placeSprite(SpecRect(60, 29, 1, 1),
-                            texture: ImportedArt.parkEggNest(stage: 1),
-                            layer: .decor)
-        painter.placeAnimated(SpecRect(5, 53, 2, 1),
-                              frames: ImportedArt.parkSquirrelIdleFrames(),
-                              timePerFrame: 0.14)
+        // §4.7 — Ambient creatures (animated decor; not battle actors) —
+        // generated art: grass ducks by the plaza, a cat lazing under the oak.
+        let grassDuck = ImportedArt.genCritterFrames("duck", "36x36", directionRow: 0)
+        if !grassDuck.isEmpty {
+            painter.placeAnimated(SpecRect(58, 30, 1, 1), frames: grassDuck, timePerFrame: 0.26)
+        }
+        let grassDuckE = ImportedArt.genCritterFrames("duck", "36x36", directionRow: 6)
+        if !grassDuckE.isEmpty {
+            painter.placeAnimated(SpecRect(60, 29, 1, 1), frames: grassDuckE, timePerFrame: 0.30)
+        }
+        let oakCat = ImportedArt.genCritterFrames("cat", "44x44", directionRow: 0)
+        if !oakCat.isEmpty {
+            painter.placeAnimated(SpecRect(5, 53, 1, 1), frames: oakCat, timePerFrame: 0.32)
+        }
 
         // Scene-boundary walls so the player can't walk off the edge.
         painter.addSceneBoundary()
@@ -782,6 +787,8 @@ final class ScenePainter {
     /// Tree with a small circular collision body at its trunk.
     func placeTree(_ rect: SpecRect, texture: SKTexture?) {
         guard let texture else { return }
+        // trunk collision: one cell at the bottom-center of the canopy
+        addBlockingRect(SpecRect(rect.x + rect.w / 2, rect.y + rect.h - 1, 1, 1))
         texture.filteringMode = .nearest
         let s = SKSpriteNode(
             texture: texture,

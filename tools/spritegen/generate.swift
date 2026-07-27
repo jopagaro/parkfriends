@@ -3476,10 +3476,16 @@ func bossRanger() -> Grid {
     shadeEllipse(&torso, cx: 64, cy: 66, rx: 20, ry: 21, main: "g", hi: "H", lo: "$")
     rectFill(&torso, 59, 44, 10, 8, "K")
     rectFill(&torso, 59, 44, 10, 1, "k")
-    // chest pockets + badge
-    rectFill(&torso, 52, 62, 8, 6, "$")
-    rectFill(&torso, 68, 62, 8, 6, "$")
-    rectFill(&torso, 53, 58, 5, 5, "Q")
+    // button placket + flap pockets + badge + epaulets
+    for y in stride(from: 50, to: 82, by: 5) { torso[y][64] = "$" }
+    for x0 in [51, 67] {
+        rectFill(&torso, x0, 60, 10, 8, "$")
+        rectFill(&torso, x0, 60, 10, 2, "H")            // pocket flap
+        torso[64][x0 + 5] = "H"                         // button
+    }
+    rectFill(&torso, 52, 54, 6, 5, "Q")                 // badge
+    rectFill(&torso, 46, 47, 10, 3, "$")                // epaulets
+    rectFill(&torso, 72, 47, 10, 3, "$")
     // arms crossed-adjacent: straight, hands in fists
     fillEllipse(&torso, cx: 40, cy: 70, rx: 6, ry: 14, "g")
     fillEllipse(&torso, cx: 88, cy: 70, rx: 6, ry: 14, "g")
@@ -3488,20 +3494,27 @@ func bossRanger() -> Grid {
     composite(&g, torso, dx: 0, dy: 0)
     // head: square jaw, unknowable
     var head = emptyGrid(w: 128, h: 128)
-    shadeEllipse(&head, cx: 64, cy: 34, rx: 17, ry: 16, main: "K", hi: "K", lo: "k")
-    rectFill(&head, 50, 38, 28, 8, "K")
-    for dx in -4...4 { head[47][64 + dx] = "k" }        // stern mouth
-    // mirrored sunglasses band
-    rectFill(&head, 48, 28, 32, 6, "E")
-    rectFill(&head, 52, 29, 9, 4, "3")
-    rectFill(&head, 67, 29, 9, 4, "3")
-    head[29][53] = "L"; head[29][68] = "L"
-    // campaign hat: wide flat brim + dented crown + band
-    rectFill(&head, 38, 20, 52, 4, "T")
-    rectFill(&head, 38, 23, 52, 2, "t")
-    fillEllipse(&head, cx: 64, cy: 13, rx: 14, ry: 8, "T")
-    for x in 56...72 { head[8][x] = "t" }               // crown dent
-    rectFill(&head, 50, 18, 28, 2, "$")                 // hat band
+    shadeEllipse(&head, cx: 64, cy: 34, rx: 16, ry: 15, main: "K", hi: "K", lo: "k")
+    rectFill(&head, 51, 38, 26, 8, "K")
+    fillEllipse(&head, cx: 48, cy: 34, rx: 2.4, ry: 3.2, "K")   // ears
+    fillEllipse(&head, cx: 80, cy: 34, rx: 2.4, ry: 3.2, "K")
+    for dx in -4...4 { head[47][64 + dx] = "k" }        // stern flat mouth
+    for dy in 0..<3 { head[36 + dy][64] = "k" }         // nose
+    // aviator sunglasses: two lenses + bridge + temple arms
+    rectFill(&head, 52, 28, 10, 6, "E")
+    rectFill(&head, 66, 28, 10, 6, "E")
+    rectFill(&head, 62, 29, 4, 2, "E")                  // bridge
+    rectFill(&head, 49, 29, 3, 2, "E")                  // temples to the ears
+    rectFill(&head, 76, 29, 3, 2, "E")
+    head[29][54] = "L"; head[29][68] = "L"              // lens glints
+    head[30][55] = "L"; head[30][69] = "L"
+    // campaign hat: brim, pinched crown, band + chin cord
+    rectFill(&head, 40, 20, 48, 4, "T")
+    rectFill(&head, 40, 23, 48, 2, "t")
+    fillEllipse(&head, cx: 64, cy: 13, rx: 13, ry: 8, "T")
+    for x in 58...70 { head[7][x] = "t" }               // crown pinch
+    rectFill(&head, 52, 18, 24, 2, "$")                 // hat band
+    for i in 0..<10 { head[24 + i][46 - i / 3] = "r" }  // chin cord
     composite(&g, head, dx: 0, dy: 0)
     bossOutline(&g)
     return g
@@ -3610,61 +3623,86 @@ func bossRex() -> Grid {
     return g
 }
 
-/// MAYOR JOHNSON — silver pompadour, gray suit, red sash, gold medal,
-/// a smile that has survived four elections.
+/// MAYOR JOHNSON — silver swept-back hair, navy suit, red sash, gold
+/// medal, waving. A smile that has survived four elections.
 func bossMayor() -> Grid {
     var g = emptyGrid(w: 128, h: 128)
     fillEllipse(&g, cx: 64, cy: 122, rx: 30, ry: 4, "S")
+    // trousers + shined shoes
     for lx in [50, 66] {
-        rectFill(&g, lx, 88, 12, 26, "5")
-        rectFill(&g, lx + 8, 88, 4, 26, "R")
+        rectFill(&g, lx, 88, 12, 26, "@")
+        rectFill(&g, lx + 8, 88, 4, 26, "#")
         rectFill(&g, lx - 1, 112, 14, 8, "E")
         g[113][lx + 2] = "W"
     }
     var torso = emptyGrid(w: 128, h: 128)
-    shadeEllipse(&torso, cx: 64, cy: 66, rx: 21, ry: 22, main: "5", hi: "L", lo: "R")
-    rectFill(&torso, 60, 44, 8, 7, "K")
-    rectFill(&torso, 60, 44, 8, 1, "k")
-    // white shirt V + red tie
-    for i in 0..<10 { for dx in -(9 - i)...(9 - i) { torso[48 + i][64 + dx] = "W" } }
-    rectFill(&torso, 62, 52, 5, 16, "%")
-    for i in 0..<3 { rectFill(&torso, 63 + i / 2, 68 + i, 3 - i, 1, "%") }
-    // suit lapels
-    for i in 0..<12 { torso[48 + i][53 - i / 3] = "R"; torso[48 + i][75 + i / 3] = "R" }
-    // mayoral sash: shoulder to hip
-    for t in 0..<30 {
-        let x = 48 + t, y = 50 + t
-        if y < 88 { rectFill(&torso, x, y, 6, 2, "%") ; torso[y][x] = "Q" }
+    // neck first, then suit
+    rectFill(&torso, 59, 44, 10, 8, "K")
+    rectFill(&torso, 59, 44, 10, 1, "k")
+    shadeEllipse(&torso, cx: 64, cy: 67, rx: 21, ry: 21, main: "@", hi: "A", lo: "#")
+    // white shirt V with red tie
+    for i in 0..<11 { for dx in -(10 - i)...(10 - i) { torso[50 + i][64 + dx] = "W" } }
+    rectFill(&torso, 62, 52, 5, 14, "%")
+    for i in 0..<3 { rectFill(&torso, 63 + i / 2, 66 + i, 3 - i, 1, "&") }
+    // lapels
+    for i in 0..<13 { torso[50 + i][53 - i / 4] = "#"; torso[50 + i][54 - i / 4] = "#" }
+    for i in 0..<13 { torso[50 + i][74 + i / 4] = "#"; torso[50 + i][75 + i / 4] = "#" }
+    // red sash shoulder→hip with gold edges
+    for t in 0..<32 {
+        let x = 50 + t / 2, y = 52 + t
+        if y < 86 {
+            rectFill(&torso, x, y, 7, 1, "%")
+            torso[y][x] = "Q"; torso[y][x + 6] = "Q"
+        }
     }
-    // gold medal on the sash
-    fillEllipse(&torso, cx: 64, cy: 74, rx: 5, ry: 5, "Q")
-    torso[73][63] = "W"
-    // arms: one wave, one handshake-ready
-    fillEllipse(&torso, cx: 38, cy: 68, rx: 6, ry: 13, "5")
-    fillEllipse(&torso, cx: 38, cy: 81, rx: 4.4, ry: 4.4, "K")
-    fillEllipse(&torso, cx: 90, cy: 58, rx: 6, ry: 11, "5")
-    fillEllipse(&torso, cx: 93, cy: 46, rx: 4.6, ry: 4.6, "K")
+    // gold medal at the sash's end
+    fillEllipse(&torso, cx: 67, cy: 80, rx: 5.5, ry: 5.5, "Q")
+    fillEllipse(&torso, cx: 67, cy: 80, rx: 2.5, ry: 2.5, "2")
+    torso[77][65] = "W"
+    // left arm down with hand; right arm RAISED waving, open palm
+    fillEllipse(&torso, cx: 40, cy: 70, rx: 6, ry: 13, "@")
+    fillEllipse(&torso, cx: 40, cy: 83, rx: 4.4, ry: 4.4, "K")
+    fillEllipse(&torso, cx: 88, cy: 58, rx: 6, ry: 10, "@")
+    fillEllipse(&torso, cx: 93, cy: 46, rx: 5, ry: 6, "@")
+    fillEllipse(&torso, cx: 96, cy: 36, rx: 5.5, ry: 5.5, "K")
+    for (fx, fy) in [(92, 30), (95, 29), (98, 30), (101, 32)] {   // fingers
+        rectFill(&torso, fx, fy, 2, 4, "K")
+    }
     composite(&g, torso, dx: 0, dy: 0)
     var head = emptyGrid(w: 128, h: 128)
-    shadeEllipse(&head, cx: 64, cy: 33, rx: 16, ry: 15, main: "K", hi: "K", lo: "k")
-    // silver pompadour swept up-left + sideburns
-    fillEllipse(&head, cx: 62, cy: 17, rx: 15, ry: 8, "L")
-    fillEllipse(&head, cx: 54, cy: 13, rx: 8, ry: 6, "L")
-    for y in 24..<34 { head[y][48] = "L"; head[y][49] = "L"; head[y][79] = "L"; head[y][80] = "L" }
-    // warm eyes + big campaign smile
-    rectFill(&head, 53, 29, 3, 4, "E")
-    rectFill(&head, 72, 29, 3, 4, "E")
-    head[28][53] = "W"; head[28][72] = "W"
-    for dx in 0..<5 { head[27][51 + dx] = "k"; head[27][72 + dx] = "k" }
-    for dx in -6...6 { head[43 + abs(dx) / 3][64 + dx] = "3" }
-    head[44][58] = "W"; head[44][70] = "W"               // teeth glint
+    shadeEllipse(&head, cx: 64, cy: 32, rx: 16, ry: 15, main: "K", hi: "K", lo: "k")
+    rectFill(&head, 52, 38, 24, 6, "K")                     // jaw
+    // ears
+    fillEllipse(&head, cx: 47, cy: 33, rx: 2.6, ry: 3.4, "K")
+    fillEllipse(&head, cx: 81, cy: 33, rx: 2.6, ry: 3.4, "K")
+    // silver hair: full swept-back dome + volume, sideburns, part line
+    for y in 0..<128 { for x in 0..<128 where head[y][x] != "." {
+        if y < 26 { head[y][x] = "L" }
+    } }
+    fillEllipse(&head, cx: 64, cy: 17, rx: 17, ry: 8, "L")
+    fillEllipse(&head, cx: 58, cy: 12, rx: 10, ry: 5, "L")
+    for x in 50...78 { head[10][x] = head[10][x] == "L" ? "W" : head[10][x] }   // shine
+    for y in 26..<36 { head[y][48] = "L"; head[y][49] = "L" }   // sideburns
+    for y in 26..<36 { head[y][79] = "L"; head[y][80] = "L" }
+    // face: brows, warm eyes, nose, big honest campaign smile
+    for dx in 0..<6 { head[26][51 + dx] = "5" }
+    for dx in 0..<6 { head[26][71 + dx] = "5" }
+    rectFill(&head, 53, 29, 4, 5, "W")
+    rectFill(&head, 71, 29, 4, 5, "W")
+    rectFill(&head, 54, 30, 2, 3, "E")
+    rectFill(&head, 72, 30, 2, 3, "E")
+    for dy in 0..<4 { head[34 + dy][64] = "k" }             // nose
+    head[38][65] = "k"
+    // smile: wide open grin with teeth
+    for dx in -7...7 { head[42 + (abs(dx) >= 5 ? -1 : 0)][64 + dx] = "3" }
+    for dx in -5...5 { head[43][64 + dx] = "W" }
+    for dx in -5...5 { head[44][64 + dx] = "3" }
+    head[40][55] = "k"; head[40][73] = "k"                  // smile creases
     composite(&g, head, dx: 0, dy: 0)
     bossOutline(&g)
     return g
 }
 
-/// PARADE MARSHAL — shirtless, rainbow cape, aviators, whistle.
-/// Leads the Act 3 parade. Absolutely jacked. Absolutely fabulous.
 func bossMarshal() -> Grid {
     var g = emptyGrid(w: 128, h: 128)
     fillEllipse(&g, cx: 60, cy: 122, rx: 32, ry: 4, "S")
