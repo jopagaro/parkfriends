@@ -200,7 +200,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
 
     var isBoss: Bool {
         switch self {
-        case .grandGooseGerald, .officerGrumble, .foremanRex: true
+        case .grandGooseGerald, .officerGrumble, .foremanRex, .flockLeader: true
         default: false
         }
     }
@@ -212,6 +212,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: "🦢"
         case .officerGrumble:   "👮"
         case .foremanRex:       "👷"
+        case .flockLeader:      "🐦"
         default: ""
         }
     }
@@ -222,6 +223,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: "Ruler of the Pond"
         case .officerGrumble:   "12 Years on the Force. Zero Tolerance for Fun."
         case .foremanRex:       "The Man Behind the Construction"
+        case .flockLeader:      "Union Boss of the Rooftop Flock"
         default: ""
         }
     }
@@ -232,7 +234,27 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: "Gerald didn't ask to be this way. The pond just makes him this way."
         case .officerGrumble:   "He has a clipboard. He has been waiting to use it."
         case .foremanRex:       "He doesn't know what's under the site. He doesn't care."
+        case .flockLeader:      "Every crumb in this suburb passes through his beak first."
         default: ""
+        }
+    }
+
+    /// Story toasts shown in sequence after this boss goes down.
+    var bossVictoryBeats: [String] {
+        switch self {
+        case .grandGooseGerald:
+            return ["Gerald yields the fountain. He keeps the sash. Nobody argues.",
+                    "The south gate to the city is open."]
+        case .flockLeader:
+            return ["The flock scatters south in a panic of gray wings.",
+                    "Whatever spooked the pond, the pigeons answer to the city now."]
+        case .officerGrumble:
+            return ["Grumble looks at his clipboard, then at you, then eats the donut.",
+                    "The construction site gate stands unguarded."]
+        case .foremanRex:
+            return ["Rex, quietly: \"It was down there before any of us, you know.\"",
+                    "The dig lies open. Something old is waiting underneath."]
+        default: return []
         }
     }
 
@@ -241,6 +263,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: 80
         case .officerGrumble:   Int(Double(maxHP) * 0.60)
         case .foremanRex:       Int(Double(maxHP) * 0.50)
+        case .flockLeader:      Int(Double(maxHP) * 0.50)
         default: 0
         }
     }

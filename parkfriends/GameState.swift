@@ -531,6 +531,11 @@ final class GameState {
 
         switch currentZone {
         case .parkCenter:
+            if storyProgress == .hazelJoined,
+               quackClues.contains(.foundFeather),
+               !defeatedBosses.contains(.grandGooseGerald) {
+                return "Objective: Grand Goose Gerald holds the fountain plaza and the south path. Settle it."
+            }
             switch storyProgress {
             case .introCheckFountain:
                 return "Objective: Talk to the ranger and check the fountain."
@@ -547,12 +552,21 @@ final class GameState {
             if !quackClues.contains(.foundFeather) {
                 return "Objective: Search the pond for what scared the park's missing duck."
             }
+            if !defeatedBosses.contains(.flockLeader) {
+                return "Objective: The rooftop flock's leader saw everything. Make him talk."
+            }
             return "Objective: Bring the feather back through the park and ask who saw Quack last."
         case .citySouth:
             return "Objective: Track the breadcrumb trail through the alleys and chip bags."
         case .cityCenter:
+            if !defeatedBosses.contains(.officerGrumble) {
+                return "Objective: Officer Grumble guards the north gate from the station steps. Change his mind."
+            }
             return "Objective: Push toward the records district and find out why the city paperwork feels wrong."
         case .cityNorth:
+            if !defeatedBosses.contains(.foremanRex) {
+                return "Objective: Foreman Rex stands between you and the dig. Get past him."
+            }
             return "Objective: Reach the construction site and uncover what woke up beneath the concrete."
         }
     }

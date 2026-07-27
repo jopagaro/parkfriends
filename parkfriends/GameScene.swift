@@ -829,6 +829,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case .grandGooseGerald: stripeColor = SKColor(red: 0.10, green: 0.28, blue: 0.10, alpha: 1)
         case .officerGrumble:   stripeColor = SKColor(red: 0.08, green: 0.16, blue: 0.42, alpha: 1)
         case .foremanRex:       stripeColor = SKColor(red: 0.48, green: 0.22, blue: 0.04, alpha: 1)
+        case .flockLeader:      stripeColor = SKColor(red: 0.22, green: 0.26, blue: 0.34, alpha: 1)
         default:                stripeColor = SKColor(red: 0.35, green: 0.05, blue: 0.05, alpha: 1)
         }
 
@@ -861,15 +862,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         bossTag.alpha                   = 0
         overlay.addChild(bossTag)
 
-        // Boss emoji (large, left-of-center)
-        let emojiLabel = SKLabelNode(text: kind.bossEmoji)
-        emojiLabel.fontSize               = 80
-        emojiLabel.horizontalAlignmentMode = .center
-        emojiLabel.verticalAlignmentMode   = .center
-        emojiLabel.position               = CGPoint(x: -160, y: 10)
-        emojiLabel.zPosition              = 0.5
-        emojiLabel.alpha                  = 0
-        overlay.addChild(emojiLabel)
+        // Boss portrait (generated battle art; emoji fallback)
+        let portraitTex = WorldSprites.texture(enemy: kind)
+        let emojiLabel: SKNode
+        let portrait = SKSpriteNode(texture: portraitTex)
+        portrait.texture?.filteringMode = .nearest
+        portrait.size = CGSize(width: 170, height: 170)
+        portrait.position  = CGPoint(x: -160, y: 4)
+        portrait.zPosition = 0.5
+        portrait.alpha     = 0
+        overlay.addChild(portrait)
+        emojiLabel = portrait
 
         // Boss display name (big, white)
         let nameLabel = SKLabelNode(text: kind.displayName.uppercased())
@@ -999,10 +1002,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                               at: CGPoint(x: deathPos.x, y: deathPos.y + 44),
                               in: worldRoot)
 
-            // Bosses: record permanently, no respawn, show victory burst
+            // Bosses: record permanently, no respawn, victory burst, then
+            // the story beats + unlock messages roll in as toasts.
             if kind.isBoss {
                 gameState?.defeatBoss(kind)
                 showBossVictoryBurst(at: deathPos, kind: kind)
+                for (i, line) in kind.bossVictoryBeats.enumerated() {
+                    run(.sequence([
+                        .wait(forDuration: 1.4 + Double(i) * 2.6),
+                        .run { [weak self] in self?.showStoryToast(line) }
+                    ]))
+                }
                 drainPendingLevelUps()
                 return
             }
