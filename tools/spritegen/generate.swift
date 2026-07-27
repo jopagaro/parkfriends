@@ -1148,6 +1148,7 @@ struct NPCRole {
     var shirtless: Bool = false
     var sash: Bool = false              // diagonal sash across the torso
     var sashRainbow: Bool = false       // rainbow stripes instead of accent color
+    var pantless: Bool = false          // bare legs + comedy censor mosaic
 }
 
 let npcRoles: [NPCRole] = [
@@ -1202,9 +1203,13 @@ let npcRoles: [NPCRole] = [
             accent: (0xE8,0x58,0xA8), hatStyle: "none", vest: false, apron: false, scale: 1.0,
             shirtless: true, sash: true, sashRainbow: true),
     NPCRole(name: "parade2", skin: (0xB8,0x82,0x58), shirt: (0xB8,0x82,0x58), shirtDark: (0x8A,0x62,0x42),
-            pants: (0xF0,0xEC,0xE0), hair: (0xE8,0xC0,0x40), hat: nil, hatDark: (0xE8,0xC0,0x40),
+            pants: (0xB8,0x82,0x58), hair: (0xE8,0xC0,0x40), hat: nil, hatDark: (0xE8,0xC0,0x40),
             accent: (0x8A,0x4A,0xC8), hatStyle: "none", vest: false, apron: false, scale: 1.0,
-            shirtless: true, sash: true, sashRainbow: true),
+            shirtless: true, sash: true, sashRainbow: true, pantless: true),
+    NPCRole(name: "parade5", skin: (0xE8,0xC0,0x98), shirt: (0xE8,0xC0,0x98), shirtDark: (0xAE,0x90,0x72),
+            pants: (0xE8,0xC0,0x98), hair: (0x6E,0x4C,0x2A), hat: nil, hatDark: (0x6E,0x4C,0x2A),
+            accent: (0xE8,0x58,0xA8), hatStyle: "band", vest: false, apron: false, scale: 1.0,
+            shirtless: true, sash: true, sashRainbow: true, pantless: true),
     NPCRole(name: "parade3", skin: (0xF0,0xCC,0xA6), shirt: (0xF0,0xEC,0xE0), shirtDark: (0xC8,0xC0,0xB0),
             pants: (0x2E,0x2E,0x32), hair: (0xE8,0x58,0xA8), hat: nil, hatDark: (0xE8,0x58,0xA8),
             accent: (0xE8,0x58,0xA8), hatStyle: "none", vest: false, apron: false, scale: 1.0,
@@ -1288,25 +1293,30 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     // ── LEGS + SHOES ──
     var legs = emptyGrid(w: HW, h: HH)
     let legW = Int(12 * sc)
+    let legMain: Character = r.pantless ? "a" : "i"
+    let legHi:   Character = r.pantless ? "-" : "~"
+    let legLo:   Character = r.pantless ? "d" : "l"
     for (side, fwd) in [(-1.0, step == 0), (1.0, step == 1)] {
         let stride = profile ? (fwd ? 7.0 : -7.0) * sc : 0
         let lift = profile ? (fwd ? 0.0 : 4.0) : (fwd ? 0.0 : 5.0 * sc)
         let lx = Int(cx + side * 9.0 * sc - Double(legW) / 2 + stride)
         let bottom = Int(footY - lift)
-        box(&legs, lx, Int(legTop), legW, bottom - Int(legTop) - 6, "i")
+        box(&legs, lx, Int(legTop), legW, bottom - Int(legTop) - 6, legMain)
         for y in Int(legTop)..<(bottom - 6) {
-            put(&legs, lx, y, "~"); put(&legs, lx + 1, y, "~")
-            put(&legs, lx + legW - 1, y, "l"); put(&legs, lx + legW - 2, y, "l")
-            put(&legs, lx + legW - 3, y, "l")
+            put(&legs, lx, y, legHi); put(&legs, lx + 1, y, legHi)
+            put(&legs, lx + legW - 1, y, legLo); put(&legs, lx + legW - 2, y, legLo)
+            put(&legs, lx + legW - 3, y, legLo)
         }
         for y in Int(legTop)..<(bottom - 6) {
-            if (lx + 2 + y) % 2 == 0 { put(&legs, lx + 2, y, "~") }
-            if (lx + legW - 4 + y) % 2 == 0 { put(&legs, lx + legW - 4, y, "l") }
+            if (lx + 2 + y) % 2 == 0 { put(&legs, lx + 2, y, legHi) }
+            if (lx + legW - 4 + y) % 2 == 0 { put(&legs, lx + legW - 4, y, legLo) }
         }
-        hline(&legs, lx + 2, lx + legW - 3, Int(legTop + 26 * sc), "l")     // knee crease
-        hline(&legs, lx + 1, lx + legW - 4, Int(legTop + 27 * sc), "l")
-        hline(&legs, lx, lx + legW - 1, bottom - 8, "l")                    // cuff
-        hline(&legs, lx, lx + legW - 1, bottom - 7, "l")
+        hline(&legs, lx + 2, lx + legW - 3, Int(legTop + 26 * sc), legLo)   // knee crease
+        if !r.pantless {
+            hline(&legs, lx + 1, lx + legW - 4, Int(legTop + 27 * sc), legLo)
+            hline(&legs, lx, lx + legW - 1, bottom - 8, legLo)              // cuff
+            hline(&legs, lx, lx + legW - 1, bottom - 7, legLo)
+        }
         // shoe: upper + midsole + dark sole + toe cap
         let shoeW = legW + 4
         box(&legs, lx - 2, bottom - 6, shoeW, 6, "z")
@@ -1319,7 +1329,7 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             put(&legs, lx - 1, bottom - 6, "1"); put(&legs, lx, bottom - 6, "1")
         }
     }
-    outlineShape(&legs, body: ["i", "l", "~", "z", "1"], outline: "l")
+    outlineShape(&legs, body: ["i", "l", "~", "z", "1", "a", "d", "-"], outline: r.pantless ? ":" : "l")
     composite(&g, legs, dx: 0, dy: 0)
 
     // ── TORSO ──
@@ -1390,11 +1400,29 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             }
         }
     }
-    hline(&body, Int(cx - waistHalf), Int(cx + waistHalf), yHem, "l")
-    hline(&body, Int(cx - waistHalf), Int(cx + waistHalf), yHem + 1, "l")
-    hline(&body, Int(cx - waistHalf), Int(cx + waistHalf), yHem + 2, "l")
-    if dir != 1 {
-        box(&body, Int(cx) - 2, yHem, 4, 3, "y")           // buckle
+    if !r.pantless {
+        hline(&body, Int(cx - waistHalf), Int(cx + waistHalf), yHem, "l")
+        hline(&body, Int(cx - waistHalf), Int(cx + waistHalf), yHem + 1, "l")
+        hline(&body, Int(cx - waistHalf), Int(cx + waistHalf), yHem + 2, "l")
+        if dir != 1 {
+            box(&body, Int(cx) - 2, yHem, 4, 3, "y")       // buckle
+        }
+    } else {
+        // the comedy censor: a chunky mosaic block over the hips, front
+        // AND back — deliberately "pixelated" at 5px cells
+        let tones: [Character] = ["a", "-", "d", "k"]
+        let cell = 5
+        let mx0 = Int(cx - 12 * sc), my0 = yHem - 2
+        let mw = Int(24 * sc), mh = Int(16 * sc)
+        for cyi in 0..<(mh / cell + 1) {
+            for cxi in 0..<(mw / cell + 1) {
+                let ch = tones[speck(cxi, cyi, dir + 77) % tones.count]
+                for yy in 0..<cell { for xx in 0..<cell {
+                    let px = mx0 + cxi * cell + xx, py = my0 + cyi * cell + yy
+                    if px < mx0 + mw, py < my0 + mh { put(&body, px, py, ch) }
+                } }
+            }
+        }
     }
 
     // ── ARMS ──
@@ -1620,7 +1648,7 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
 // sheets (same layout ScenePainter.autotile already expects), road and
 // sidewalk families, hedge, and tree sprites. One palette with the cast.
 
-let TS = 32
+let TS = 48
 
 /// Deterministic hash for texture speckle (stable across runs).
 func speck(_ x: Int, _ y: Int, _ salt: Int) -> Int {
@@ -1631,7 +1659,7 @@ func speck(_ x: Int, _ y: Int, _ salt: Int) -> Int {
 
 func grassClumps(_ g: inout Grid, base: Character, salt: Int) {
     // deliberate SNES-style clumps: small leaf tufts, not noise
-    for i in 0..<4 {
+    for i in 0..<7 {
         let cx = 3 + speck(i, salt, 5) % (TS - 7)
         let cy = 3 + speck(salt, i, 9) % (TS - 7)
         g[cy][cx] = "g"; g[cy][cx + 1] = "g"; g[cy + 1][cx + 1] = "g"
@@ -1644,17 +1672,17 @@ func tileGrass(variant: Int) -> Grid {
     // fine EarthBound checker: 16px quadrants inside every tile, so the
     // pattern tiles seamlessly at half-tile scale
     for y in 0..<TS { for x in 0..<TS {
-        g[y][x] = ((x / 16) + (y / 16)) % 2 == 0 ? "G" : "6"
+        g[y][x] = ((x / 24) + (y / 24)) % 2 == 0 ? "G" : "6"
     } }
     grassClumps(&g, base: "G", salt: 11 + variant * 97)
     if variant == 1 {   // sprout variant
-        for (bx, by) in [(6, 8), (22, 18), (13, 26)] {
+        for (bx, by) in [(9, 12), (33, 27), (20, 39), (40, 8)] {
             g[by][bx] = "g"; g[by - 1][bx] = "g"; g[by - 1][bx + 1] = "H"
             g[by][bx + 1] = "g"
         }
     }
     if variant == 2 {   // tiny flowers variant
-        for (fx, fy, c) in [(8, 6, "W"), (24, 14, "P"), (14, 25, "Q")] {
+        for (fx, fy, c) in [(12, 9, "W"), (36, 21, "P"), (21, 38, "Q"), (7, 30, "O")] {
             g[fy][fx] = Character(c); g[fy][fx + 1] = Character(c)
             g[fy + 1][fx] = Character(c)
             g[fy - 1][fx] = "H"
@@ -1679,14 +1707,14 @@ func tileDirt(variant: Int) -> Grid {
         g[y][x] = r < 16 ? "t" : "T"
     } }
     // pebble clusters with lit tops
-    for i in 0..<3 {
+    for i in 0..<5 {
         let px = 3 + speck(i, variant, 13) % (TS - 8)
         let py = 3 + speck(variant, i, 17) % (TS - 8)
         g[py][px] = "t"; g[py][px + 1] = "t"; g[py + 1][px] = "r"
         g[py + 1][px + 1] = "t"; g[py - 1][px] = "h"
     }
     // faint horizontal wear bands
-    for x in stride(from: variant % 3, to: TS, by: 9) { g[10][x] = "t"; g[24][(x + 4) % TS] = "t" }
+    for x in stride(from: variant % 3, to: TS, by: 13) { g[15][x] = "t"; g[36][(x + 6) % TS] = "t" }
     return g
 }
 
@@ -1694,7 +1722,7 @@ func tileStone(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     // per-quad tone variation so slabs aren't uniform
     for y in 0..<TS { for x in 0..<TS {
-        let quad = (x / 16) + (y / 16) * 2
+        let quad = (x / 24) + (y / 24) * 2
         let toneShift = speck(quad, variant, 61) % 3
         let r = speck(x + variant * 43, y, 53)
         if r < 12 { g[y][x] = "0" }
@@ -1702,10 +1730,10 @@ func tileStone(variant: Int) -> Grid {
         else { g[y][x] = "1" }
     } }
     // broken, low-contrast joints (dashes with gaps, mid tone)
-    for i in 0..<TS where i % 4 != 3 { g[15][i] = "9"; g[i][15] = "9" }
-    for i in stride(from: 2, to: TS, by: 7) { g[15][i] = "0"; g[i][15] = "0" }
+    for i in 0..<TS where i % 5 != 4 { g[23][i] = "9"; g[i][23] = "9" }
+    for i in stride(from: 3, to: TS, by: 10) { g[23][i] = "0"; g[i][23] = "0" }
     if variant % 3 == 2 {
-        for i in 0..<6 { g[6 + i][20 + (i / 2)] = "0" }
+        for i in 0..<9 { g[9 + i][30 + (i / 2)] = "0" }
     }
     return g
 }
@@ -1719,8 +1747,8 @@ func tileRoad(variant: Int, dash: Bool = false) -> Grid {
         g[y][x] = r < 60 ? "x" : "R"
     } }
     if dash {
-        for x in 4..<14 { for y in 14...17 { g[y][x] = "W" } }
-        for x in 22..<32 { for y in 14...17 { g[y][x] = "W" } }
+        for x in 6..<21 { for y in 21...26 { g[y][x] = "W" } }
+        for x in 33..<48 { for y in 21...26 { g[y][x] = "W" } }
     }
     return g
 }
@@ -1743,12 +1771,12 @@ func tileWater(variant: Int) -> Grid {
         g[y][x] = r < 14 ? "v" : "w"
     } }
     // SNES wave crests: staggered rows of short highlights with dark lee
-    for (row, off) in [(5, 2), (13, 12), (21, 6), (28, 18)] {
-        var x = off + (variant % 2) * 5
-        while x < TS - 5 {
-            for i in 0..<4 { g[row][x + i] = "u" }
-            g[row + 1][x + 1] = "v"; g[row + 1][x + 2] = "v"
-            x += 14
+    for (row, off) in [(7, 3), (19, 18), (31, 9), (42, 27)] {
+        var x = off + (variant % 2) * 7
+        while x < TS - 7 {
+            for i in 0..<6 { g[row][x + i] = "u" }
+            g[row + 1][x + 2] = "v"; g[row + 1][x + 3] = "v"; g[row + 1][x + 4] = "v"
+            x += 20
         }
     }
     return g
@@ -1757,11 +1785,11 @@ func tileWater(variant: Int) -> Grid {
 func tileHedgeLeaf(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS { g[y][x] = "G" } }
-    for i in 0..<7 {
-        let cx = 2 + speck(i, variant, 23) % (TS - 6)
-        let cy = 2 + speck(variant, i, 29) % (TS - 6)
+    for i in 0..<12 {
+        let cx = 2 + speck(i, variant, 23) % (TS - 7)
+        let cy = 2 + speck(variant, i, 29) % (TS - 7)
         g[cy][cx] = "g"; g[cy][cx + 1] = "g"; g[cy + 1][cx + 1] = "g"
-        g[cy - 1][cx + 1] = "H"
+        g[cy + 1][cx + 2] = "g"; g[cy - 1][cx + 1] = "H"; g[cy - 1][cx] = "H"
     }
     return g
 }
@@ -1785,10 +1813,10 @@ func dilate(_ g: inout Grid, with ch: Character) {
 func blobCell(fill: Grid, n: Bool, s: Bool, e: Bool, w: Bool,
               rim: Character, fringe: Character?, midRim: Character? = nil) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
-    let radius = 9.0
+    let radius = 13.0
     // with a fringe, inset the core shape so the fringe + rim can grow back
     // out to the cell bounds without being clipped
-    let inset: Double = fringe != nil ? 3 : 0
+    let inset: Double = fringe != nil ? 4 : 0
     func inside(_ x: Int, _ y: Int) -> Bool {
         let fx = Double(x) + 0.5, fy = Double(y) + 0.5
         if n, fy < inset { return false }
@@ -1872,14 +1900,14 @@ func tilePicket(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     _ = variant
     // rails
-    for y in [10, 22] { for x in 0..<TS { g[y][x] = "1"; g[y + 1][x] = "0" } }
-    // pickets every 8px with pointed tops
-    var x = 2
+    for y in [15, 33] { for x in 0..<TS { g[y][x] = "1"; g[y + 1][x] = "0" } }
+    // pickets every 12px with pointed tops
+    var x = 3
     while x < TS {
-        for y in 6..<30 { g[y][x] = "1"; g[y][x + 1] = "1"; g[y][x + 2] = "0" }
-        g[5][x + 1] = "1"
-        g[4][x + 1] = "0"
-        x += 8
+        for y in 9..<45 { g[y][x] = "1"; g[y][x + 1] = "1"; g[y][x + 2] = "1"; g[y][x + 3] = "0" }
+        g[8][x + 1] = "1"; g[8][x + 2] = "1"
+        g[7][x + 1] = "0"; g[7][x + 2] = "0"
+        x += 12
     }
     return g
 }
@@ -2234,16 +2262,26 @@ func houseImage(variant: String) -> CGImage {
 // MARK: - CITY BUILDINGS + PROPS + INTERIORS (RGB canvas)
 
 final class RGBCanvas {
+    // All logical coordinates are mapped x1.5 to physical pixels, so every
+    // RGB asset (buildings, props, furniture, interior tiles) renders at
+    // high definition with exact rect edges — call sites stay unchanged.
     let W: Int, H: Int
     var px: [UInt8]
-    init(_ w: Int, _ h: Int) { W = w; H = h; px = [UInt8](repeating: 0, count: w * h * 4) }
-    func put(_ x: Int, _ y: Int, _ c: RGB) {
+    init(_ w: Int, _ h: Int) { W = w * 3 / 2; H = h * 3 / 2; px = [UInt8](repeating: 0, count: W * H * 4) }
+    private func rawPut(_ x: Int, _ y: Int, _ c: RGB) {
         guard x >= 0, x < W, y >= 0, y < H else { return }
         let i = (y * W + x) * 4
         px[i] = c.r; px[i+1] = c.g; px[i+2] = c.b; px[i+3] = 255
     }
+    func put(_ x: Int, _ y: Int, _ c: RGB) {
+        for yy in (y * 3 / 2)..<((y + 1) * 3 / 2) {
+            for xx in (x * 3 / 2)..<((x + 1) * 3 / 2) { rawPut(xx, yy, c) }
+        }
+    }
     func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ c: RGB) {
-        for yy in y..<(y+h) { for xx in x..<(x+w) { put(xx, yy, c) } }
+        for yy in (y * 3 / 2)..<((y + h) * 3 / 2) {
+            for xx in (x * 3 / 2)..<((x + w) * 3 / 2) { rawPut(xx, yy, c) }
+        }
     }
     func image() -> CGImage {
         let provider = CGDataProvider(data: Data(px) as CFData)!
@@ -4122,8 +4160,8 @@ for v in 0..<3 {
 writePNG(render(tileRoad(variant: 0, dash: true)), to: "\(outDir)/tile-road-dash-32.png")
 do {
     var cw = tileRoad(variant: 1)
-    for band in stride(from: 2, to: TS, by: 8) {
-        for y in band..<(band + 4) { for x in 0..<TS where (x + y) % 9 != 8 { cw[y][x] = "W" } }
+    for band in stride(from: 3, to: TS, by: 12) {
+        for y in band..<(band + 6) { for x in 0..<TS where (x + y) % 13 != 12 { cw[y][x] = "W" } }
     }
     writePNG(render(cw), to: "\(outDir)/tile-road-cross-32.png")
 }

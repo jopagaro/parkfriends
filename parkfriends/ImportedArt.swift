@@ -253,8 +253,9 @@ enum ImportedArt {
 
     /// Generated 4x4 blob sheet cell (32px cells), row measured from top.
     static func genBlobTile(_ sheet: String, col: Int, rowFromTop: Int) -> SKTexture? {
+        // generated blob sheets are native 48px cells (192px sheets)
         sheetTextureFromTop(relativePath: "\(genWorld)\(sheet).png",
-                            tileSize: CGSize(width: 32, height: 32),
+                            tileSize: CGSize(width: 48, height: 48),
                             col: col, rowFromTop: rowFromTop)
     }
 
