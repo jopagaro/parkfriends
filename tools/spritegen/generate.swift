@@ -1145,6 +1145,9 @@ struct NPCRole {
     let vest: Bool
     let apron: Bool
     let scale: Double
+    var shirtless: Bool = false
+    var sash: Bool = false              // diagonal sash across the torso
+    var sashRainbow: Bool = false       // rainbow stripes instead of accent color
 }
 
 let npcRoles: [NPCRole] = [
@@ -1185,6 +1188,31 @@ let npcRoles: [NPCRole] = [
     NPCRole(name: "foreman", skin: (0xE0,0xB0,0x88), shirt: (0xC4,0x95,0x5A), shirtDark: (0xA0,0x78,0x40),
             pants: (0x48,0x48,0x60), hair: (0x2E,0x22,0x16), hat: (0xE8,0xC0,0x40), hatDark: (0xC4,0x9A,0x20),
             accent: (0xE8,0x60,0x20), hatStyle: "hard", vest: true, apron: false, scale: 1.05),
+    // ── Act 3 cast: Mayor Johnson + the pride parade crowd ──────────────
+    NPCRole(name: "mayor", skin: (0xE0,0xB0,0x88), shirt: (0x6A,0x6A,0x6A), shirtDark: (0x50,0x50,0x50),
+            pants: (0x50,0x50,0x50), hair: (0xD0,0xD0,0xD0), hat: nil, hatDark: (0xB0,0xB0,0xB0),
+            accent: (0xC0,0x30,0x38), hatStyle: "none", vest: false, apron: false, scale: 1.05,
+            sash: true),
+    NPCRole(name: "marshal", skin: (0xD8,0xA8,0x80), shirt: (0xD8,0xA8,0x80), shirtDark: (0xA2,0x7E,0x60),
+            pants: (0x2E,0x3E,0x6E), hair: (0x2E,0x22,0x16), hat: nil, hatDark: (0x2E,0x22,0x16),
+            accent: (0xE8,0x58,0xA8), hatStyle: "none", vest: false, apron: false, scale: 1.1,
+            shirtless: true, sash: true, sashRainbow: true),
+    NPCRole(name: "parade1", skin: (0xE8,0xC0,0x98), shirt: (0xE8,0xC0,0x98), shirtDark: (0xAE,0x90,0x72),
+            pants: (0x2E,0x3E,0x6E), hair: (0x2E,0x22,0x16), hat: nil, hatDark: (0x2E,0x22,0x16),
+            accent: (0xE8,0x58,0xA8), hatStyle: "none", vest: false, apron: false, scale: 1.0,
+            shirtless: true, sash: true, sashRainbow: true),
+    NPCRole(name: "parade2", skin: (0xB8,0x82,0x58), shirt: (0xB8,0x82,0x58), shirtDark: (0x8A,0x62,0x42),
+            pants: (0xF0,0xEC,0xE0), hair: (0xE8,0xC0,0x40), hat: nil, hatDark: (0xE8,0xC0,0x40),
+            accent: (0x8A,0x4A,0xC8), hatStyle: "none", vest: false, apron: false, scale: 1.0,
+            shirtless: true, sash: true, sashRainbow: true),
+    NPCRole(name: "parade3", skin: (0xF0,0xCC,0xA6), shirt: (0xF0,0xEC,0xE0), shirtDark: (0xC8,0xC0,0xB0),
+            pants: (0x2E,0x2E,0x32), hair: (0xE8,0x58,0xA8), hat: nil, hatDark: (0xE8,0x58,0xA8),
+            accent: (0xE8,0x58,0xA8), hatStyle: "none", vest: false, apron: false, scale: 1.0,
+            sash: true, sashRainbow: true),
+    NPCRole(name: "parade4", skin: (0xD8,0xA8,0x80), shirt: (0xE8,0x58,0xA8), shirtDark: (0xB4,0x40,0x82),
+            pants: (0x3A,0x5F,0xA0), hair: (0x8A,0x4A,0xC8), hat: nil, hatDark: (0x8A,0x4A,0xC8),
+            accent: (0xF0,0xEC,0xE0), hatStyle: "none", vest: false, apron: false, scale: 0.95,
+            sash: true, sashRainbow: true),
 ]
 
 func applyRolePalette(_ r: NPCRole) {
@@ -1198,6 +1226,12 @@ func applyRolePalette(_ r: NPCRole) {
     if let h = r.hat { palette["n"] = (h.0, h.1, h.2, 255) }
     palette["o"] = (r.hatDark.0, r.hatDark.1, r.hatDark.2, 255)
     palette["y"] = (r.accent.0, r.accent.1, r.accent.2, 255)
+    func lighten(_ c: (UInt8, UInt8, UInt8)) -> (UInt8, UInt8, UInt8, UInt8) {
+        (UInt8(min(255, Int(c.0) * 9 / 8 + 14)), UInt8(min(255, Int(c.1) * 9 / 8 + 14)),
+         UInt8(min(255, Int(c.2) * 9 / 8 + 14)), 255)
+    }
+    palette["+"] = lighten(r.shirt)
+    palette["-"] = lighten(r.skin)
 }
 
 /// One human frame. dir: 0=S 1=N 2=E. step: 0/1 walk alternation.
@@ -1214,7 +1248,7 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
 
     fillEllipse(&g, cx: cx, cy: footY + 5, rx: 15 * sc, ry: 3.4, "S")
 
-    // legs
+    // legs — with a belt line and a center seam so pants read as pants
     var legs = emptyGrid(w: SW, h: SH)
     let lift = 3.0 * sc
     for (ix, off) in [(-1.0, step == 0 ? 0.0 : lift), (1.0, step == 0 ? lift : 0.0)] {
@@ -1225,13 +1259,33 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         fillEllipse(&legs, cx: lx + (dir == 2 ? ix * 1.5 : 0), cy: footY - off - 1,
                     rx: 4.2 * sc, ry: 2.6 * sc, "z")
     }
+    if dir != 2 {
+        for y in Int(legTop)..<Int(legTop + 8 * sc) where legs[y][Int(cx)] == "i" {
+            legs[y][Int(cx)] = "l"
+        }
+    }
     outlineShape(&legs, body: ["i", "z"], outline: "l")
     composite(&g, legs, dx: 0, dy: 0)
 
-    // body
+    // torso
     var body = emptyGrid(w: SW, h: SH)
+    let torsoMain: Character = r.shirtless ? "a" : "e"
+    let torsoHi:   Character = r.shirtless ? "-" : "+"
+    let torsoLo:   Character = r.shirtless ? "d" : "f"
     shadeEllipse(&body, cx: cx, cy: bodyTop + 12 * sc, rx: 12.5 * sc, ry: 14 * sc,
-                 main: "e", hi: "e", lo: "f")
+                 main: torsoMain, hi: torsoHi, lo: torsoLo)
+    if r.shirtless, dir == 0 {
+        // chest + navel definition
+        for dx in -5...(-1) { body[Int(bodyTop + 8 * sc)][Int(cx) + dx] = "d" }
+        for dx in 1...5     { body[Int(bodyTop + 8 * sc)][Int(cx) + dx] = "d" }
+        body[Int(bodyTop + 18 * sc)][Int(cx)] = "d"
+    }
+    if !r.shirtless, dir != 1 {
+        // collar
+        for x in Int(cx - 5 * sc)...Int(cx + 5 * sc) where body[Int(bodyTop + 1 * sc)][x] != "." {
+            body[Int(bodyTop + 1 * sc)][x] = "f"
+        }
+    }
     if r.vest {
         for y in Int(bodyTop + 2 * sc)..<Int(bodyTop + 20 * sc) {
             for x in Int(cx - 9 * sc)..<Int(cx + 9 * sc) where body[y][x] != "." { body[y][x] = "y" }
@@ -1242,31 +1296,51 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             for x in Int(cx - 7 * sc)..<Int(cx + 7 * sc) where body[y][x] != "." { body[y][x] = "y" }
         }
     }
+    if r.sash, dir != 1 {
+        let cols: [Character] = r.sashRainbow ? ["%", "X", "2", "G", "w", "^"] : ["y", "y", "y"]
+        for y in Int(bodyTop)..<Int(legTop) {
+            for x in 0..<SW where body[y][x] != "." {
+                let dgn = (x - Int(cx - 12 * sc)) - (y - Int(bodyTop))
+                if dgn >= 0, dgn < cols.count * 2 { body[y][x] = cols[dgn / 2] }
+            }
+        }
+    }
+    // arms with hands
     let armDY = step == 0 ? 0.0 : 2.0 * sc
+    let armCh: Character = r.shirtless ? "a" : "e"
     if dir == 2 {
-        fillEllipse(&body, cx: cx + 8 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, "e")
+        fillEllipse(&body, cx: cx + 8 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, armCh)
+        fillEllipse(&body, cx: cx + 8 * sc, cy: bodyTop + 19 * sc + armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
     } else {
-        fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, "e")
-        fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 12 * sc - armDY, rx: 3.6 * sc, ry: 8 * sc, "e")
+        fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 12 * sc + armDY, rx: 3.6 * sc, ry: 8 * sc, armCh)
+        fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 12 * sc - armDY, rx: 3.6 * sc, ry: 8 * sc, armCh)
         fillEllipse(&body, cx: cx - 14.5 * sc, cy: bodyTop + 19 * sc + armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
         fillEllipse(&body, cx: cx + 14.5 * sc, cy: bodyTop + 19 * sc - armDY, rx: 2.6 * sc, ry: 2.6 * sc, "a")
     }
-    outlineShape(&body, body: ["e", "f", "y", "a"], outline: "f")
+    outlineShape(&body, body: ["e", "f", "+", "y", "a", "-", "%", "X", "2", "G", "w", "^"], outline: r.shirtless ? "d" : "f")
     composite(&g, body, dx: 0, dy: 0)
 
     // head
     var head = emptyGrid(w: SW, h: SH)
     let hx = dir == 2 ? cx + 2 : cx
     shadeEllipse(&head, cx: hx, cy: headCY, rx: headR, ry: headR * 0.95,
-                 main: "a", hi: "a", lo: "d", loThresh: -0.52)
+                 main: "a", hi: "-", lo: "d", loThresh: -0.52)
     if dir == 2 {
         fillEllipse(&head, cx: hx + headR * 0.9, cy: headCY + 3, rx: 2.6 * sc, ry: 2.2 * sc, "a")
     }
-    // hair base (visible for hatless + north)
+    // hair: full back coverage on north, fringe with jagged bottom on south
     if r.hatStyle == "none" || dir == 1 {
+        let hairLine = dir == 1 ? headCY + headR * 0.55 : headCY - headR * 0.30
         for y in 0..<SH { for x in 0..<SW where head[y][x] != "." {
-            if Double(y) < headCY - headR * (dir == 1 ? -0.1 : 0.3) { head[y][x] = "p" }
+            if Double(y) < hairLine { head[y][x] = "p" }
         } }
+        if dir == 0 {
+            // jagged fringe
+            for x in stride(from: Int(hx - headR * 0.8), to: Int(hx + headR * 0.8), by: 3) {
+                let yy = Int(headCY - headR * 0.30)
+                if head[yy][x] == "a" || head[yy][x] == "-" { head[yy][x] = "p" }
+            }
+        }
     }
     switch r.hatStyle {
     case "brim":
@@ -1312,15 +1386,22 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             } }
         }
     }
-    outlineShape(&head, body: ["a", "d", "p", "n", "o"], outline: "d")
+    outlineShape(&head, body: ["a", "d", "-", "p", "n", "o"], outline: "d")
+    // face v2: eye whites + pupils + brows + mouth
     if dir == 0 {
-        for (ex, ey) in [(Int(hx - 5 * sc), Int(headCY + 1)), (Int(hx + 3 * sc), Int(headCY + 1))] {
-            for dy in 0..<3 { for dx in 0..<2 { head[ey + dy][ex + dx] = "E" } }
+        let eyeY = Int(headCY - 1 * sc)
+        for ex in [Int(hx - 6 * sc), Int(hx + 3 * sc)] {
+            for dy in 0..<4 { for dx in 0..<3 { head[eyeY + dy][ex + dx] = "W" } }
+            for dy in 1..<4 { for dx in 1..<3 { head[eyeY + dy][ex + dx] = "E" } }
+            for dx in 0..<3 { head[eyeY - 2][ex + dx] = "d" }
         }
+        for dx in -1...1 { head[Int(headCY + headR * 0.55)][Int(hx) + dx] = "d" }
     } else if dir == 2 {
-        for dy in 0..<3 { for dx in 0..<2 {
-            head[Int(headCY) + dy][Int(hx + headR * 0.45) + dx] = "E"
-        } }
+        let ex = Int(hx + headR * 0.45), eyeY = Int(headCY - 1 * sc)
+        for dy in 0..<4 { for dx in 0..<3 { head[eyeY + dy][ex + dx] = "W" } }
+        for dy in 1..<4 { for dx in 1..<3 { head[eyeY + dy][ex + dx] = "E" } }
+        for dx in 0..<3 { head[eyeY - 2][ex + dx] = "d" }
+        head[Int(headCY + headR * 0.55)][Int(hx + headR * 0.75)] = "d"
     }
     if r.name == "birdwatcher", dir == 0 {
         fillEllipse(&head, cx: cx - 3, cy: bodyTop + 4, rx: 2.4, ry: 2.0, "E")
@@ -2573,6 +2654,33 @@ func writeSheet(rows: [[Grid]], scale: Int, to path: String) {
     writePNG(render(sheet, scale: scale), to: path)
 }
 
+/// Montage of pre-rendered images — use when rows were rendered under
+/// different palette states (the char-grid writeSheet renders at the end,
+/// which lies for role-palette art).
+func writeImageSheet(rows: [[CGImage]], scale: Int, to path: String) {
+    let gap = 4
+    let rowHs = rows.map { r in r.map(\.height).max() ?? 0 }
+    let W = (rows.map { r in r.reduce(0) { $0 + $1.width + gap } }.max() ?? 0) + gap
+    let H = rowHs.reduce(0, +) + gap * (rows.count + 1)
+    guard let ctx = CGContext(data: nil, width: W * scale, height: H * scale,
+                              bitsPerComponent: 8, bytesPerRow: 0,
+                              space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+    ctx.interpolationQuality = .none
+    var yTop = gap
+    for (ri, row) in rows.enumerated() {
+        var x = gap
+        for img in row {
+            let rect = CGRect(x: x * scale, y: (H - yTop - rowHs[ri]) * scale,
+                              width: img.width * scale, height: img.height * scale)
+            ctx.draw(img, in: rect)
+            x += img.width + gap
+        }
+        yTop += rowHs[ri] + gap
+    }
+    if let out = ctx.makeImage() { writePNG(out, to: path) }
+}
+
 func emit(_ c: CharacterSet) {
     let west = c.east.map(mirrored)
     for (dir, frames) in [("south", c.south), ("north", c.north),
@@ -2659,6 +2767,11 @@ let critterPalette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     "%": (0xC0, 0x30, 0x38, 255), // vending red
     "&": (0x8E, 0x20, 0x28, 255), // vending red dark
     "*": (0x7A, 0xE0, 0xD4, 255), // possessed glow
+    "^": (0x8A, 0x4A, 0xC8, 255), // rainbow purple
+    "!": (0xE8, 0x58, 0xA8, 255), // hot pink
+    "@": (0x2E, 0x3E, 0x6E, 255), // navy (uniforms, denim)
+    "#": (0x20, 0x2C, 0x52, 255), // navy dark
+    "$": (0x2A, 0x50, 0x18, 255), // dark uniform green (opaque)
 ]
 for (k, v) in critterPalette { palette[k] = v }
 
@@ -2886,12 +2999,14 @@ func catFrame(dir: String, step: Int) -> Grid {
     var b = emptyGrid(w: 44, h: 44)
 
     func earPair(_ cx: Int, _ topY: Int, spread: Int) {
-        for (ex, dirn) in [(cx - spread, 1), (cx + spread, -1)] {
+        // apex at the outer top, base widening down-inward — classic cat ear
+        for sgn in [-1, 1] {
+            let apexX = cx + sgn * (spread + 3)
             for i in 0..<6 {
-                let w = max(0, 4 - i * 4 / 6)
-                for x in (-w)...w { b[topY + i][ex + x + dirn * (i / 3)] = "7" }
+                for dx in 0...i { b[topY + i][apexX - sgn * dx] = "7" }
             }
-            b[topY + 3][ex] = "P"; b[topY + 4][ex] = "P"
+            b[topY + 3][apexX - sgn] = "P"
+            b[topY + 4][apexX - sgn * 2] = "P"
         }
     }
 
@@ -3041,6 +3156,288 @@ func waspFrame(dir: String, step: Int) -> Grid {
     return g
 }
 
+
+// ─── BOSS PORTRAITS (128×128, hand-built, hyper-detailed) ────────────────
+// Fixed palette chars only (no role slots): skin K/k/-hi via W dither,
+// outline "3" near-black.
+
+func rectFill(_ g: inout Grid, _ x0: Int, _ y0: Int, _ w: Int, _ h: Int, _ ch: Character) {
+    for y in max(0, y0)..<min(g.count, y0 + h) {
+        for x in max(0, x0)..<min(g[0].count, x0 + w) { g[y][x] = ch }
+    }
+}
+
+func bossOutline(_ g: inout Grid) {
+    var bodyChars: Set<Character> = []
+    for row in g { for ch in row where ch != "." && ch != "S" { bodyChars.insert(ch) } }
+    outlineShape(&g, body: bodyChars, outline: "3")
+}
+
+/// PARK RANGER — bible: campaign hat, forest green, badge, radio antenna,
+/// sunglasses an absolute requirement. Expression: unknowable.
+func bossRanger() -> Grid {
+    var g = emptyGrid(w: 128, h: 128)
+    fillEllipse(&g, cx: 64, cy: 122, rx: 30, ry: 4, "S")
+    // boots + khaki pants
+    for lx in [50, 66] {
+        rectFill(&g, lx, 88, 12, 26, "T")
+        rectFill(&g, lx + 8, 88, 4, 26, "t")
+        rectFill(&g, lx - 1, 112, 14, 8, "m")
+    }
+    // duty belt + radio with antenna
+    rectFill(&g, 46, 83, 36, 6, "r")
+    rectFill(&g, 60, 83, 8, 6, "Q")
+    rectFill(&g, 80, 78, 8, 12, "R")
+    for y in 62..<78 { g[y][86] = "E" }
+    g[61][86] = "E"
+    // torso: forest green uniform
+    var torso = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&torso, cx: 64, cy: 66, rx: 20, ry: 21, main: "g", hi: "H", lo: "$")
+    // chest pockets + badge
+    rectFill(&torso, 52, 62, 8, 6, "$")
+    rectFill(&torso, 68, 62, 8, 6, "$")
+    rectFill(&torso, 53, 58, 5, 5, "Q")
+    // arms crossed-adjacent: straight, hands in fists
+    fillEllipse(&torso, cx: 40, cy: 70, rx: 6, ry: 14, "g")
+    fillEllipse(&torso, cx: 88, cy: 70, rx: 6, ry: 14, "g")
+    fillEllipse(&torso, cx: 40, cy: 83, rx: 4.4, ry: 4.4, "K")
+    fillEllipse(&torso, cx: 88, cy: 83, rx: 4.4, ry: 4.4, "K")
+    composite(&g, torso, dx: 0, dy: 0)
+    // head: square jaw, unknowable
+    var head = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&head, cx: 64, cy: 34, rx: 17, ry: 16, main: "K", hi: "K", lo: "k")
+    rectFill(&head, 50, 38, 28, 8, "K")
+    for dx in -4...4 { head[47][64 + dx] = "k" }        // stern mouth
+    // mirrored sunglasses band
+    rectFill(&head, 48, 28, 32, 6, "E")
+    rectFill(&head, 52, 29, 9, 4, "3")
+    rectFill(&head, 67, 29, 9, 4, "3")
+    head[29][53] = "L"; head[29][68] = "L"
+    // campaign hat: wide flat brim + dented crown + band
+    rectFill(&head, 38, 20, 52, 4, "T")
+    rectFill(&head, 38, 23, 52, 2, "t")
+    fillEllipse(&head, cx: 64, cy: 13, rx: 14, ry: 8, "T")
+    for x in 56...72 { head[8][x] = "t" }               // crown dent
+    rectFill(&head, 50, 18, 28, 2, "$")                 // hat band
+    composite(&g, head, dx: 0, dy: 0)
+    bossOutline(&g)
+    return g
+}
+
+/// OFFICER GRUMBLE — navy uniform, peaked cap, mustache, one donut left.
+func bossGrumble() -> Grid {
+    var g = emptyGrid(w: 128, h: 128)
+    fillEllipse(&g, cx: 64, cy: 122, rx: 30, ry: 4, "S")
+    for lx in [50, 66] {
+        rectFill(&g, lx, 88, 12, 26, "@")
+        rectFill(&g, lx + 8, 88, 4, 26, "#")
+        rectFill(&g, lx - 1, 112, 14, 8, "E")
+        g[113][lx + 2] = "W"                            // shiny shoe glint
+    }
+    rectFill(&g, 46, 83, 36, 6, "m")
+    rectFill(&g, 61, 83, 6, 6, "Q")
+    var torso = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&torso, cx: 64, cy: 66, rx: 22, ry: 22, main: "@", hi: "A", lo: "#")
+    for y in stride(from: 52, to: 80, by: 6) { torso[y][64] = "L" }   // buttons
+    rectFill(&torso, 46, 56, 6, 5, "Q")                 // chest badge
+    // left arm down, right arm bent holding the last donut
+    fillEllipse(&torso, cx: 38, cy: 70, rx: 6, ry: 14, "@")
+    fillEllipse(&torso, cx: 38, cy: 83, rx: 4.4, ry: 4.4, "K")
+    fillEllipse(&torso, cx: 90, cy: 62, rx: 6, ry: 10, "@")
+    fillEllipse(&torso, cx: 92, cy: 50, rx: 4.4, ry: 4.4, "K")
+    // the donut
+    fillEllipse(&torso, cx: 98, cy: 44, rx: 7, ry: 6.5, "T")
+    fillEllipse(&torso, cx: 98, cy: 42.5, rx: 6.4, ry: 4.6, "!")
+    fillEllipse(&torso, cx: 98, cy: 44, rx: 2.2, ry: 2.0, ".")
+    torso[40][95] = "W"; torso[41][101] = "2"; torso[39][98] = "G"
+    composite(&g, torso, dx: 0, dy: 0)
+    var head = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&head, cx: 64, cy: 32, rx: 16, ry: 15, main: "K", hi: "K", lo: "k")
+    // heavy angry brows + small eyes
+    for dx in 0..<8 { head[26 + dx / 4][50 + dx] = "3" }
+    for dx in 0..<8 { head[28 - dx / 4][70 + dx] = "3" }
+    rectFill(&head, 54, 30, 3, 3, "E")
+    rectFill(&head, 71, 30, 3, 3, "E")
+    // gray walrus mustache over the mouth
+    fillEllipse(&head, cx: 64, cy: 42, rx: 9, ry: 3.4, "L")
+    for dx in -2...2 { head[47][64 + dx] = "k" }
+    // jowls
+    g[38][46] = "k"; g[38][82] = "k"
+    // peaked cap: band + visor + high crown with gold shield
+    rectFill(&head, 48, 18, 32, 6, "@")
+    rectFill(&head, 46, 24, 36, 3, "#")                 // visor
+    fillEllipse(&head, cx: 64, cy: 14, rx: 15, ry: 7, "@")
+    rectFill(&head, 60, 16, 8, 6, "Q")
+    composite(&g, head, dx: 0, dy: 0)
+    bossOutline(&g)
+    return g
+}
+
+/// FOREMAN REX — hard hat, hi-vis vest, clipboard, stubble, covering it up.
+func bossRex() -> Grid {
+    var g = emptyGrid(w: 128, h: 128)
+    fillEllipse(&g, cx: 64, cy: 122, rx: 32, ry: 4, "S")
+    for lx in [48, 66] {
+        rectFill(&g, lx, 86, 13, 28, "@")               // work jeans
+        rectFill(&g, lx + 9, 86, 4, 28, "#")
+        rectFill(&g, lx - 1, 112, 15, 8, "m")
+        rectFill(&g, lx - 1, 112, 15, 2, "r")           // boot cuff
+    }
+    rectFill(&g, 44, 81, 40, 6, "r")
+    var torso = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&torso, cx: 64, cy: 64, rx: 23, ry: 22, main: "5", hi: "L", lo: "R")
+    // hi-vis vest panels + silver reflex stripes
+    for x0 in [46, 70] {
+        rectFill(&torso, x0, 48, 12, 32, "X")
+        rectFill(&torso, x0, 56, 12, 3, "L")
+        rectFill(&torso, x0, 68, 12, 3, "L")
+    }
+    // left arm holds clipboard; right fist
+    fillEllipse(&torso, cx: 36, cy: 66, rx: 6.5, ry: 14, "5")
+    fillEllipse(&torso, cx: 36, cy: 80, rx: 4.6, ry: 4.6, "K")
+    rectFill(&torso, 24, 62, 14, 20, "T")               // clipboard
+    rectFill(&torso, 26, 64, 10, 16, "W")
+    rectFill(&torso, 29, 60, 4, 4, "5")                 // clip
+    for y in [68, 72, 76] { rectFill(&torso, 27, y, 8, 1, "1") }
+    fillEllipse(&torso, cx: 92, cy: 68, rx: 6.5, ry: 14, "5")
+    fillEllipse(&torso, cx: 92, cy: 82, rx: 5.0, ry: 5.0, "K")
+    composite(&g, torso, dx: 0, dy: 0)
+    var head = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&head, cx: 64, cy: 32, rx: 17, ry: 15, main: "K", hi: "K", lo: "k")
+    rectFill(&head, 50, 36, 28, 9, "K")                 // heavy jaw
+    for (dx, dy) in [(-6, 6), (-2, 8), (3, 7), (7, 6), (0, 5), (-4, 4)] {
+        head[38 + dy][64 + dx] = "k"                    // stubble
+    }
+    for dx in 0..<7 { head[25][51 + dx] = "m" }         // flat brows
+    for dx in 0..<7 { head[25][70 + dx] = "m" }
+    rectFill(&head, 53, 28, 3, 4, "E")
+    rectFill(&head, 72, 28, 3, 4, "E")
+    for dx in -3...3 { head[46][64 + dx] = "3" }        // hard flat mouth
+    // hard hat with brim + center ridge
+    fillEllipse(&head, cx: 64, cy: 15, rx: 16, ry: 9, "2")
+    rectFill(&head, 44, 20, 40, 4, "2")
+    rectFill(&head, 44, 23, 40, 2, "I")
+    rectFill(&head, 61, 6, 6, 12, "I")
+    composite(&g, head, dx: 0, dy: 0)
+    bossOutline(&g)
+    return g
+}
+
+/// MAYOR JOHNSON — silver pompadour, gray suit, red sash, gold medal,
+/// a smile that has survived four elections.
+func bossMayor() -> Grid {
+    var g = emptyGrid(w: 128, h: 128)
+    fillEllipse(&g, cx: 64, cy: 122, rx: 30, ry: 4, "S")
+    for lx in [50, 66] {
+        rectFill(&g, lx, 88, 12, 26, "5")
+        rectFill(&g, lx + 8, 88, 4, 26, "R")
+        rectFill(&g, lx - 1, 112, 14, 8, "E")
+        g[113][lx + 2] = "W"
+    }
+    var torso = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&torso, cx: 64, cy: 66, rx: 21, ry: 22, main: "5", hi: "L", lo: "R")
+    // white shirt V + red tie
+    for i in 0..<10 { for dx in -(9 - i)...(9 - i) { torso[48 + i][64 + dx] = "W" } }
+    rectFill(&torso, 62, 52, 5, 16, "%")
+    for i in 0..<3 { rectFill(&torso, 63 + i / 2, 68 + i, 3 - i, 1, "%") }
+    // suit lapels
+    for i in 0..<12 { torso[48 + i][53 - i / 3] = "R"; torso[48 + i][75 + i / 3] = "R" }
+    // mayoral sash: shoulder to hip
+    for t in 0..<30 {
+        let x = 48 + t, y = 50 + t
+        if y < 88 { rectFill(&torso, x, y, 6, 2, "%") ; torso[y][x] = "Q" }
+    }
+    // gold medal on the sash
+    fillEllipse(&torso, cx: 64, cy: 74, rx: 5, ry: 5, "Q")
+    torso[73][63] = "W"
+    // arms: one wave, one handshake-ready
+    fillEllipse(&torso, cx: 38, cy: 68, rx: 6, ry: 13, "5")
+    fillEllipse(&torso, cx: 38, cy: 81, rx: 4.4, ry: 4.4, "K")
+    fillEllipse(&torso, cx: 90, cy: 58, rx: 6, ry: 11, "5")
+    fillEllipse(&torso, cx: 93, cy: 46, rx: 4.6, ry: 4.6, "K")
+    composite(&g, torso, dx: 0, dy: 0)
+    var head = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&head, cx: 64, cy: 33, rx: 16, ry: 15, main: "K", hi: "K", lo: "k")
+    // silver pompadour swept up-left + sideburns
+    fillEllipse(&head, cx: 62, cy: 17, rx: 15, ry: 8, "L")
+    fillEllipse(&head, cx: 54, cy: 13, rx: 8, ry: 6, "L")
+    for y in 24..<34 { head[y][48] = "L"; head[y][49] = "L"; head[y][79] = "L"; head[y][80] = "L" }
+    // warm eyes + big campaign smile
+    rectFill(&head, 53, 29, 3, 4, "E")
+    rectFill(&head, 72, 29, 3, 4, "E")
+    head[28][53] = "W"; head[28][72] = "W"
+    for dx in 0..<5 { head[27][51 + dx] = "k"; head[27][72 + dx] = "k" }
+    for dx in -6...6 { head[43 + abs(dx) / 3][64 + dx] = "3" }
+    head[44][58] = "W"; head[44][70] = "W"               // teeth glint
+    composite(&g, head, dx: 0, dy: 0)
+    bossOutline(&g)
+    return g
+}
+
+/// PARADE MARSHAL — shirtless, rainbow cape, aviators, whistle.
+/// Leads the Act 3 parade. Absolutely jacked. Absolutely fabulous.
+func bossMarshal() -> Grid {
+    var g = emptyGrid(w: 128, h: 128)
+    fillEllipse(&g, cx: 60, cy: 122, rx: 32, ry: 4, "S")
+    // rainbow cape billowing behind (drawn first, behind everything)
+    let rainbow: [Character] = ["%", "X", "2", "G", "w", "^"]
+    for (i, ch) in rainbow.enumerated() {
+        let x0 = 26 + i * 7
+        for y in 34..<(104 + (i % 2 == 0 ? 6 : 0)) {
+            let sway = Int(sin(Double(y) * 0.12 + Double(i)) * 2.5)
+            rectFill(&g, x0 + sway, y, 7, 1, ch)
+        }
+    }
+    // flag pole in the raised hand, flag flying right
+    for y in 8..<52 { g[y][100] = "r"; g[y][101] = "r" }
+    for (i, ch) in rainbow.enumerated() {
+        rectFill(&g, 102, 8 + i * 3, 22 - i * 2, 3, ch)
+    }
+    // legs: denim shorts + boots
+    for lx in [46, 62] {
+        rectFill(&g, lx, 92, 12, 10, "K")
+        rectFill(&g, lx, 100, 12, 14, "m")
+        rectFill(&g, lx, 100, 12, 2, "r")
+    }
+    rectFill(&g, 44, 84, 32, 12, "@")
+    rectFill(&g, 44, 84, 32, 2, "#")
+    var torso = emptyGrid(w: 128, h: 128)
+    // jacked torso: wide shoulders, tapered waist
+    shadeEllipse(&torso, cx: 60, cy: 62, rx: 22, ry: 18, main: "K", hi: "W", lo: "k")
+    shadeEllipse(&torso, cx: 60, cy: 76, rx: 15, ry: 12, main: "K", hi: "K", lo: "k")
+    // pec + ab definition
+    for dx in -9...(-2) { torso[58][60 + dx] = "k" }
+    for dx in 2...9 { torso[58][60 + dx] = "k" }
+    for y in [66, 72, 78] { for dx in -5...5 where dx != 0 { torso[y][60 + dx] = abs(dx) == 5 ? "k" : torso[y][60 + dx] } }
+    for y in 64..<80 { torso[y][60] = "k" }
+    for y in [68, 74] { for dx in [-4, 4] { torso[y][60 + dx] = "k" } }
+    // left arm flexed down, right arm raised to the pole
+    fillEllipse(&torso, cx: 36, cy: 66, rx: 7, ry: 13, "K")
+    fillEllipse(&torso, cx: 34, cy: 79, rx: 5, ry: 5, "K")
+    fillEllipse(&torso, cx: 84, cy: 52, rx: 7, ry: 10, "K")
+    fillEllipse(&torso, cx: 94, cy: 42, rx: 6, ry: 7, "K")
+    fillEllipse(&torso, cx: 100, cy: 36, rx: 4.6, ry: 4.6, "K")
+    // whistle on a cord
+    for i in 0..<8 { torso[44 + i][58 + i / 2] = "3" }
+    rectFill(&torso, 61, 52, 5, 4, "Q")
+    composite(&g, torso, dx: 0, dy: 0)
+    var head = emptyGrid(w: 128, h: 128)
+    shadeEllipse(&head, cx: 60, cy: 30, rx: 15, ry: 14, main: "K", hi: "W", lo: "k")
+    rectFill(&head, 48, 34, 24, 7, "K")
+    // flat top hair + aviators + handlebar mustache
+    rectFill(&head, 47, 12, 26, 7, "m")
+    rectFill(&head, 46, 24, 28, 6, "E")
+    rectFill(&head, 49, 25, 9, 4, "3")
+    rectFill(&head, 62, 25, 9, 4, "3")
+    head[25][50] = "L"; head[25][63] = "L"
+    fillEllipse(&head, cx: 54, cy: 39, rx: 4, ry: 2.2, "m")
+    fillEllipse(&head, cx: 66, cy: 39, rx: 4, ry: 2.2, "m")
+    for dx in -2...2 { head[44][60 + dx] = "3" }
+    composite(&g, head, dx: 0, dy: 0)
+    bossOutline(&g)
+    return g
+}
+
 // ─── Battle portraits (128×128) ──────────────────────────────────────────
 func critterBattle(_ base: Grid, scale f: Double, stamp extra: ((inout Grid) -> Void)? = nil) -> Grid {
     var g = emptyGrid(w: 128, h: 128)
@@ -3112,14 +3509,14 @@ func humanEnemyBattle(_ role: NPCRole) -> Grid {
 }
 
 // ---- Human NPCs ----
-var npcPreviewRows: [[Grid]] = []
+var npcPreviewRows: [[CGImage]] = []
 for role in npcRoles {
-    var row: [Grid] = []
+    var row: [CGImage] = []
     for (di, dname) in [(0, "south"), (1, "north"), (2, "east")] {
         for step in 0..<2 {
-            let frame = humanFrame(role, dir: di, step: step)
-            writePNG(render(frame), to: "\(outDir)/npc-\(role.name)-\(dname)-f\(step + 1)-64x96.png")
-            if step == 0 { row.append(frame) }
+            let img = render(humanFrame(role, dir: di, step: step))
+            writePNG(img, to: "\(outDir)/npc-\(role.name)-\(dname)-f\(step + 1)-64x96.png")
+            if step == 0 { row.append(img) }
         }
     }
     // west = mirrored east
@@ -3131,7 +3528,7 @@ for role in npcRoles {
 }
 do {
     let previewDir = (previewPath as NSString).deletingLastPathComponent
-    writeSheet(rows: npcPreviewRows, scale: 3, to: "\(previewDir)/npc-preview.png")
+    writeImageSheet(rows: npcPreviewRows, scale: 3, to: "\(previewDir)/npc-preview.png")
 }
 
 // ---- Critters (enemy + ambient animals) ----
@@ -3188,9 +3585,17 @@ do {
     composite(&g, sVend, dx: (128 - sVend[0].count) / 2, dy: 128 - sVend.count)
     writePNG(render(g), to: "\(outDir)/enemy-vending-battle-128x128.png")
 }
-// human enemies via the NPC rig
-for role in npcRoles where ["ranger", "sternadult", "skaterkid", "officer", "foreman"].contains(role.name) {
+// simple human enemies via the NPC rig
+for role in npcRoles where ["sternadult", "skaterkid"].contains(role.name) {
     writePNG(render(humanEnemyBattle(role)), to: "\(outDir)/enemy-\(role.name)-battle-128x128.png")
+}
+// hand-built hyper-detailed boss portraits
+let bossPortraits: [(String, Grid)] = [
+    ("ranger", bossRanger()), ("officer", bossGrumble()), ("foreman", bossRex()),
+    ("mayor", bossMayor()), ("marshal", bossMarshal()),
+]
+for (slug, grid) in bossPortraits {
+    writePNG(render(grid), to: "\(outDir)/enemy-\(slug)-battle-128x128.png")
 }
 do {
     let previewDir = (previewPath as NSString).deletingLastPathComponent
@@ -3201,6 +3606,7 @@ do {
         critterBattle(gooseS, scale: 1.85, stamp: geraldCrown), vendingMachineGrid(possessed: true)
     ]
     writeSheet(rows: [battles], scale: 3, to: "\(previewDir)/enemy-battle-preview.png")
+    writeSheet(rows: [bossPortraits.map(\.1)], scale: 3, to: "\(previewDir)/boss-preview.png")
 }
 print("critters-ok")
 
