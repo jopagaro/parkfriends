@@ -531,7 +531,7 @@ enum ImportedArt {
         }
         guard let role else { return [] }
         return (1...2).compactMap {
-            fileTexture(relativePath: "textures.downloaded.sprites/world.generated/npc-\(role)-\(direction)-f\($0)-64x96.png")
+            fileTexture(relativePath: "textures.downloaded.sprites/world.generated/npc-\(role)-\(direction)-f\($0)-128x192.png")
         }
     }
 
@@ -721,7 +721,7 @@ enum ImportedArt {
     static func genRoleWalkFrames(role: String, directionRow: Int) -> [SKTexture] {
         (1...2).compactMap {
             fileTexture(relativePath:
-                "textures.downloaded.sprites/world.generated/npc-\(role)-\(genCritterDir(directionRow))-f\($0)-64x96.png")
+                "textures.downloaded.sprites/world.generated/npc-\(role)-\(genCritterDir(directionRow))-f\($0)-128x192.png")
         }
     }
 
