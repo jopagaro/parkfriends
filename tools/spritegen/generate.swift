@@ -3995,6 +3995,186 @@ func propReeds() -> Grid {
     return g
 }
 
+
+// ─── CONSTRUCTION KIT v2 — crane, girders, pit, machines, site dressing ──
+
+func propCrane() -> Grid {
+    var g = emptyGrid(w: 160, h: 240)
+    fillEllipse(&g, cx: 60, cy: 232, rx: 40, ry: 6, "S")
+    // concrete base + mast lattice
+    for y in 216..<228 { for x in 36..<84 { g[y][x] = (x + y) % 7 == 0 ? "0" : "1" } }
+    for y in 40..<216 {
+        for x in [52, 53, 66, 67] { g[y][x] = "2" }
+        if y % 10 < 2 { for x in 54..<66 { g[y][x] = "I" } }          // rungs
+        if y % 20 < 2 { g[y][55 + (y / 20) % 2 * 8] = "I" }
+    }
+    // slew deck + cab
+    for y in 34..<44 { for x in 44..<76 { g[y][x] = "2" } }
+    for y in 22..<36 { for x in 60..<80 { g[y][x] = "2" } }
+    for y in 25..<33 { for x in 63..<77 { g[y][x] = "w" } }           // glass
+    g[26][64] = "u"
+    // jib arm to the right with lattice + hook cable
+    for x in 76..<156 {
+        g[18][x] = "2"; g[19][x] = "2"
+        g[26][x] = "2"
+        if x % 8 < 2 { for y in 19..<27 { g[y][x] = "I" } }
+    }
+    for x in 20..<52 { g[22][x] = "2"; g[23][x] = "2" }               // counter-jib
+    for y in 24..<40 { for x in 22..<38 { g[y][x] = "5" } }           // counterweight
+    for y in 27..<96 { g[y][132] = "L" }                              // cable
+    for y in 96..<104 { for x in 128..<137 { g[y][x] = "I" } }        // hook block
+    for y in 104..<112 { g[y][132] = "I"; g[y][131] = "I" }
+    // apex + tie bars
+    for i in 0..<14 { g[18 - i][60 + i / 2] = "2"; g[4 + i][60 + i / 2] = "2" }
+    for i in 0..<40 { g[8 + i / 2][64 + i * 2] = "L" }
+    for i in 0..<20 { g[10 + i / 2][40 + i] = "L" }
+    outlineShape(&g, body: ["2", "I", "5", "w", "u", "1", "0", "L"], outline: "3")
+    return g
+}
+
+func propGirderFrame() -> Grid {
+    var g = emptyGrid(w: 224, h: 160)
+    fillEllipse(&g, cx: 112, cy: 152, rx: 100, ry: 8, "S")
+    // poured slab
+    for y in 128..<150 { for x in 8..<216 { g[y][x] = (x * 3 + y * 7) % 23 == 0 ? "0" : "1" } }
+    for x in 8..<216 { g[128][x] = "9" }
+    // vertical I-beams (two stories)
+    for bx in [20, 70, 120, 170, 204] {
+        for y in 24..<128 { for x in bx..<(bx + 8) { g[y][x] = x == bx || x == bx + 7 ? "5" : "L" } }
+        for y in [24, 74, 126] { for x in (bx - 3)..<(bx + 11) { g[y][x] = "5"; g[y + 1][x] = "5" } }
+    }
+    // horizontal beams
+    for y in [24, 74] { for x in 17..<215 { g[y][x] = "5"; g[y + 1][x] = "5"; g[y + 2][x] = "L" } }
+    // cross braces on the upper bay
+    for i in 0..<46 {
+        g[28 + i][24 + i] = "5"; g[73 - i][24 + i] = "5"
+        g[28 + i][124 + i] = "5"; g[73 - i][124 + i] = "5"
+    }
+    // dangling chain from the top beam
+    for y in 27..<58 { g[y][150] = "L" }
+    for y in 58..<64 { for x in 147..<154 { g[y][x] = "I" } }
+    outlineShape(&g, body: ["5", "L", "1", "0", "9", "I"], outline: "3")
+    return g
+}
+
+func propExcavator() -> Grid {
+    var g = emptyGrid(w: 128, h: 96)
+    fillEllipse(&g, cx: 60, cy: 88, rx: 48, ry: 6, "S")
+    // tracks
+    for y in 68..<86 { for x in 16..<104 { g[y][x] = "R" } }
+    for x in stride(from: 18, to: 104, by: 8) { for y in 70..<84 { g[y][x] = "x" } }
+    fillEllipse(&g, cx: 24, cy: 77, rx: 8, ry: 8, "5")
+    fillEllipse(&g, cx: 96, cy: 77, rx: 8, ry: 8, "5")
+    // body + cab
+    for y in 44..<68 { for x in 20..<92 { g[y][x] = "2" } }
+    for y in 46..<66 { for x in 84..<92 { g[y][x] = "I" } }            // engine grill
+    for y in 28..<50 { for x in 28..<56 { g[y][x] = "2" } }
+    for y in 31..<47 { for x in 31..<52 { g[y][x] = "w" } }            // glass
+    g[33][33] = "u"; g[34][34] = "u"
+    // boom arm + bucket
+    for i in 0..<36 { g[40 + i / 3][56 + i] = "2"; g[41 + i / 3][56 + i] = "2"; g[42 + i / 3][56 + i] = "I" }
+    for i in 0..<18 { g[52 + i][92 + i / 3] = "2"; g[52 + i][93 + i / 3] = "I" }
+    for y in 68..<80 { for x in 92..<112 { g[y][x] = "5" } }
+    for x in 92..<112 { g[79][x] = "3" }                               // bucket teeth
+    outlineShape(&g, body: ["2", "I", "5", "R", "x", "w", "u"], outline: "3")
+    return g
+}
+
+func propCementMixer() -> Grid {
+    var g = emptyGrid(w: 64, h: 96)
+    fillEllipse(&g, cx: 32, cy: 90, rx: 24, ry: 4.5, "S")
+    // drum
+    for y in 20..<62 {
+        let t = Double(y - 20) / 42.0
+        let half = 14.0 + sin(t * 3.14) * 10.0
+        for x in Int(32 - half)..<Int(32 + half) { g[y][x] = "X" }
+    }
+    for y in 24..<58 where y % 8 < 2 { for x in 20..<44 where g[y][x] == "X" { g[y][x] = "%" } }
+    for y in 14..<22 { for x in 24..<40 { g[y][x] = "5" } }            // rim
+    // frame + wheels
+    for y in 62..<80 { for x in [18, 19, 44, 45] { g[y][x] = "5" } }
+    fillEllipse(&g, cx: 20, cy: 84, rx: 6, ry: 6, "3")
+    fillEllipse(&g, cx: 44, cy: 84, rx: 6, ry: 6, "3")
+    fillEllipse(&g, cx: 20, cy: 84, rx: 2, ry: 2, "1")
+    fillEllipse(&g, cx: 44, cy: 84, rx: 2, ry: 2, "1")
+    outlineShape(&g, body: ["X", "%", "5"], outline: "3")
+    return g
+}
+
+func propLumberStack() -> Grid {
+    var g = emptyGrid(w: 96, h: 48)
+    fillEllipse(&g, cx: 48, cy: 44, rx: 42, ry: 4, "S")
+    for (row, y0) in [12, 22, 32].enumerated() {
+        let inset = (2 - row) * 4
+        for y in y0..<(y0 + 10) {
+            for x in (6 + inset)..<(90 - inset) {
+                g[y][x] = y == y0 ? "h" : ((x + row * 3) % 24 < 2 ? "r" : "T")
+            }
+        }
+    }
+    // strap bands
+    for y in 10..<44 { g[y][30] = "R"; g[y][66] = "R" }
+    outlineShape(&g, body: ["T", "h", "r", "R"], outline: "3")
+    return g
+}
+
+func propPortaPotty() -> Grid {
+    var g = emptyGrid(w: 48, h: 80)
+    fillEllipse(&g, cx: 24, cy: 76, rx: 18, ry: 3.6, "S")
+    for y in 8..<72 { for x in 6..<42 { g[y][x] = "w" } }
+    for y in 8..<14 { for x in 4..<44 { g[y][x] = "v" } }              // roof cap
+    for y in 18..<68 { for x in 12..<30 { g[y][x] = "v" } }            // door
+    fillEllipse(&g, cx: 27, cy: 42, rx: 2, ry: 2, "1")                 // handle
+    for x in 14..<28 { g[22][x] = "W"; g[23][x] = "W" }                // sign slot
+    for y in 20..<28 { g[y][34] = "3"; g[y][35] = "3"; g[y][36] = "3" }// vent
+    outlineShape(&g, body: ["w", "v", "W", "1"], outline: "3")
+    return g
+}
+
+func tileGravel(variant: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 77, y, 83)
+        g[y][x] = r < 90 ? "0" : (r < 220 ? "9" : "1")
+    } }
+    for i in 0..<6 {
+        let px = 2 + speck(i, variant, 87) % (TS - 6)
+        let py = 2 + speck(variant, i, 91) % (TS - 6)
+        g[py][px] = "5"; g[py][px + 1] = "5"; g[py + 1][px] = "0"
+    }
+    return g
+}
+
+func tileTrack(variant: Int) -> Grid {
+    // tire tracks running vertically: two pressed tread bands, low contrast
+    var g = tileDirt(variant: variant)
+    for band in [10, 30] {
+        for y in 0..<TS { for x in band..<(band + 8) where g[y][x] == "T" {
+            g[y][x] = "t"
+        } }
+        for y in stride(from: variant % 4, to: TS, by: 6) {
+            for x in (band + 1)..<(band + 7) where (x + y) % 2 == 0 { g[y][x] = "r" }
+        }
+        for y in 0..<TS { g[y][band] = "r" }
+    }
+    return g
+}
+
+func tilePit(variant: Int) -> Grid {
+    // deep churned earth at the bottom of the dig
+    var g = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + variant * 47, y, 109)
+        g[y][x] = r < 700 ? "m" : (r < 940 ? "r" : "3")
+    } }
+    for i in 0..<3 {
+        let px = 3 + speck(i, variant, 113) % (TS - 6)
+        let py = 3 + speck(variant, i, 127) % (TS - 6)
+        g[py][px] = "5"; g[py][px + 1] = "0"; g[py + 1][px] = "3"
+    }
+    return g
+}
+
 // ─── Battle portraits (128×128) ──────────────────────────────────────────
 func critterBattle(_ base: Grid, scale f: Double, stamp extra: ((inout Grid) -> Void)? = nil) -> Grid {
     var g = emptyGrid(w: 128, h: 128)
@@ -4111,6 +4291,35 @@ for (slug, w, h, frame) in critterSpecs {
         writePNG(render(mirrored(g)), to: "\(outDir)/critter-\(slug)-walk-west-f\(i + 1)-\(w)x\(h).png")
     }
     critterPreviewRows.append(row)
+}
+
+// construction kit v2
+writePNG(render(propCrane()), to: "\(outDir)/prop-crane-160x240.png")
+writePNG(render(propGirderFrame()), to: "\(outDir)/prop-girderframe-224x160.png")
+writePNG(render(propExcavator()), to: "\(outDir)/prop-excavator-128x96.png")
+writePNG(render(propCementMixer()), to: "\(outDir)/prop-cementmixer-64x96.png")
+writePNG(render(propLumberStack()), to: "\(outDir)/prop-lumberstack-96x48.png")
+writePNG(render(propPortaPotty()), to: "\(outDir)/prop-portapotty-48x80.png")
+for v in 0..<3 {
+    writePNG(render(tileGravel(variant: v)), to: "\(outDir)/tile-gravel-\(v)-32.png")
+    writePNG(render(tileTrack(variant: v)), to: "\(outDir)/tile-track-\(v)-32.png")
+    writePNG(render(tilePit(variant: v)), to: "\(outDir)/tile-pit-\(v)-32.png")
+    // horizontal tracks = transposed vertical
+    let t = tileTrack(variant: v)
+    var th = emptyGrid(w: TS, h: TS)
+    for y in 0..<TS { for x in 0..<TS { th[y][x] = t[x][y] } }
+    writePNG(render(th), to: "\(outDir)/tile-trackh-\(v)-32.png")
+}
+writePNG(render(blobSheet(fillVariant: { v in tilePit(variant: v % 3) },
+                          rim: "3", fringe: nil, midRim: "m")),
+        to: "\(outDir)/sheet-pit-blob-128.png")
+do {
+    let previewDir = (previewPath as NSString).deletingLastPathComponent
+    writeSheet(rows: [
+        [propCrane(), propGirderFrame()],
+        [propExcavator(), propCementMixer(), propLumberStack(), propPortaPotty()],
+        [tileGravel(variant: 0), tileTrack(variant: 0)]
+    ], scale: 2, to: "\(previewDir)/construction-kit-preview.png")
 }
 
 // lawn decor
