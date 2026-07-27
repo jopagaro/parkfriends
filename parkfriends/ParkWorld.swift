@@ -370,7 +370,9 @@ enum ParkWorld {
             (.pigeon,  painter.center(SpecRect(58, 26, 1, 1))),
             (.goose,   painter.center(SpecRect(18, 34, 1, 1))),
             (.raccoon, painter.center(SpecRect(36, 54, 1, 1))),
-            (.wasp,    painter.center(SpecRect(78, 8, 1, 1)))
+            (.wasp,    painter.center(SpecRect(78, 8, 1, 1))),
+            // BOSS 1 — Grand Goose Gerald holds the fountain plaza (§5.2)
+            (.grandGooseGerald, painter.center(SpecRect(48, 27, 1, 1)))
         ]
 
         return BuildResult(
@@ -559,7 +561,9 @@ enum ParkWorld {
         let enemySpawns: [(EnemyKind, CGPoint)] = [
             (.pigeon,     painter.center(SpecRect(56, 28, 1, 1))),
             (.pigeon,     painter.center(SpecRect(33, 18, 1, 1))),
-            (.sternAdult, painter.center(SpecRect(75, 27, 1, 1)))
+            (.sternAdult, painter.center(SpecRect(75, 27, 1, 1))),
+            // Zone 1B mid-boss — the Pigeon Flock Leader rules the rooftop row
+            (.flockLeader, painter.center(SpecRect(60, 18, 1, 1)))
         ]
 
         return BuildResult(

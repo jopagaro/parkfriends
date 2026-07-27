@@ -163,7 +163,9 @@ enum CityWorld {
             (.pigeon,        painter.center(SpecRect(38, 28, 1, 1))),
             (.sternAdult,    painter.center(SpecRect(52, 28, 1, 1))),
             (.skateboardKid, painter.center(SpecRect(16, 40, 1, 1))),
-            (.vendingMachine, painter.center(SpecRect(33, 24, 1, 1)))
+            (.vendingMachine, painter.center(SpecRect(33, 24, 1, 1))),
+            // BOSS 2 — Officer Grumble guards the police station steps (§5.2)
+            (.officerGrumble, painter.center(SpecRect(26, 29, 1, 1)))
         ]
 
         return BuildResult(

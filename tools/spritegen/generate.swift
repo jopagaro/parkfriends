@@ -3033,7 +3033,7 @@ func birdLeg(_ g: inout Grid, x: Int, top: Int, bottom: Int) {
 }
 
 // ─── PIGEON (40×40) ──────────────────────────────────────────────────────
-func pigeonFrame(dir: String, step: Int) -> Grid {
+func pigeonFrame(dir: String, step: Int, angry: Bool = false) -> Grid {
     var g = emptyGrid(w: 40, h: 40)
     let bob = step == 1 ? 1 : 0
     fillEllipse(&g, cx: 20, cy: 36.5, rx: 9, ry: 2.4, "S")
@@ -3065,6 +3065,10 @@ func pigeonFrame(dir: String, step: Int) -> Grid {
             for y in 17...18 { for x in 16...24 where b[y][x] != "." && b[y][x] != "F" { b[y][x] = "V" } }
             b[11][17] = "E"; b[11][23] = "E"
             b[10][17] = "W"; b[10][23] = "W"
+            if angry {
+                b[9][15] = "F"; b[8][16] = "F"; b[9][16] = "F"      // slanted brows
+                b[9][25] = "F"; b[8][24] = "F"; b[9][24] = "F"
+            }
             // wedge beak
             for x in 18...21 { b[13][x] = "X" }
             for x in 19...20 { b[14][x] = "X" }
@@ -3089,6 +3093,7 @@ func pigeonFrame(dir: String, step: Int) -> Grid {
         for y in 15...17 { for x in 24...30 where b[y][x] != "." { b[y][x] = "V" } }
         b[11][29] = "E"; b[10][29] = "W"
         b[12][33] = "X"; b[12][34] = "X"; b[13][33] = "X"
+        if angry { b[9][28] = "F"; b[8][29] = "F"; b[9][29] = "F" }
     }
     outlineShape(&b, body: ["A", "U", "V"], outline: "F")
     composite(&g, b, dx: 0, dy: bob)
@@ -3096,7 +3101,7 @@ func pigeonFrame(dir: String, step: Int) -> Grid {
 }
 
 // ─── GOOSE (48×56) ───────────────────────────────────────────────────────
-func gooseFrame(dir: String, step: Int) -> Grid {
+func gooseFrame(dir: String, step: Int, angry: Bool = false) -> Grid {
     var g = emptyGrid(w: 48, h: 56)
     let bob = step == 1 ? 1 : 0
     fillEllipse(&g, cx: 24, cy: 52, rx: 11, ry: 2.6, "S")
@@ -3124,6 +3129,10 @@ func gooseFrame(dir: String, step: Int) -> Grid {
         if dir == "south" {
             b[9][21] = "E"; b[9][27] = "E"
             b[8][21] = "W"; b[8][27] = "W"
+            if angry {
+                b[7][19] = "F"; b[6][20] = "F"; b[7][20] = "F"
+                b[7][29] = "F"; b[6][28] = "F"; b[7][28] = "F"
+            }
             // bill pointing down at the viewer
             for (dy, w) in [(0, 4), (1, 3), (2, 2)] {
                 for x in (24 - w / 2)...(24 + w / 2) { b[13 + dy][x] = "X" }
@@ -3148,6 +3157,7 @@ func gooseFrame(dir: String, step: Int) -> Grid {
         shadeEllipse(&b, cx: 37, cy: 9, rx: 5.8, ry: 5.2, main: "Z", hi: "W", lo: "c")
         b[8][38] = "E"; b[7][38] = "W"
         for dx in 0..<6 { b[9][42 + min(dx, 5)] = "X"; if dx < 4 { b[10][42 + dx] = "X" } }
+        if angry { b[6][37] = "F"; b[5][38] = "F"; b[6][38] = "F" }
     }
     outlineShape(&b, body: ["Z", "c"], outline: "F")
     composite(&g, b, dx: 0, dy: bob)
@@ -3166,7 +3176,7 @@ func raccoonTail(_ b: inout Grid, from: (Double, Double), dir: Double) {
     }
 }
 
-func raccoonFrame(dir: String, step: Int) -> Grid {
+func raccoonFrame(dir: String, step: Int, angry: Bool = false) -> Grid {
     var g = emptyGrid(w: 48, h: 48)
     let bob = step == 1 ? 1 : 0
     fillEllipse(&g, cx: 24, cy: 44.5, rx: 12, ry: 2.6, "S")
@@ -3182,6 +3192,10 @@ func raccoonFrame(dir: String, step: Int) -> Grid {
         // pale muzzle + nose
         fillEllipse(&b, cx: Double(cx), cy: Double(cy) + 5.5, rx: 4.2, ry: 3.2, "K")
         b[cy + 4][cx] = "E"; b[cy + 4][cx + 1] = "E"
+        if angry {
+            b[cy][cx - 4] = "%"; b[cy][cx + 4] = "%"           // red glare
+            for dx in -2...3 { b[cy + 7][cx + dx] = "W" }       // bared teeth
+        }
     }
 
     switch dir {
@@ -3566,7 +3580,7 @@ func propTallGrass(variant: Int) -> Grid {
 }
 
 // mallard duck for the pond — the park's most important demographic
-func duckFrame(dir: String, step: Int) -> Grid {
+func duckFrame(dir: String, step: Int, white: Bool = false) -> Grid {
     var g = emptyGrid(w: 36, h: 36)
     let bob = step == 1 ? 1 : 0
     fillEllipse(&g, cx: 18, cy: 32.5, rx: 8, ry: 2.2, "S")
@@ -3604,6 +3618,18 @@ func duckFrame(dir: String, step: Int) -> Grid {
         for dx in 0..<5 { b[10][29 + min(dx, 4)] = "2"; if dx < 3 { b[11][29 + dx] = "2" } }
     }
     outlineShape(&b, body: ["A", "U", "M", "V", "H", "W", "2"], outline: "F")
+    if white {
+        // Quack: all-white duck, yellow bill stays
+        for y in 0..<b.count { for x in 0..<b[0].count {
+            switch b[y][x] {
+            case "A", "M", "V": b[y][x] = "Z"
+            case "U", "H": b[y][x] = "W"
+            case "F": b[y][x] = "c"
+            default: break
+            }
+        } }
+        outlineShape(&b, body: ["Z", "W", "c", "2"], outline: "F")
+    }
     composite(&g, b, dx: 0, dy: bob)
     return g
 }
@@ -4360,6 +4386,28 @@ for dir in ["south", "north", "east"] {
 for (i, gr) in [duckFrame(dir: "east", step: 0), duckFrame(dir: "east", step: 1),
                 duckFrame(dir: "east", step: 2), duckFrame(dir: "east", step: 1)].enumerated() {
     writePNG(render(mirrored(gr)), to: "\(outDir)/critter-duck-walk-west-f\(i + 1)-36x36.png")
+}
+// Quack: the white duck (south set only — he mostly stands and worries)
+for (i, gr) in [duckFrame(dir: "south", step: 0, white: true), duckFrame(dir: "south", step: 1, white: true),
+                duckFrame(dir: "south", step: 2, white: true), duckFrame(dir: "south", step: 1, white: true)].enumerated() {
+    writePNG(render(gr), to: "\(outDir)/critter-quack-walk-south-f\(i + 1)-36x36.png")
+}
+// Angry variants: hostile critters glare, friendly ambients stay calm
+let angrySpecs: [(String, Int, Int, (String, Int) -> Grid)] = [
+    ("pigeon-angry",  40, 40, { pigeonFrame(dir: $0, step: $1, angry: true) }),
+    ("goose-angry",   48, 56, { gooseFrame(dir: $0, step: $1, angry: true) }),
+    ("raccoon-angry", 48, 48, { raccoonFrame(dir: $0, step: $1, angry: true) }),
+]
+for (slug, w, h, frame) in angrySpecs {
+    for dir in ["south", "north", "east"] {
+        let steps = [frame(dir, 0), frame(dir, 1), frame(dir, 2), frame(dir, 1)]
+        for (i, g) in steps.enumerated() {
+            writePNG(render(g), to: "\(outDir)/critter-\(slug)-walk-\(dir)-f\(i + 1)-\(w)x\(h).png")
+        }
+    }
+    for (i, g) in [frame("east", 0), frame("east", 1), frame("east", 2), frame("east", 1)].enumerated() {
+        writePNG(render(mirrored(g)), to: "\(outDir)/critter-\(slug)-walk-west-f\(i + 1)-\(w)x\(h).png")
+    }
 }
 do {
     let previewDir = (previewPath as NSString).deletingLastPathComponent

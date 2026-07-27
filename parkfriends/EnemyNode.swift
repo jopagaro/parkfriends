@@ -674,15 +674,18 @@ final class EnemyNode: SKSpriteNode {
     private func directionalFrames() -> [SKTexture] {
         switch kind {
         case .pigeon:
-            return ImportedArt.birdFrames(white: false, directionRow: currentDirectionRow)
+            let angry = ImportedArt.genCritterFrames("pigeon-angry", "40x40", directionRow: currentDirectionRow)
+            return angry.isEmpty ? ImportedArt.birdFrames(white: false, directionRow: currentDirectionRow) : angry
         case .goose, .grandGooseGerald:
-            return ImportedArt.birdFrames(white: true, directionRow: currentDirectionRow)
+            let angry = ImportedArt.genCritterFrames("goose-angry", "48x56", directionRow: currentDirectionRow)
+            return angry.isEmpty ? ImportedArt.birdFrames(white: true, directionRow: currentDirectionRow) : angry
         case .raccoon:
-            return ImportedArt.raccoonFrames(directionRow: currentDirectionRow)
+            let angry = ImportedArt.genCritterFrames("raccoon-angry", "48x48", directionRow: currentDirectionRow)
+            return angry.isEmpty ? ImportedArt.raccoonFrames(directionRow: currentDirectionRow) : angry
         case .wasp:
             return ImportedArt.genCritterFrames("wasp", "40x40", directionRow: currentDirectionRow)
         case .flockLeader:
-            return ImportedArt.genCritterFrames("pigeon", "40x40", directionRow: currentDirectionRow)
+            return ImportedArt.genCritterFrames("pigeon-angry", "40x40", directionRow: currentDirectionRow)
         case .ranger:
             return ImportedArt.genRoleWalkFrames(role: "ranger", directionRow: currentDirectionRow)
         case .sternAdult:

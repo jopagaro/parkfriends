@@ -280,10 +280,14 @@ final class QuackNode: SKSpriteNode {
     private(set) var isRescued = false
 
     init() {
-        let tex = SpriteFactory.emojiTexture("🦆", size: 96)
-        super.init(texture: tex, color: .clear, size: CGSize(width: 44, height: 44))
+        let genFrames = ImportedArt.genCritterFrames("quack", "36x36", directionRow: 0)
+        let tex = genFrames.first ?? SpriteFactory.emojiTexture("🦆", size: 96)
+        super.init(texture: tex, color: .clear, size: CGSize(width: 42, height: 42))
         name      = "quack"
         zPosition = GameConstants.ZPos.entity + 0.5
+        if genFrames.count > 1 {
+            run(.repeatForever(.animate(with: genFrames, timePerFrame: 0.3)))
+        }
 
         // Quack has no physics body — the player just walks near and presses E.
 

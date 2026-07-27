@@ -196,7 +196,9 @@ enum CityNorthWorld {
                 (.wasp,           painter.center(SpecRect(44, 20, 1, 1))),
                 (.raccoon,        painter.center(SpecRect(5, 30, 1, 1))),
                 (.vendingMachine, painter.center(SpecRect(34, 30, 1, 1))),
-                (.sternAdult,     painter.center(SpecRect(21, 14, 1, 1)))
+                (.sternAdult,     painter.center(SpecRect(33, 28, 1, 1))),
+                // BOSS 3 — Foreman Rex stands between you and the dig (§5.2)
+                (.foremanRex,     painter.center(SpecRect(21, 15, 1, 1)))
             ],
             playerSpawn: painter.center(SpecRect(27, rows - 4, 1, 1)),
             benchPositions: [],
