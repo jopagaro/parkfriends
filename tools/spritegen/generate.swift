@@ -4131,6 +4131,16 @@ func propPortaPotty() -> Grid {
     return g
 }
 
+func propStake() -> Grid {
+    var g = emptyGrid(w: 16, h: 32)
+    for y in 8..<30 { g[y][7] = "m"; g[y][8] = "r" }
+    g[30][7] = "S"; g[30][8] = "S"
+    for y in 4..<9 { for x in 9..<15 { g[y][x] = "X" } }   // orange flag
+    g[5][14] = "2"
+    outlineShape(&g, body: ["m", "r", "X", "2"], outline: "3")
+    return g
+}
+
 func tileGravel(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
@@ -4300,6 +4310,7 @@ writePNG(render(propExcavator()), to: "\(outDir)/prop-excavator-128x96.png")
 writePNG(render(propCementMixer()), to: "\(outDir)/prop-cementmixer-64x96.png")
 writePNG(render(propLumberStack()), to: "\(outDir)/prop-lumberstack-96x48.png")
 writePNG(render(propPortaPotty()), to: "\(outDir)/prop-portapotty-48x80.png")
+writePNG(render(propStake()), to: "\(outDir)/prop-stake-16x32.png")
 for v in 0..<3 {
     writePNG(render(tileGravel(variant: v)), to: "\(outDir)/tile-gravel-\(v)-32.png")
     writePNG(render(tileTrack(variant: v)), to: "\(outDir)/tile-track-\(v)-32.png")
