@@ -1,8 +1,9 @@
 import SpriteKit
 
-// Generated from MAP_SPEC.md §5 (scene `city_main`), adapted to 88×65.
-// Downtown block grid: cafe/store/hospital on the north row, apartments,
-// police HQ and the Development Corp tower below, streets between.
+// City Center (64×48, compact per EB density rules): a tight downtown
+// grid — shops on the north row, apartments + police + Development Corp
+// in the middle band, cafe row south. Streets are corridors between
+// buildings, not oceans. North spur → construction, south → city south.
 enum CityWorld {
 
     struct BuildResult {
@@ -30,11 +31,11 @@ enum CityWorld {
                              texture: ImportedArt.parkStoneTile(variant: (xT * 7 + yT * 13) % 3),
                              z: PaintLayer.ground.z)
         } }
-        // streets: two vertical, two horizontal (drive lanes 4 wide)
+        // streets: two vertical avenues, two horizontal, N+S exit spurs
         let streets = [
-            SpecRect(26, 0, 4, rows), SpecRect(58, 0, 4, rows),
-            SpecRect(0, 20, cols, 4), SpecRect(0, 44, cols, 4),
-            SpecRect(42, 0, 4, 20), SpecRect(42, 48, 4, rows - 48)   // exit spurs N + S
+            SpecRect(14, 0, 4, rows), SpecRect(46, 0, 4, rows),
+            SpecRect(0, 14, cols, 4), SpecRect(0, 32, cols, 4),
+            SpecRect(30, 0, 4, 14), SpecRect(30, 36, 4, rows - 36)
         ]
         for r in streets {
             for yT in r.y..<(r.y + r.h) { for xT in r.x..<(r.x + r.w) {
@@ -46,12 +47,12 @@ enum CityWorld {
                 painter.place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z + 0.1)
             } }
         }
-
-        // Zebra crosswalks where the walking routes cross the avenues.
+        // zebra crosswalks on the walking routes
         let crossings = [
-            SpecRect(12, 20, 2, 4), SpecRect(50, 20, 2, 4), SpecRect(76, 20, 2, 4),
-            SpecRect(12, 44, 2, 4), SpecRect(50, 44, 2, 4), SpecRect(76, 44, 2, 4),
-            SpecRect(42, 20, 4, 4), SpecRect(42, 44, 4, 4)
+            SpecRect(7, 14, 2, 4), SpecRect(26, 14, 2, 4), SpecRect(56, 14, 2, 4),
+            SpecRect(7, 32, 2, 4), SpecRect(26, 32, 2, 4), SpecRect(56, 32, 2, 4),
+            SpecRect(30, 14, 4, 4), SpecRect(30, 32, 4, 4),
+            SpecRect(14, 24, 4, 2), SpecRect(46, 24, 4, 2)
         ]
         for r in crossings {
             for yT in r.y..<(r.y + r.h) { for xT in r.x..<(r.x + r.w) {
@@ -71,70 +72,60 @@ enum CityWorld {
                                in: root, painter: painter)
             }
         }
-        building("bldg-cafe-256x192",      SpecRect(4, 12, 8, 6),  door: .cafe)
-        building("bldg-store-256x192",     SpecRect(15, 12, 8, 6), door: .store)
-        building("bldg-hospital-256x224",  SpecRect(32, 11, 8, 7), door: .hospital)
-        building("bldg-store-256x192",     SpecRect(64, 12, 8, 6), door: .store)
-        building("bldg-apartment-256x256", SpecRect(4, 34, 8, 8),  door: .apartment)
-        building("bldg-apartment-256x256", SpecRect(14, 34, 8, 8), door: .apartment)
-        building("bldg-police-256x224",    SpecRect(34, 35, 8, 7), door: .police)
-        building("bldg-devcorp-224x288",   SpecRect(66, 33, 7, 9))   // locked until the story says so
-        building("bldg-apartment-256x256", SpecRect(6, 54, 8, 8),  door: .apartment)
-        building("bldg-cafe-256x192",      SpecRect(64, 56, 8, 6), door: .cafe)
+        // North row (shops face the first street).
+        building("bldg-cafe-256x192",      SpecRect(3, 6, 8, 6),   door: .cafe)
+        building("bldg-hospital-256x224",  SpecRect(20, 5, 8, 7),  door: .hospital)
+        building("bldg-store-256x192",     SpecRect(36, 6, 8, 6),  door: .store)
+        building("bldg-store-256x192",     SpecRect(52, 6, 8, 6),  door: .store)
+        // Middle band between the streets.
+        building("bldg-apartment-256x256", SpecRect(2, 19, 8, 8),  door: .apartment)
+        building("bldg-police-256x224",    SpecRect(20, 20, 8, 7), door: .police)
+        building("bldg-devcorp-224x288",   SpecRect(36, 19, 7, 9))   // locked until the story says so
+        building("bldg-apartment-256x256", SpecRect(52, 19, 8, 8), door: .apartment)
+        // South row.
+        building("bldg-apartment-256x256", SpecRect(3, 37, 8, 8),  door: .apartment)
+        building("bldg-cafe-256x192",      SpecRect(20, 38, 8, 6), door: .cafe)
+        building("bldg-store-256x192",     SpecRect(52, 38, 8, 6), door: .store)
 
-        // Street furniture: lamps, hydrants, trash cans, sidewalk trees, cars.
-        for (xT, yT) in [(3, 19), (24, 19), (32, 19), (55, 19), (63, 19), (84, 19),
-                         (3, 43), (24, 43), (32, 43), (55, 43), (63, 43), (84, 43)] {
+        // Street furniture: lamps at corners, hydrants, trash, trees, cars.
+        for (xT, yT) in [(2, 13), (20, 13), (44, 13), (61, 13),
+                         (2, 31), (20, 31), (44, 31), (61, 31)] {
             painter.placeSprite(SpecRect(xT, yT - 1, 1, 2),
                                 texture: ImportedArt.lampTexture(city: true), layer: .props)
         }
-        for (xT, yT) in [(13, 19), (48, 43), (75, 19)] {
+        for (xT, yT) in [(12, 13), (50, 31)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-hydrant-24x36"), layer: .props)
         }
-        for (xT, yT) in [(24, 25), (52, 25), (13, 49), (75, 49)] {
+        for (xT, yT) in [(12, 19), (34, 30), (5, 35), (58, 35)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-trashcan-32x48"), layer: .props)
         }
-        for (xT, yT) in [(8, 26), (50, 26), (20, 50), (80, 26)] {
+        for (xT, yT) in [(11, 28), (44, 19), (34, 44), (12, 45)] {
             painter.placeTree(SpecRect(xT, yT, 2, 3), texture: ImportedArt.parkSmallConifer())
         }
-        // parked cars
-        for (xT, yT, name) in [(8, 21, "prop-car-red-96x48"), (48, 21, "prop-car-blue-96x48"),
-                               (70, 45, "prop-car-red-96x48")] {
+        // parked cars + the police cruiser outside HQ
+        for (xT, yT, name) in [(6, 15, "prop-car-red-96x48"), (38, 15, "prop-car-blue-96x48"),
+                               (52, 33, "prop-car-red-96x48"), (10, 33, "prop-car-blue-96x48")] {
             painter.placeSprite(SpecRect(xT, yT, 3, 2), texture: ImportedArt.genTile(name), layer: .props)
         }
-        // police cruiser outside HQ
-        painter.placeSprite(SpecRect(36, 44, 3, 2),
+        painter.placeSprite(SpecRect(22, 33, 3, 2),
                             texture: ImportedArt.genTile("prop-car-police-96x48"), layer: .props)
-        // more parked cars so the avenues feel used
-        for (xT, yT, name) in [(16, 45, "prop-car-blue-96x48"), (76, 21, "prop-car-blue-96x48"),
-                               (24, 21, "prop-car-red-96x48")] {
-            painter.placeSprite(SpecRect(xT, yT, 3, 2), texture: ImportedArt.genTile(name), layer: .props)
-        }
 
-        // Phone booths and flower planters — EarthBound street dressing.
-        for (xT, yT) in [(13, 16), (46, 40), (75, 54)] {
+        // Phone booths + flower planters — EB street dressing.
+        for (xT, yT) in [(12, 8), (44, 27)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 2),
                                 texture: ImportedArt.genTile("prop-phonebooth-40x80"), layer: .props)
             painter.addBlockingRect(SpecRect(xT, yT + 1, 1, 1))
         }
-        for (xT, yT) in [(18, 26), (66, 26), (24, 50), (52, 50)] {
+        for (xT, yT) in [(4, 12), (30, 19), (34, 12), (46, 44)] {
             painter.placeSprite(SpecRect(xT, yT, 2, 1),
                                 texture: ImportedArt.genTile("prop-planter-64x48"), layer: .props)
             painter.addBlockingRect(SpecRect(xT, yT, 2, 1))
         }
-        for (xT, yT) in [(40, 25), (30, 49)] {
-            painter.placeSprite(SpecRect(xT, yT, 1, 1),
-                                texture: ImportedArt.genTile("prop-trashcan-32x48"), layer: .props)
-        }
-        for (xT, yT) in [(36, 26), (78, 50)] {
-            painter.placeTree(SpecRect(xT, yT, 2, 3), texture: ImportedArt.parkSmallConifer())
-        }
-
-        // Benches near the hospital plaza.
+        // Benches: pocket plaza beside Development Corp + street corners.
         let benchTex = ImportedArt.genTile("prop-bench-64x40")
-        let benchSpots = [(46, 26), (14, 26), (30, 26), (72, 50)]
+        let benchSpots = [(45, 21), (45, 29), (12, 24), (34, 41)]
         for (xT, yT) in benchSpots {
             painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
         }
@@ -148,31 +139,31 @@ enum CityWorld {
             triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
             arrowCount: 5, edgeLabel: "Construction"
         )
-        nExit.position = painter.center(SpecRect(42, 0, 4, 1))
+        nExit.position = painter.center(SpecRect(30, 0, 4, 1))
         root.addChild(nExit); exits.append(nExit)
         let sExit = ZoneExitNode(
             destination: .citySouth,
             triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
             arrowCount: 5, edgeLabel: "City South"
         )
-        sExit.position = painter.center(SpecRect(42, rows - 1, 4, 1))
+        sExit.position = painter.center(SpecRect(30, rows - 1, 4, 1))
         root.addChild(sExit); exits.append(sExit)
 
         let npcSpawns: [CGPoint] = [
-            SpecRect(20, 27, 1, 1), SpecRect(50, 28, 1, 1), SpecRect(70, 50, 1, 1),
-            SpecRect(10, 50, 1, 1), SpecRect(46, 52, 1, 1), SpecRect(36, 28, 1, 1),
-            SpecRect(66, 28, 1, 1)
+            SpecRect(8, 13, 1, 1), SpecRect(26, 19, 1, 1), SpecRect(50, 26, 1, 1),
+            SpecRect(12, 37, 1, 1), SpecRect(36, 46, 1, 1), SpecRect(56, 13, 1, 1),
+            SpecRect(44, 37, 1, 1)
         ].map(painter.center)
         let itemSpawns: [CGPoint] = [
-            SpecRect(6, 28, 1, 1), SpecRect(80, 28, 1, 1), SpecRect(30, 52, 1, 1),
-            SpecRect(60, 28, 1, 1)
+            SpecRect(4, 26, 1, 1), SpecRect(58, 26, 1, 1), SpecRect(26, 45, 1, 1),
+            SpecRect(40, 12, 1, 1)
         ].map(painter.center)
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.pigeon,        painter.center(SpecRect(16, 24, 1, 1))),
-            (.pigeon,        painter.center(SpecRect(52, 30, 1, 1))),
-            (.sternAdult,    painter.center(SpecRect(70, 28, 1, 1))),
-            (.skateboardKid, painter.center(SpecRect(24, 52, 1, 1))),
-            (.vendingMachine, painter.center(SpecRect(45, 33, 1, 1)))
+            (.pigeon,        painter.center(SpecRect(10, 18, 1, 1))),
+            (.pigeon,        painter.center(SpecRect(38, 28, 1, 1))),
+            (.sternAdult,    painter.center(SpecRect(52, 28, 1, 1))),
+            (.skateboardKid, painter.center(SpecRect(16, 40, 1, 1))),
+            (.vendingMachine, painter.center(SpecRect(33, 24, 1, 1)))
         ]
 
         return BuildResult(
@@ -180,7 +171,7 @@ enum CityWorld {
             npcSpawns: npcSpawns,
             itemSpawns: itemSpawns,
             enemySpawns: enemySpawns,
-            playerSpawn: painter.center(SpecRect(43, rows - 4, 1, 1)),
+            playerSpawn: painter.center(SpecRect(31, rows - 4, 1, 1)),
             benchPositions: benchSpots.map { painter.center(SpecRect($0.0, $0.1, 1, 1)) },
             zoneExitNodes: exits
         )

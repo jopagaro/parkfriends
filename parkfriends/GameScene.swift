@@ -232,7 +232,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: [],
-            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 22, y: tile * 8))],
+            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 12, y: tile * 7))],
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,

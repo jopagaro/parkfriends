@@ -1,8 +1,9 @@
 import SpriteKit
 
-// Construction zone (88×48) per MAP_SPEC §6: chain-link walled dirt lot,
-// heavy equipment clutter, the site office trailer, and — deep in the
-// northeast corner — Quack. South gate connects to City Center.
+// Construction zone (56×36, compact per EB density rules): chain-link
+// walled site. Six functional areas — the build (slab/frame/crane), the
+// dig, the material yard, the staked phase-2 lot, the site office, and
+// the old-park remnant where Quack hides. South gate → City Center.
 enum CityNorthWorld {
 
     struct BuildResult {
@@ -26,17 +27,15 @@ enum CityNorthWorld {
         )
         let cols = painter.cols, rows = painter.rows
 
-        // L0 — churned dirt everywhere; exposed older earth in the NE corner
-        // (the park under the park, peeking through).
+        // L0 — churned dirt; the old park's grass survives in the NE corner.
         for yT in 0..<rows { for xT in 0..<cols {
             painter.place1x1(at: xT, yT,
                              texture: ImportedArt.genTile("tile-dirt-\((xT * 3 + yT * 7) % 3)-32"),
                              z: PaintLayer.ground.z)
         } }
-        painter.fillDarkGrass(rect: SpecRect(66, 2, 20, 8))
+        painter.fillDarkGrass(rect: SpecRect(40, 2, 14, 6))
 
-        // Chain-link perimeter (1 tile wide, 2 tall visually), gate at the
-        // south spur x=42..45.
+        // Chain-link perimeter, gate at the south spur x=26..29.
         let fenceTex = ImportedArt.genTile("prop-chainlink-32x64")
         func fenceRun(_ rect: SpecRect) {
             for yT in stride(from: rect.y, to: rect.y + rect.h, by: 1) {
@@ -47,141 +46,131 @@ enum CityNorthWorld {
             painter.addBlockingRect(rect)
         }
         fenceRun(SpecRect(0, 1, cols, 1))
-        fenceRun(SpecRect(0, rows - 2, 42, 1))
-        fenceRun(SpecRect(46, rows - 2, cols - 46, 1))
+        fenceRun(SpecRect(0, rows - 2, 26, 1))
+        fenceRun(SpecRect(30, rows - 2, cols - 30, 1))
         fenceRun(SpecRect(0, 2, 1, rows - 4))
         fenceRun(SpecRect(cols - 1, 2, 1, rows - 4))
 
-        // ── FUNCTIONAL LAYOUT (world-design rules: every area answers
-        // "what happens here?", related props share one screen, paths
-        // connect the areas, no dead fields) ──────────────────────────
-        //   NW: material yard   N-center: the build   NE: old-park remnant
-        //   C-south: the dig    E: staked phase-2 lot  SE: site office
         func prop(_ name: String, _ rect: SpecRect, block: Bool = true) {
             painter.placeSprite(rect, texture: ImportedArt.genTile(name), layer: .props)
             if block { painter.addBlockingRect(rect) }
         }
 
-        // — Haul roads: gate → build/dig junction, west to the yard,
-        //   east to the office (tracks are directional) —
-        for yT in 18..<(rows - 2) { for xT in 42..<45 {
+        // — Haul roads: gate → build/dig, west branch under the dig, east
+        //   branch to the office (directional track tiles) —
+        for yT in 10..<(rows - 2) { for xT in 26..<29 {
             painter.place1x1(at: xT, yT,
                              texture: ImportedArt.genTile("tile-track-\(yT % 3)-32"),
                              z: PaintLayer.ground.z + 0.15)
         } }
-        for xT in 18..<42 { for yT in 30..<33 {
+        for xT in 8..<26 { for yT in 24..<26 {
             painter.place1x1(at: xT, yT,
                              texture: ImportedArt.genTile("tile-trackh-\(xT % 3)-32"),
                              z: PaintLayer.ground.z + 0.15)
         } }
-        for xT in 45..<74 { for yT in 38..<41 {
+        for xT in 29..<44 { for yT in 30..<32 {
             painter.place1x1(at: xT, yT,
                              texture: ImportedArt.genTile("tile-trackh-\(xT % 3)-32"),
                              z: PaintLayer.ground.z + 0.15)
         } }
 
-        // — THE BUILD (N-center): slab, girder frame, crane, mixer, lumber —
-        for yT in 6..<20 { for xT in 24..<44 {
+        // — THE BUILD (NW): slab with girder frame, crane, mixer, lumber —
+        for yT in 3..<14 { for xT in 12..<26 {
             painter.place1x1(at: xT, yT,
                              texture: ImportedArt.genTile("tile-gravel-\((xT * 5 + yT * 3) % 3)-32"),
                              z: PaintLayer.ground.z + 0.1)
         } }
-        prop("prop-girderframe-224x160", SpecRect(29, 7, 7, 5))
-        painter.placeSprite(SpecRect(23, 3, 5, 8),
+        prop("prop-girderframe-224x160", SpecRect(15, 4, 7, 5))
+        painter.placeSprite(SpecRect(10, 2, 5, 8),
                             texture: ImportedArt.genTile("prop-crane-160x240"), layer: .props)
-        painter.addBlockingRect(SpecRect(24, 9, 3, 2))
-        prop("prop-cementmixer-64x96", SpecRect(38, 14, 2, 3))
-        prop("prop-lumberstack-96x48", SpecRect(29, 15, 3, 2))
-        for (xT, yT) in [(41, 8), (41, 10)] {
+        painter.addBlockingRect(SpecRect(11, 8, 3, 2))
+        prop("prop-cementmixer-64x96", SpecRect(23, 9, 2, 3))
+        prop("prop-lumberstack-96x48", SpecRect(17, 10, 3, 2))
+        for (xT, yT) in [(23, 4), (23, 6)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-barrel-32x40"), layer: .props)
         }
 
-        // — THE DIG (center-south): pit, excavator on the lip, spoil ring —
-        let pitRect = SpecRect(28, 24, 12, 7)
+        // — THE DIG (center): pit, excavator on the lip, spoil ring —
+        let pitRect = SpecRect(16, 17, 10, 6)
         painter.autotile(painter.tiles([pitRect]),
                          z: PaintLayer.ground.z + 0.2,
                          interior: { ImportedArt.genTile("tile-pit-\(($0 * 5 + $1 * 7) % 3)-32") },
                          tile: { ImportedArt.genBlobTile("sheet-pit-blob-128", col: $0, rowFromTop: $1) })
         painter.addBlockingRect(pitRect)
-        prop("prop-excavator-128x96", SpecRect(23, 27, 4, 3))
-        prop("prop-mound-96x64", SpecRect(26, 22, 3, 2), block: false)
-        prop("prop-mound-96x64", SpecRect(40, 23, 3, 2), block: false)
-        prop("prop-mound-96x64", SpecRect(33, 31, 3, 2), block: false)
-        for (xT, yT) in [(27, 23), (40, 22), (27, 31), (40, 31)] {
+        prop("prop-excavator-128x96", SpecRect(11, 19, 4, 3))
+        prop("prop-mound-96x64", SpecRect(14, 15, 3, 2), block: false)
+        prop("prop-mound-96x64", SpecRect(24, 16, 3, 2), block: false)
+        prop("prop-mound-96x64", SpecRect(19, 23, 3, 2), block: false)
+        for (xT, yT) in [(15, 16), (26, 15), (15, 23), (26, 23)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-cone-24x32"), layer: .decor)
         }
 
-        // — MATERIAL YARD (NW): ordered rows on gravel —
-        for yT in 24..<40 { for xT in 4..<18 {
+        // — MATERIAL YARD (SW): ordered rows on gravel —
+        for yT in 27..<34 { for xT in 2..<12 {
             painter.place1x1(at: xT, yT,
                              texture: ImportedArt.genTile("tile-gravel-\((xT * 7 + yT) % 3)-32"),
                              z: PaintLayer.ground.z + 0.1)
         } }
-        prop("prop-container-160x96", SpecRect(5, 25, 5, 3))
-        prop("prop-container-160x96", SpecRect(11, 25, 5, 3))
-        prop("prop-lumberstack-96x48", SpecRect(5, 30, 3, 2))
-        prop("prop-lumberstack-96x48", SpecRect(9, 30, 3, 2))
-        prop("prop-pipes-128x48", SpecRect(13, 31, 4, 2))
-        prop("prop-mound-96x64", SpecRect(6, 35, 3, 2), block: false)
-        for (xT, yT) in [(12, 36), (14, 35)] {
-            painter.placeSprite(SpecRect(xT, yT, 1, 1),
-                                texture: ImportedArt.genTile("prop-barrel-32x40"), layer: .props)
-        }
+        prop("prop-container-160x96", SpecRect(3, 27, 5, 3))
+        prop("prop-lumberstack-96x48", SpecRect(3, 31, 3, 2))
+        prop("prop-lumberstack-96x48", SpecRect(7, 31, 3, 2))
+        prop("prop-pipes-128x48", SpecRect(8, 27, 4, 2))
+        painter.placeSprite(SpecRect(10, 30, 1, 1),
+                            texture: ImportedArt.genTile("prop-barrel-32x40"), layer: .props)
 
         // — PHASE-2 LOT (E): surveyor stakes + foundation trenches —
-        for (xT, yT) in [(54, 14), (62, 14), (70, 14), (54, 22), (62, 22), (70, 22),
-                         (54, 30), (62, 30), (70, 30)] {
+        for (xT, yT) in [(33, 12), (40, 12), (47, 12), (33, 18), (40, 18), (47, 18),
+                         (33, 24), (40, 24), (47, 24)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-stake-16x32"), layer: .decor)
         }
-        for r in [SpecRect(56, 17, 12, 1), SpecRect(56, 26, 12, 1)] {
+        for r in [SpecRect(35, 15, 10, 1), SpecRect(35, 21, 10, 1)] {
             painter.autotile(painter.tiles([r]),
                              z: PaintLayer.ground.z + 0.2,
                              tile: { ImportedArt.genBlobTile("sheet-pit-blob-128", col: $0, rowFromTop: $1) })
             painter.addBlockingRect(r)
         }
-        for (xT, yT) in [(58, 20), (66, 24), (60, 28)] {
+        for (xT, yT) in [(38, 19), (45, 23), (49, 15)] {
             painter.placeRock(SpecRect(xT, yT, 1, 1), variant: xT % 3 + 1)
         }
 
-        // — SITE OFFICE (SE): trailer, welfare, parking —
-        prop("prop-trailer-192x128", SpecRect(76, 36, 6, 4))
-        prop("prop-portapotty-48x80", SpecRect(72, 36, 1, 2))
-        prop("prop-portapotty-48x80", SpecRect(74, 36, 1, 2))
-        prop("prop-dumpster-96x64", SpecRect(70, 42, 3, 2))
-        painter.placeSprite(SpecRect(80, 42, 3, 2),
+        // — SITE OFFICE (SE): trailer, welfare, the foreman's pickup —
+        prop("prop-trailer-192x128", SpecRect(44, 28, 6, 4))
+        prop("prop-portapotty-48x80", SpecRect(41, 28, 1, 2))
+        prop("prop-portapotty-48x80", SpecRect(43, 28, 1, 2))
+        prop("prop-dumpster-96x64", SpecRect(38, 32, 3, 2))
+        painter.placeSprite(SpecRect(50, 32, 3, 2),
                             texture: ImportedArt.genTile("prop-car-red-96x48"), layer: .props)
-        painter.addBlockingRect(SpecRect(80, 42, 3, 2))
-        painter.placeSprite(SpecRect(76, 34, 2, 1),
+        painter.addBlockingRect(SpecRect(50, 32, 3, 2))
+        painter.placeSprite(SpecRect(45, 33, 2, 1),
                             texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
 
         // — OLD-PARK REMNANT (NE): what the site is burying —
-        painter.placeTree(SpecRect(78, 2, 3, 4), texture: ImportedArt.parkMediumTree())
-        painter.placeSprite(SpecRect(70, 6, 2, 1),
+        painter.placeTree(SpecRect(48, 2, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeSprite(SpecRect(42, 5, 2, 1),
                             texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
-        painter.placeSprite(SpecRect(83, 7, 1, 1),
+        painter.placeSprite(SpecRect(41, 3, 1, 1),
                             texture: ImportedArt.genTile("prop-tallgrass-0-32"), layer: .decor)
-        painter.placeSprite(SpecRect(68, 4, 1, 1),
+        painter.placeSprite(SpecRect(52, 6, 1, 1),
                             texture: ImportedArt.genTile("prop-tallgrass-1-32"), layer: .decor)
 
-        // — Route dressing: cones along the haul roads, stray gear,
-        //   variation rubble in the open in-between ground —
-        for (xT, yT) in [(41, 20), (45, 24), (41, 28), (45, 34), (41, 42),
-                         (20, 29), (28, 33), (36, 33), (50, 37), (58, 41), (66, 37)] {
+        // — Route dressing + variation rubble in the open ground —
+        for (xT, yT) in [(25, 12), (30, 16), (25, 21), (30, 26), (25, 30),
+                         (31, 29), (37, 33), (10, 23), (18, 26)] {
             painter.placeSprite(SpecRect(xT, yT, 1, 1),
                                 texture: ImportedArt.genTile("prop-cone-24x32"), layer: .decor)
         }
-        prop("prop-dumpster-96x64", SpecRect(48, 6, 3, 2))
-        for (xT, yT) in [(20, 14), (48, 22), (50, 28), (76, 16), (82, 24), (12, 10),
-                         (30, 40), (60, 6), (36, 42), (52, 44), (10, 44), (84, 30)] {
+        prop("prop-dumpster-96x64", SpecRect(30, 4, 3, 2))
+        for (xT, yT) in [(6, 8), (8, 16), (34, 7), (52, 20), (36, 26), (20, 33),
+                         (6, 21), (52, 26), (33, 9)] {
             painter.placeRock(SpecRect(xT, yT, 1, 1), variant: xT % 3 + 1)
         }
 
         // Quack, cornered in the NE grass patch behind the equipment.
         let quack = QuackNode()
-        quack.position = painter.center(SpecRect(74, 5, 1, 1))
+        quack.position = painter.center(SpecRect(46, 4, 1, 1))
         root.addChild(quack)
 
         painter.addSceneBoundary()
@@ -192,24 +181,24 @@ enum CityNorthWorld {
             triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
             arrowCount: 5, edgeLabel: "City Center"
         )
-        sExit.position = painter.center(SpecRect(42, rows - 1, 4, 1))
+        sExit.position = painter.center(SpecRect(26, rows - 1, 4, 1))
         root.addChild(sExit); exits.append(sExit)
 
         return BuildResult(
             root: root,
-            npcSpawns: [SpecRect(33, 13, 1, 1), SpecRect(26, 33, 1, 1),
-                        SpecRect(58, 24, 1, 1), SpecRect(74, 41, 1, 1)].map(painter.center),
-            itemSpawns: [SpecRect(10, 22, 1, 1), SpecRect(62, 42, 1, 1),
-                         SpecRect(33, 43, 1, 1)].map(painter.center),
+            npcSpawns: [SpecRect(18, 8, 1, 1), SpecRect(14, 25, 1, 1),
+                        SpecRect(36, 16, 1, 1), SpecRect(46, 26, 1, 1)].map(painter.center),
+            itemSpawns: [SpecRect(9, 29, 1, 1), SpecRect(50, 24, 1, 1),
+                         SpecRect(20, 32, 1, 1)].map(painter.center),
             fixedItems: [],
             enemySpawns: [
-                (.wasp,           painter.center(SpecRect(52, 10, 1, 1))),
-                (.wasp,           painter.center(SpecRect(66, 18, 1, 1))),
-                (.raccoon,        painter.center(SpecRect(12, 20, 1, 1))),
-                (.vendingMachine, painter.center(SpecRect(66, 44, 1, 1))),
-                (.sternAdult,     painter.center(SpecRect(38, 21, 1, 1)))
+                (.wasp,           painter.center(SpecRect(32, 6, 1, 1))),
+                (.wasp,           painter.center(SpecRect(44, 20, 1, 1))),
+                (.raccoon,        painter.center(SpecRect(5, 30, 1, 1))),
+                (.vendingMachine, painter.center(SpecRect(34, 30, 1, 1))),
+                (.sternAdult,     painter.center(SpecRect(21, 14, 1, 1)))
             ],
-            playerSpawn: painter.center(SpecRect(43, rows - 4, 1, 1)),
+            playerSpawn: painter.center(SpecRect(27, rows - 4, 1, 1)),
             benchPositions: [],
             zoneExitNodes: exits,
             quackNode: quack

@@ -28,12 +28,12 @@ enum GameConstants {
         CGSize(width: CGFloat(parkNorthCols) * tileSize, height: CGFloat(parkNorthRows) * tileSize)
     }
 
-    static let citySouthCols = 88
-    static let citySouthRows = 42
-    static let cityCenterCols = 88
-    static let cityCenterRows = 65
-    static let cityNorthCols = 88
-    static let cityNorthRows = 48
+    static let citySouthCols = 60
+    static let citySouthRows = 30
+    static let cityCenterCols = 64
+    static let cityCenterRows = 48
+    static let cityNorthCols = 56
+    static let cityNorthRows = 36
 
     static var citySouthWorldSize: CGSize {
         CGSize(width: CGFloat(citySouthCols) * tileSize, height: CGFloat(citySouthRows) * tileSize)
