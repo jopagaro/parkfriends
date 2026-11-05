@@ -104,7 +104,9 @@ final class NPCNode: SKSpriteNode {
         switch kind {
         case .rangerGuide, .jogger, .child, .birdwatcher, .dogwalker,
              .gardener, .worker, .shopkeeper:
-            displaySize = CGSize(width: 50, height: 74)
+            // True 2:3 aspect of the 128×192 canvas; adults land at ~1.5
+            // tiles of visible content, children shorter via the art itself.
+            displaySize = CGSize(width: 64, height: 96)
         default:
             displaySize = CGSize(width: 40, height: 40)
         }

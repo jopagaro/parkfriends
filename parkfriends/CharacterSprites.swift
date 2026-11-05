@@ -78,12 +78,14 @@ enum CharacterSprites {
 
     static func overworldSize(species: Species) -> CGSize {
         if let cached = overworldSizeCache[species] { return cached }
+        // EarthBound ruler: adult humans show ~72pt (1.5 tiles) of content,
+        // so the animal party stays clearly below them — around one tile.
         let targetContentHeight: CGFloat
         switch species {
-        case .turtle:   targetContentHeight = 54
-        case .squirrel: targetContentHeight = 62
-        case .hedgehog: targetContentHeight = 58
-        case .hamster:  targetContentHeight = 52
+        case .turtle:   targetContentHeight = 46
+        case .squirrel: targetContentHeight = 50
+        case .hedgehog: targetContentHeight = 48
+        case .hamster:  targetContentHeight = 38
         }
         // Measure ONLY the generated idle (known 64x96 canvas). If the
         // generated art is missing we fall back to a fixed legacy size —

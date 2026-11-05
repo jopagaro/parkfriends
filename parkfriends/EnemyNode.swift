@@ -612,7 +612,8 @@ final class EnemyNode: SKSpriteNode {
         }
         let size: CGSize
         if isHuman {
-            size = kind.isBoss ? CGSize(width: 60, height: 90) : CGSize(width: 50, height: 74)
+            // Same 2:3 ruler as NPC humans (128×192 canvas); bosses loom.
+            size = kind.isBoss ? CGSize(width: 72, height: 108) : CGSize(width: 64, height: 96)
         } else if kind == .goose || kind == .grandGooseGerald {
             // goose art is 48×56 — keep the tall aspect
             size = kind.isBoss ? CGSize(width: 66, height: 77) : CGSize(width: 46, height: 54)

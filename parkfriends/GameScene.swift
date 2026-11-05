@@ -33,6 +33,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Camera / overlay nodes
     private let cam = SKCameraNode()
+    /// Screen-space UI layer on the camera, counter-scaled so UI stays at
+    /// point size while the camera zooms the world to a fixed tile count.
+    private let uiRoot = SKNode()
+    private var camScale: CGFloat = 1
     private var joystick:     VirtualJoystick!
     private var talkButton:   ActionButton!
     private var switchButton: ActionButton!
@@ -400,23 +404,25 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(cam)
         camera      = cam
         cam.position = pendingSpawn
+        cam.addChild(uiRoot)
+        updateCameraScale()
 
         joystick = VirtualJoystick(radius: 65)
-        cam.addChild(joystick)
+        uiRoot.addChild(joystick)
 
         talkButton = ActionButton(glyph: "💬", radius: 30, tint: .blue)
         talkButton.onTap = { [weak self] in self?.handleTalk() }
         talkButton.alpha = 0
-        cam.addChild(talkButton)
+        uiRoot.addChild(talkButton)
 
         switchButton = ActionButton(glyph: gameState?.activeSpecies.emoji ?? "🐢",
                                     radius: 26, tint: .purple)
         switchButton.onTap = { [weak self] in self?.cycleParty() }
-        cam.addChild(switchButton)
+        uiRoot.addChild(switchButton)
 
         healButton = ActionButton(glyph: "🍎", radius: 26, tint: .green)
         healButton.onTap = { [weak self] in self?.useQuickItem() }
-        cam.addChild(healButton)
+        uiRoot.addChild(healButton)
 
         // Battle overlay (always on camera, initially hidden)
         battleNode = BattleNode()
@@ -424,9 +430,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         battleNode.onDefeat  = { [weak self] in self?.handleBattleDefeat() }
         battleNode.onFled    = { [weak self] in self?.handleBattleFled() }
         battleNode.onSwitched = { [weak self] _ in self?.refreshPartySprites() }
-        cam.addChild(battleNode)
+        uiRoot.addChild(battleNode)
 
-        addVignette()
         buildChargeBar()
 
 #if canImport(AppKit)
@@ -443,7 +448,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         hint.horizontalAlignmentMode = .center
         hint.verticalAlignmentMode   = .bottom
         hint.zPosition               = GameConstants.ZPos.ui
-        cam.addChild(hint)
+        uiRoot.addChild(hint)
         hintLabel = hint
 #endif
 
@@ -472,7 +477,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let barH: CGFloat = 7
         let container = SKNode()
         container.zPosition = GameConstants.ZPos.ui
-        cam.addChild(container)
+        uiRoot.addChild(container)
 
         // Glph label
         let glyphLabel = SKLabelNode(text: "⚡")
@@ -509,7 +514,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
+        updateCameraScale()
         layoutControls()
+    }
+
+    /// EarthBound framing: the camera always shows ~11.5 tiles on the short
+    /// screen axis (capped at 20 on the long one), whatever the window or
+    /// device size. UI on `uiRoot` is counter-scaled back to point size.
+    private func updateCameraScale() {
+        guard size.width > 0, size.height > 0 else { return }
+        let tile = GameConstants.tileSize
+        let sShort = (11.5 * tile) / min(size.width, size.height)
+        let sCap   = (20.0 * tile) / max(size.width, size.height)
+        camScale = min(sShort, sCap)
+        cam.setScale(camScale)
+        uiRoot.setScale(1 / camScale)
     }
 
     // MARK: - macOS input
@@ -740,7 +759,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                                      y: CGFloat.random(in: -size.height/2...size.height/2))
             label.zPosition = GameConstants.ZPos.ui + 5
             label.alpha = 0
-            cam.addChild(label)
+            uiRoot.addChild(label)
             label.run(.sequence([
                 .wait(forDuration: Double(i) * 0.08),
                 .group([
@@ -789,7 +808,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let restFlash = SKSpriteNode(color: SKColor(white: 1, alpha: 0), size: size)
         restFlash.position  = .zero
         restFlash.zPosition = GameConstants.ZPos.ui + 10
-        cam.addChild(restFlash)
+        uiRoot.addChild(restFlash)
         restFlash.run(.sequence([
             .fadeAlpha(to: 0.25, duration: 0.3),
             .fadeOut(withDuration: 0.5),
@@ -935,7 +954,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         overlay.setValue(SKAttributeValue(float: Float(size.width / max(size.height, 1))),
                          forAttribute: "a_aspect")
         overlay.setValue(SKAttributeValue(float: boss ? 1 : 0), forAttribute: "a_boss")
-        cam.addChild(overlay)
+        uiRoot.addChild(overlay)
 
         let swirlIn = SKAction.customAction(withDuration: boss ? 0.45 : 0.6) { node, elapsed in
             let t = Float(elapsed / (boss ? 0.45 : 0.6))
@@ -975,7 +994,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         overlay.position  = .zero
         overlay.zPosition = GameConstants.ZPos.ui + 50
         overlay.alpha     = 0
-        cam.addChild(overlay)
+        uiRoot.addChild(overlay)
 
         // Colored banner stripe across middle
         let stripe = SKSpriteNode(color: stripeColor,
@@ -1203,7 +1222,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         toast.position                = CGPoint(x: 0, y: 80)
         toast.zPosition               = GameConstants.ZPos.ui + 10
         toast.alpha                   = 0
-        cam.addChild(toast)
+        uiRoot.addChild(toast)
         toast.run(.sequence([
             .group([.fadeIn(withDuration: 0.25), .scale(to: 1.1, duration: 0.25)]),
             .wait(forDuration: 2.0),
@@ -1378,7 +1397,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         overlay.position  = .zero
         overlay.zPosition = GameConstants.ZPos.ui + 100
         overlay.alpha     = 0
-        cam.addChild(overlay)
+        uiRoot.addChild(overlay)
         fadeOverlay = overlay
 
         let titleLabel = SKLabelNode(text: title)
@@ -1455,7 +1474,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         overlay.position  = .zero
         overlay.zPosition = GameConstants.ZPos.ui + 100
         overlay.alpha     = 0
-        cam.addChild(overlay)
+        uiRoot.addChild(overlay)
         fadeOverlay = overlay
 
         // Zone title card (shown while screen is black)
@@ -1516,7 +1535,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         title.horizontalAlignmentMode = .center
         title.zPosition = GameConstants.ZPos.ui + 25
         title.alpha = 0
-        cam.addChild(title)
+        uiRoot.addChild(title)
 
         let beat = SKLabelNode(text: state.zoneArrivalText)
         beat.fontName = "Helvetica Neue"
@@ -1526,7 +1545,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         beat.horizontalAlignmentMode = .center
         beat.zPosition = GameConstants.ZPos.ui + 25
         beat.alpha = 0
-        cam.addChild(beat)
+        uiRoot.addChild(beat)
 
         let show = SKAction.group([.fadeIn(withDuration: 0.2), .moveBy(x: 0, y: -6, duration: 0.2)])
         let hide = SKAction.group([.fadeOut(withDuration: 0.28), .moveBy(x: 0, y: -4, duration: 0.28)])
@@ -1534,48 +1553,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         beat.run(.sequence([show, .wait(forDuration: 2.8), hide, .removeFromParent()]))
     }
 
-    // MARK: - Visual polish
-
-    private func addVignette() {
-        // Subtle dark vignette on camera edges — size must be large enough to cover any
-        // Mac display so the rectangular edge is never visible on screen.
-        let vigSize = CGSize(width: 4000, height: 4000)
-
-        // Build a radial gradient texture via CGContext (rendered at half res for speed)
-        let pw = 512, ph = 512
-        guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8,
-                               bytesPerRow: pw * 4,
-                               space: CGColorSpaceCreateDeviceRGB(),
-                               bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue |
-                                           CGImageAlphaInfo.premultipliedFirst.rawValue) else { return }
-
-        let cx = CGFloat(pw) / 2, cy = CGFloat(ph) / 2
-        let r  = min(cx, cy) * 0.95
-        let gradient = CGGradient(
-            colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: [
-                CGColor(red: 0, green: 0, blue: 0, alpha: 0),
-                CGColor(red: 0, green: 0, blue: 0, alpha: 0.52)
-            ] as CFArray,
-            locations: [0.35, 1]
-        )
-        if let gradient {
-            ctx.drawRadialGradient(
-                gradient,
-                startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
-                endCenter:   CGPoint(x: cx, y: cy), endRadius:   r,
-                options: [.drawsAfterEndLocation]
-            )
-        }
-        guard let img = ctx.makeImage() else { return }
-        let tex = SKTexture(cgImage: img)
-        tex.filteringMode = .linear
-        let vigNode = SKSpriteNode(texture: tex, size: vigSize)
-        vigNode.position  = .zero
-        vigNode.zPosition = GameConstants.ZPos.ui - 1
-        vigNode.alpha     = 0.55
-        cam.addChild(vigNode)
-    }
 
     // MARK: - Treasure
 
@@ -1770,9 +1747,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let zb = gameState?.currentZone.boundsSize ?? GameConstants.parkCenterWorldSize
         worldW = zb.width
         worldH = zb.height
-        let hw = size.width/2, hh = size.height/2
-        let tx = min(max(player.position.x, hw), worldW - hw)
-        let ty = min(max(player.position.y, hh), worldH - hh)
+        let hw = size.width / 2 * camScale, hh = size.height / 2 * camScale
+        let tx = worldW > hw * 2 ? min(max(player.position.x, hw), worldW - hw) : worldW / 2
+        let ty = worldH > hh * 2 ? min(max(player.position.y, hh), worldH - hh) : worldH / 2
         cam.position = CGPoint(
             x: cam.position.x + (tx - cam.position.x) * 0.10,
             y: cam.position.y + (ty - cam.position.y) * 0.10
