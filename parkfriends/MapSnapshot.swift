@@ -18,10 +18,17 @@ enum MapSnapshot {
 
         func snap(_ name: String, _ root: SKNode, cols: Int, rows: Int) {
             let tile = GameConstants.tileSize
-            let scene = SKScene(size: CGSize(width: CGFloat(cols) * tile,
-                                             height: CGFloat(rows) * tile))
+            // Render at half scale: texture(from:) multiplies the scene size by
+            // the screen scale (3x), and a full zone at 3x exceeds Metal's
+            // 8192px texture cap (105 cols * 48 * 3 = 15120) and crashes.
+            let scale: CGFloat = 0.5
+            let scene = SKScene(size: CGSize(width: CGFloat(cols) * tile * scale,
+                                             height: CGFloat(rows) * tile * scale))
             scene.backgroundColor = .black
-            scene.addChild(root)
+            let holder = SKNode()
+            holder.setScale(scale)
+            holder.addChild(root)
+            scene.addChild(holder)
             guard let tex = view.texture(from: scene) else {
                 FileHandle.standardError.write("snapshot FAILED \(name)\n".data(using: .utf8)!)
                 return

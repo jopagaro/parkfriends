@@ -62,14 +62,14 @@ enum ParkWorld {
         ]))
         painter.autotile(plazaTiles,
                          z: PaintLayer.ground.z + 0.2,
-                         interior: { ImportedArt.genTile("tile-stonefill-\(($0 * 7 + $1 * 5) % 3)-32") },
+                         interior: { ImportedArt.genTile("tile-stonefill-p\($0 % 2)\($1 % 2)-32") },
                          tile: ImportedArt.parkStoneBlobTile)
 
         // §4.1 — Statue plaza.
         let statuePlazaRect = SpecRect(66, 38, 10, 10)
         painter.autotile(painter.tiles([statuePlazaRect]),
                          z: PaintLayer.ground.z + 0.2,
-                         interior: { ImportedArt.genTile("tile-stonefill-\(($0 * 7 + $1 * 5) % 3)-32") },
+                         interior: { ImportedArt.genTile("tile-stonefill-p\($0 % 2)\($1 % 2)-32") },
                          tile: ImportedArt.parkStoneBlobTile)
 
         // §4.3 — Dirt path network, autotiled so ends and corners are rounded.
@@ -680,16 +680,18 @@ final class ScenePainter {
     }
 
     func fillGrass(rect: SpecRect) {
-        // EarthBound checkerboard baked into the tile at half-tile scale,
-        // with sparse sprout/flower variants breaking the rhythm.
+        // EB mowed-lawn rhythm: flat base alternating with a barely-lighter
+        // mate per WHOLE tile (2x2 blocks), sprout/flower variants at ~5%.
         let a = ImportedArt.genTile("tile-grass-0-32") ?? ImportedArt.parkGrassBaseTile()
+        let b = ImportedArt.genTile("tile-grass-3-32") ?? a
         for yT in rect.y..<(rect.y + rect.h) {
             for xT in rect.x..<(rect.x + rect.w) {
                 let n = (xT * 13 + yT * 7) % 37
+                let base = ((xT / 2) + (yT / 2)) % 2 == 0 ? a : b
                 let tex: SKTexture?
-                if n == 3 { tex = ImportedArt.genTile("tile-grass-1-32") ?? a }
-                else if n == 17 { tex = ImportedArt.genTile("tile-grass-2-32") ?? a }
-                else { tex = a }
+                if n == 3 { tex = ImportedArt.genTile("tile-grass-1-32") ?? base }
+                else if n == 17 { tex = ImportedArt.genTile("tile-grass-2-32") ?? base }
+                else { tex = base }
                 place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z)
             }
         }

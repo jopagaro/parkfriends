@@ -53,7 +53,7 @@ var palette: [Character: (UInt8, UInt8, UInt8, UInt8)] = [
     "R": (0x2E, 0x2E, 0x32, 255), // asphalt
     "x": (0x3A, 0x3A, 0x3E, 255), // asphalt light
     "5": (0x6A, 0x6A, 0x6A, 255), // statue mid gray
-    "6": (0x66, 0xB4, 0x38, 255), // grass checker-mate (lighter)
+    "6": (0x62, 0xAD, 0x35, 255), // grass checker-mate (barely lighter — lawn rhythm, not chessboard)
     // parametric NPC slots (set per-role before rendering)
     "a": (0xE8, 0xC0, 0x98, 255), // skin
     "d": (0xC8, 0x9A, 0x6E, 255), // skin shadow
@@ -1657,32 +1657,33 @@ func speck(_ x: Int, _ y: Int, _ salt: Int) -> Int {
     return Int(h % 1000)
 }
 
-func grassClumps(_ g: inout Grid, base: Character, salt: Int) {
-    // deliberate SNES-style clumps: small leaf tufts, not noise
-    for i in 0..<7 {
+func grassClumps(_ g: inout Grid, base: Character, salt: Int, count: Int = 2) {
+    // deliberate SNES-style clumps: a FEW small leaf tufts, not noise
+    // (bible 3.3: 4-8 detail pixels per tile max — cleanliness IS the style)
+    for i in 0..<count {
         let cx = 3 + speck(i, salt, 5) % (TS - 7)
         let cy = 3 + speck(salt, i, 9) % (TS - 7)
-        g[cy][cx] = "g"; g[cy][cx + 1] = "g"; g[cy + 1][cx + 1] = "g"
-        g[cy - 1][cx] = "H"
+        g[cy][cx] = "g"; g[cy][cx + 1] = "g"
+        g[cy - 1][cx + 1] = "H"
     }
 }
 
+/// variant 0 = base lawn; 1 = sprout clump; 2 = tiny flowers; 3 = checker-mate
+/// (same as 0 but one shade lighter — fillGrass alternates 0/3 per whole tile
+/// for the EB mowed-lawn rhythm at tile scale, not a half-tile chessboard).
 func tileGrass(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
-    // fine EarthBound checker: 16px quadrants inside every tile, so the
-    // pattern tiles seamlessly at half-tile scale
-    for y in 0..<TS { for x in 0..<TS {
-        g[y][x] = ((x / 24) + (y / 24)) % 2 == 0 ? "G" : "6"
-    } }
-    grassClumps(&g, base: "G", salt: 11 + variant * 97)
-    if variant == 1 {   // sprout variant
-        for (bx, by) in [(9, 12), (33, 27), (20, 39), (40, 8)] {
+    let base: Character = variant == 3 ? "6" : "G"
+    for y in 0..<TS { for x in 0..<TS { g[y][x] = base } }
+    grassClumps(&g, base: base, salt: 11 + variant * 97)
+    if variant == 1 {   // sprout clump variant
+        for (bx, by) in [(12, 14), (33, 30)] {
             g[by][bx] = "g"; g[by - 1][bx] = "g"; g[by - 1][bx + 1] = "H"
             g[by][bx + 1] = "g"
         }
     }
     if variant == 2 {   // tiny flowers variant
-        for (fx, fy, c) in [(12, 9, "W"), (36, 21, "P"), (21, 38, "Q"), (7, 30, "O")] {
+        for (fx, fy, c) in [(13, 11, "W"), (34, 31, "Q")] {
             g[fy][fx] = Character(c); g[fy][fx + 1] = Character(c)
             g[fy + 1][fx] = Character(c)
             g[fy - 1][fx] = "H"
@@ -1692,48 +1693,66 @@ func tileGrass(variant: Int) -> Grid {
 }
 
 func tileGrassDark(variant: Int) -> Grid {
+    // flat shade-grass (under tree clusters) with a few lighter tufts —
+    // the old 50/50 noise read as static.
     var g = emptyGrid(w: TS, h: TS)
-    for y in 0..<TS { for x in 0..<TS {
-        let r = speck(x + variant * 131, y, 23)
-        g[y][x] = r < 40 ? "G" : "g"
-    } }
+    for y in 0..<TS { for x in 0..<TS { g[y][x] = "g" } }
+    for i in 0..<3 {
+        let cx = 3 + speck(i + variant * 7, 41, 15) % (TS - 7)
+        let cy = 3 + speck(41, i + variant * 7, 19) % (TS - 7)
+        g[cy][cx] = "G"; g[cy][cx + 1] = "G"
+    }
     return g
 }
 
 func tileDirt(variant: Int) -> Grid {
+    // calm packed earth: flat tan, sparse dark grains, two pebbles max
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
         let r = speck(x + variant * 61, y, 37)
-        g[y][x] = r < 16 ? "t" : "T"
+        g[y][x] = r < 5 ? "t" : "T"
     } }
-    // pebble clusters with lit tops
-    for i in 0..<5 {
-        let px = 3 + speck(i, variant, 13) % (TS - 8)
-        let py = 3 + speck(variant, i, 17) % (TS - 8)
-        g[py][px] = "t"; g[py][px + 1] = "t"; g[py + 1][px] = "r"
-        g[py + 1][px + 1] = "t"; g[py - 1][px] = "h"
+    for i in 0..<2 {
+        let px = 5 + speck(i, variant, 13) % (TS - 10)
+        let py = 5 + speck(variant, i, 17) % (TS - 10)
+        g[py][px] = "t"; g[py][px + 1] = "t"
+        g[py - 1][px] = "h"
     }
-    // faint horizontal wear bands
-    for x in stride(from: variant % 3, to: TS, by: 13) { g[15][x] = "t"; g[36][(x + 6) % TS] = "t" }
     return g
 }
 
 func tileStone(variant: Int) -> Grid {
+    // whole-tile slabs: flat fill, per-TILE tone shift, joints only on the
+    // tile's right/bottom edge so the sidewalk reads as pavers, not quads
     var g = emptyGrid(w: TS, h: TS)
-    // per-quad tone variation so slabs aren't uniform
+    let tone = speck(variant, variant, 61) % 3
+    let base: Character = tone == 2 ? "9" : "1"
     for y in 0..<TS { for x in 0..<TS {
-        let quad = (x / 24) + (y / 24) * 2
-        let toneShift = speck(quad, variant, 61) % 3
         let r = speck(x + variant * 43, y, 53)
-        if r < 12 { g[y][x] = "0" }
-        else if r < 24 || toneShift == 2 { g[y][x] = "9" }
-        else { g[y][x] = "1" }
+        g[y][x] = r < 7 ? "9" : base
     } }
-    // broken, low-contrast joints (dashes with gaps, mid tone)
-    for i in 0..<TS where i % 5 != 4 { g[23][i] = "9"; g[i][23] = "9" }
-    for i in stride(from: 3, to: TS, by: 10) { g[23][i] = "0"; g[i][23] = "0" }
-    if variant % 3 == 2 {
-        for i in 0..<9 { g[9 + i][30 + (i / 2)] = "0" }
+    // slab joints: low-contrast dashes along right + bottom edges
+    for i in 0..<TS where i % 6 != 5 { g[TS - 1][i] = "0"; g[i][TS - 1] = "0" }
+    if variant % 3 == 2 {   // one hairline crack on a third of slabs
+        for i in 0..<7 { g[12 + i][28 + (i / 2)] = "0" }
+    }
+    return g
+}
+
+/// Plaza paver tile keyed by tile-position parity: joints draw only on odd
+/// columns/rows, so four tiles form one 2x2 (96px) slab — plaza scale, not
+/// bathroom-tile scale. px/py are (tileX % 2, tileY % 2).
+func tileStoneParity(px: Int, py: Int) -> Grid {
+    var g = emptyGrid(w: TS, h: TS)
+    let v = px + py * 2
+    for y in 0..<TS { for x in 0..<TS {
+        let r = speck(x + v * 43, y, 53)
+        g[y][x] = r < 7 ? "9" : "1"
+    } }
+    if px == 1 { for i in 0..<TS where i % 6 != 5 { g[i][TS - 1] = "0" } }
+    if py == 1 { for i in 0..<TS where i % 6 != 5 { g[TS - 1][i] = "0" } }
+    if v == 2 {   // one hairline crack per slab
+        for i in 0..<7 { g[12 + i][28 + (i / 2)] = "0" }
     }
     return g
 }
@@ -1759,25 +1778,23 @@ func tileWaterCalm(variant: Int) -> Grid {
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
         let r = speck(x + variant * 89, y, 97)
-        g[y][x] = r < 14 ? "v" : "w"
+        g[y][x] = r < 4 ? "v" : "w"
     } }
     return g
 }
 
 func tileWater(variant: Int) -> Grid {
+    // calm flat water with TWO short crest dashes — pond should read as one
+    // sheet of water, with the shimmer carried by sparse crests, not noise
     var g = emptyGrid(w: TS, h: TS)
     for y in 0..<TS { for x in 0..<TS {
         let r = speck(x + variant * 89, y, 97)
-        g[y][x] = r < 14 ? "v" : "w"
+        g[y][x] = r < 4 ? "v" : "w"
     } }
-    // SNES wave crests: staggered rows of short highlights with dark lee
-    for (row, off) in [(7, 3), (19, 18), (31, 9), (42, 27)] {
-        var x = off + (variant % 2) * 7
-        while x < TS - 7 {
-            for i in 0..<6 { g[row][x + i] = "u" }
-            g[row + 1][x + 2] = "v"; g[row + 1][x + 3] = "v"; g[row + 1][x + 4] = "v"
-            x += 20
-        }
+    for (row, off) in [(13, 8), (34, 24)] {
+        let x = (off + variant * 11) % (TS - 10)
+        for i in 0..<6 { g[row][x + i] = "u" }
+        g[row + 1][x + 2] = "v"; g[row + 1][x + 3] = "v"
     }
     return g
 }
@@ -1841,12 +1858,31 @@ func blobCell(fill: Grid, n: Bool, s: Bool, e: Bool, w: Bool,
     }
     for y in 0..<TS { for x in 0..<TS where inside(x, y) { g[y][x] = fill[y][x] } }
     let bodySet = Set(palette.keys).subtracting(["."])
+    // Outline ONLY true outside edges. outlineShape treats the cell's own
+    // bounds as "outside", which used to rim every cell on all four sides —
+    // that drew grid lines between adjacent tiles of the same surface.
+    func outlineOutsideEdges(_ g: inout Grid) {
+        let h = g.count, wd = g[0].count
+        var edges: [(Int, Int)] = []
+        for y in 0..<h { for x in 0..<wd where bodySet.contains(g[y][x]) {
+            var isEdge = false
+            for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                if nx < 0 { if w { isEdge = true } }
+                else if nx >= wd { if e { isEdge = true } }
+                else if ny < 0 { if n { isEdge = true } }
+                else if ny >= h { if s { isEdge = true } }
+                else if g[ny][nx] == "." { isEdge = true }
+            }
+            if isEdge { edges.append((x, y)) }
+        } }
+        for (x, y) in edges { g[y][x] = rim }
+    }
     if fringe != nil {
-        outlineShape(&g, body: bodySet, outline: rim)
+        outlineOutsideEdges(&g)
         if let f = fringe { dilate(&g, with: f); dilate(&g, with: f) }
         dilate(&g, with: rim)
     } else {
-        outlineShape(&g, body: bodySet, outline: rim)
+        outlineOutsideEdges(&g)
     }
     // soften: mid band just inside the rim
     if let mid = midRim {
@@ -4488,6 +4524,9 @@ for v in 0..<3 {
     writePNG(render(tileHedgeLeaf(variant: v)), to: "\(outDir)/tile-hedge-\(v)-32.png")
     writePNG(render(tileStone(variant: v)), to: "\(outDir)/tile-stonefill-\(v)-32.png")
 }
+for px in 0..<2 { for py in 0..<2 {
+    writePNG(render(tileStoneParity(px: px, py: py)), to: "\(outDir)/tile-stonefill-p\(px)\(py)-32.png")
+} }
 writePNG(render(tileRoad(variant: 0, dash: true)), to: "\(outDir)/tile-road-dash-32.png")
 do {
     var cw = tileRoad(variant: 1)
