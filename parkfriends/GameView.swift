@@ -555,8 +555,11 @@ struct DialogueOverlay: View {
                         ScrollViewReader { proxy in
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 10) {
-                                    ForEach(dialogue.lines) { line in
-                                        DialogueLineView(line: line)
+                                    ForEach(Array(dialogue.lines.enumerated()), id: \.element.id) { idx, line in
+                                        // Scripted scenes land all at once —
+                                        // stagger so lines type in sequence.
+                                        DialogueLineView(line: line,
+                                                         startDelay: dialogue.allowsInput ? 0 : scriptedDelay(upTo: idx))
                                             .id(line.id)
                                     }
                                     if dialogue.isResponding {
@@ -629,6 +632,12 @@ struct DialogueOverlay: View {
         draft = ""
         Task { await dialogue.send(msg) }
     }
+
+    /// Cumulative typing time of the scripted lines before `idx`.
+    private func scriptedDelay(upTo idx: Int) -> Double {
+        guard idx > 0, idx <= dialogue.lines.count else { return 0 }
+        return dialogue.lines[..<idx].reduce(0) { $0 + Double($1.text.count) * 0.024 + 0.5 }
+    }
 }
 
 struct DialogueEmptyStateView: View {
@@ -681,8 +690,54 @@ struct DialogueEmptyStateView: View {
     }
 }
 
+/// EarthBound typewriter: reveals text with per-character blips, longer
+/// pauses on punctuation, tap to skip. Keeps typing (not restarting) when
+/// streamed text grows, because the line keeps its identity.
+struct TypewriterText: View {
+    let text: String
+    let voice: Int
+    var startDelay: Double = 0
+
+    @State private var shown = 0
+    @State private var blipTally = 0
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Text(text).opacity(0)   // reserves final size — no reflow while typing
+            Text(String(text.prefix(shown)))
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { shown = text.count }
+        .task(id: text) {
+            shown = min(shown, text.count)
+            if shown >= text.count { return }
+            if shown == 0, startDelay > 0 {
+                try? await Task.sleep(for: .seconds(startDelay))
+                if Task.isCancelled { return }
+            }
+            while shown < text.count {
+                let ch = text[text.index(text.startIndex, offsetBy: shown)]
+                shown += 1
+                if !ch.isWhitespace {
+                    blipTally += 1
+                    if blipTally % 2 == 0 { SoundFX.shared.textBlip(voice: voice) }
+                }
+                let pause: Double
+                switch ch {
+                case ".", "!", "?", "…": pause = 0.16
+                case ",", "—", ":":      pause = 0.07
+                default:                 pause = 0.020
+                }
+                try? await Task.sleep(for: .seconds(pause))
+                if Task.isCancelled { return }
+            }
+        }
+    }
+}
+
 struct DialogueLineView: View {
     let line: DialogueManager.Line
+    var startDelay: Double = 0
 
     var body: some View {
         let isPlayer = line.speaker == "You"
@@ -692,11 +747,19 @@ struct DialogueLineView: View {
                 Text(line.speaker.uppercased())
                     .font(.system(size: 10, weight: .black, design: .monospaced))
                     .foregroundStyle(isPlayer ? Color(red: 0.56, green: 0.80, blue: 0.96) : Color(red: 0.96, green: 0.89, blue: 0.55))
-                Text(line.text)
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .lineSpacing(3)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
+                Group {
+                    if isPlayer {
+                        Text(line.text)
+                    } else {
+                        TypewriterText(text: line.text,
+                                       voice: SoundFX.voice(for: line.speaker),
+                                       startDelay: startDelay)
+                    }
+                }
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .lineSpacing(3)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: 720, alignment: .leading)
             .padding(.horizontal, 14)

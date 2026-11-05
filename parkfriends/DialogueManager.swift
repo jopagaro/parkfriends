@@ -13,9 +13,17 @@ import FoundationModels
 final class DialogueManager {
 
     struct Line: Identifiable {
-        let id = UUID()
+        let id: UUID
         let speaker: String   // "You" or NPC displayName
         let text: String
+
+        /// Streaming updates pass the existing `id` so SwiftUI keeps the
+        /// same view (and the typewriter keeps typing instead of restarting).
+        init(id: UUID = UUID(), speaker: String, text: String) {
+            self.id = id
+            self.speaker = speaker
+            self.text = text
+        }
     }
 
     /// The active conversation, if one is open.
@@ -132,12 +140,13 @@ final class DialogueManager {
                         ?? String(describing: partial)
                     guard index < lines.count else { return }
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    lines[index] = Line(speaker: npc.displayName, text: trimmed.isEmpty ? "…" : trimmed)
+                    lines[index] = Line(id: lines[index].id, speaker: npc.displayName,
+                                        text: trimmed.isEmpty ? "…" : trimmed)
                 }
                 return
             } catch {
                 if index < lines.count {
-                    lines[index] = Line(speaker: npc.displayName,
+                    lines[index] = Line(id: lines[index].id, speaker: npc.displayName,
                                         text: fallbackReply(for: npc, clues: activeQuackClues))
                 }
                 return
@@ -145,7 +154,7 @@ final class DialogueManager {
         }
         #endif
         if index < lines.count {
-            lines[index] = Line(speaker: npc.displayName,
+            lines[index] = Line(id: lines[index].id, speaker: npc.displayName,
                                 text: fallbackReply(for: npc, clues: activeQuackClues))
         }
     }

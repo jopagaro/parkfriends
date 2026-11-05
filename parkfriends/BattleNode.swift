@@ -238,8 +238,9 @@ final class BattleNode: SKNode {
         enemyShadow.size    = enemy.kind.isBoss ? CGSize(width: 148, height: 22) : CGSize(width: 116, height: 18)
         enemyNameLbl.text   = "\(enemy.kind.displayName)  (Lv.\(levelForEnemy(enemy)))"
         refreshEnemyHP(animated: false)
+        partySlots.forEach { $0.resetHPRoll() }
         refreshPartySlots()
-        logLabel.text = "A \(enemy.kind.displayName) approaches!\nChoose an action."
+        typeLog("A \(enemy.kind.displayName) approaches!\nChoose an action.")
 
         isHidden = false
         alpha = 1
@@ -882,7 +883,7 @@ final class BattleNode: SKNode {
             playerBonusDEF    = 0
             phase = .playerMenu
             setMenu(true)
-            logLabel.text = "What will you do?"
+            typeLog("What will you do?")
         }
     }
 
@@ -949,7 +950,7 @@ final class BattleNode: SKNode {
         func next() {
             guard !remaining.isEmpty else { completion(); return }
             let lu = remaining.removeFirst()
-            logLabel.text = "⭐ \(lu.name) reached Lv.\(lu.level)!\n\(lu.summary)"
+            self.typeLog("⭐ \(lu.name) reached Lv.\(lu.level)!\n\(lu.summary)")
             run(.wait(forDuration: 1.9)) { next() }
         }
         next()
@@ -1008,10 +1009,41 @@ final class BattleNode: SKNode {
 
     // MARK: - Log helper
 
+    /// EarthBound typewriter: reveals the log text character by character
+    /// with a blip every other printable glyph. Returns the reveal duration.
+    @discardableResult
+    private func typeLog(_ text: String) -> TimeInterval {
+        logLabel.removeAction(forKey: "typewriter")
+        let chars = Array(text)
+        guard !chars.isEmpty else { logLabel.text = ""; return 0 }
+        let perChar = 0.016
+        let dur = Double(chars.count) * perChar
+        logLabel.text = ""
+        var revealed = 0
+        var blipTally = 0
+        let act = SKAction.customAction(withDuration: dur) { node, t in
+            let n = max(1, min(chars.count, Int(Double(t) / perChar) + 1))
+            guard n != revealed else { return }
+            var printable = 0
+            for i in revealed..<n where !chars[i].isWhitespace { printable += 1 }
+            blipTally += printable
+            if blipTally >= 2 {
+                blipTally = 0
+                SoundFX.shared.textBlip(voice: 1)
+            }
+            revealed = n
+            (node as? SKLabelNode)?.text = String(chars[0..<n])
+        }
+        logLabel.run(.sequence([act, .run { [weak logLabel] in
+            logLabel?.text = text
+        }]), withKey: "typewriter")
+        return dur
+    }
+
     private func showLog(_ text: String, delay: TimeInterval = 1.1,
                           completion: @escaping () -> Void) {
-        logLabel.text = text
-        run(.sequence([.wait(forDuration: delay), .run(completion)]))
+        let typeTime = typeLog(text)
+        run(.sequence([.wait(forDuration: max(delay, typeTime + 0.55)), .run(completion)]))
     }
 
     private func rebuildBackground(for kind: EnemyKind) {
@@ -1350,20 +1382,63 @@ private final class PartySlot: SKNode {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    // Rolling HP odometer (EarthBound): the shown number crawls toward the
+    // real value at a fixed rate, ticking as it goes.
+    private var shownHP = -1
+    private var targetHP = 0
+    private var memberMaxHP = 1
+    private var ppDisplay = 0
+
+    /// Forget the previous battle's display so a new battle starts snapped.
+    func resetHPRoll() {
+        removeAction(forKey: "hpRoll")
+        shownHP = -1
+    }
+
+    private func applyHP(_ hp: Int) {
+        let frac = CGFloat(hp) / CGFloat(memberMaxHP)
+        hpFill.size.width = max(0, frac * 100)
+        hpFill.color = frac > 0.5 ? .green : (frac > 0.25 ? .yellow : .red)
+        hpNum.text = "\(hp)/\(memberMaxHP)  PP:\(ppDisplay)"
+        alpha = (hp == 0 && targetHP == 0) ? 0.32 : 1.0
+    }
+
+    private func rollHP() {
+        removeAction(forKey: "hpRoll")
+        let start = shownHP, target = targetHP
+        let rate = 28.0   // HP per second — the odometer crawl
+        let dur = Double(abs(target - start)) / rate
+        let act = SKAction.customAction(withDuration: dur) { [weak self] _, t in
+            guard let self else { return }
+            let p = min(1, Double(t) / dur)
+            let hp = start + Int((Double(target - start) * p).rounded(.towardZero))
+            if hp != self.shownHP {
+                self.shownHP = hp
+                self.applyHP(hp)
+                SoundFX.shared.hpTick(down: target < start)
+            }
+        }
+        run(.sequence([act, .run { [weak self] in
+            guard let self else { return }
+            self.shownHP = self.targetHP
+            self.applyHP(self.targetHP)
+        }]), withKey: "hpRoll")
+    }
+
     func configure(member: PartyMember, isActive: Bool) {
         isHidden = false
-        let hpFrac = member.maxHP > 0 ? CGFloat(member.hp) / CGFloat(member.maxHP) : 0
-        let tgtHPW = max(0, hpFrac * 100)
-        let curHPW = hpFill.size.width
-        if abs(tgtHPW - curHPW) > 0.5 {
-            let dur = max(0.2, Double(abs(tgtHPW - curHPW)) / 100.0 * 0.7)
-            let tick = SKAction.customAction(withDuration: dur) { node, t in
-                let p = min(t / CGFloat(dur), 1)
-                (node as? SKSpriteNode)?.size.width = curHPW + (tgtHPW - curHPW) * p
-            }
-            hpFill.run(tick)
+        memberMaxHP = max(1, member.maxHP)
+        ppDisplay = member.pp
+        targetHP = member.hp
+        if shownHP < 0 {
+            removeAction(forKey: "hpRoll")
+            shownHP = member.hp
+            applyHP(shownHP)
+        } else if shownHP != targetHP {
+            rollHP()
+        } else {
+            applyHP(shownHP)   // refresh PP text / bar colour
         }
-        hpFill.color = hpFrac > 0.5 ? .green : (hpFrac > 0.25 ? .yellow : .red)
 
         let ppFrac = member.maxPP > 0 ? CGFloat(member.pp) / CGFloat(member.maxPP) : 0
         ppFill.size.width = max(0, ppFrac * 100)
@@ -1372,8 +1447,6 @@ private final class PartySlot: SKNode {
             ?? CharacterSprites.texture(species: member.species, frame: .a)
         nameL.text     = member.species.displayName
         lvlL.text      = "Lv.\(member.level)"
-        hpNum.text     = "\(member.hp)/\(member.maxHP)  PP:\(member.pp)"
-        alpha          = member.hp > 0 ? 1.0 : 0.32
         nameL.fontColor = isActive ? SKColor(red: 1, green: 0.92, blue: 0.28, alpha: 1) : .white
 
         let icons = member.statusEffects.prefix(3).map(\.emoji).joined()
