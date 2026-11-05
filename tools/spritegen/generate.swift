@@ -1248,6 +1248,7 @@ func applyRolePalette(_ r: NPCRole) {
     palette[")"] = lighten(r.hair)              // hair highlight
     palette["~"] = lighten(r.pants)             // pants highlight
     palette[":"] = darken(r.skin, 9, 16)        // skin outline
+    palette["!"] = (0x2E, 0x22, 0x20, 255)      // unified figure outline
 }
 
 /// One human frame. dir: 0=S 1=N 2=E. step: 0/1 walk alternation.
@@ -1269,8 +1270,8 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     let hemY    = legTop + 4 * sc
     let shoY    = legTop - 38 * sc
     let neckTop = shoY - 1 * sc               // no visible neck
-    let headCY  = neckTop - 28 * sc
-    let hr      = 31.0 * sc                   // head half-width (wider than shoulders)
+    let headCY  = neckTop - 23 * sc           // chin tucks into the shoulders
+    let hr      = 27.0 * sc                   // head half-width (wider than shoulders)
     let bob = step == 0 ? 0 : 2
 
     fillEllipse(&g, cx: cx, cy: footY + 5, rx: 27 * sc, ry: 5.5, "S")
@@ -1404,27 +1405,33 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     if profile {
         let swing = (step == 0 ? 5.0 : -5.0) * sc
         let ax = Int(cx)
-        let len = Int(22 * sc)
+        let len = Int(25 * sc)
         for i in 0..<len {
             let t = Double(i) / Double(len)
             let x = ax + Int(t * swing) - armW / 2
             let y = yShoulder + 3 + i
             hline(&body, x, x + armW - 1, y, armCh)
             put(&body, x + armW - 1, y, r.shirtless ? "d" : torsoLo)
+            put(&body, x - 1, y, r.shirtless ? "d" : torsoLo)
         }
-        box(&body, ax + Int(swing) - 3, yShoulder + 3 + len, 7, 7, "a")
+        box(&body, ax + Int(swing) - 4, yShoulder + 3 + len, 8, 8, "a")
     } else {
         for (sgn, dy) in [(-1.0, step == 0 ? 0 : 3), (1.0, step == 0 ? 3 : 0)] {
-            let ax = Int(cx + sgn * (shoHalf + 1.0 * sc)) - armW / 2
-            let len = Int(20 * sc)
+            // arm sits OUTSIDE the torso edge so it reads as its own limb
+            let ax = Int(cx + sgn * (shoHalf + Double(armW) / 2 - 1.0)) - armW / 2
+            let len = Int(25 * sc)
             for i in 0..<len {
                 let y = yShoulder + 3 + i + dy
                 hline(&body, ax, ax + armW - 1, y, armCh)
                 if sgn > 0 {
                     put(&body, ax + armW - 1, y, r.shirtless ? "d" : torsoLo)
                 }
+                // seam between arm and torso so same-color limbs still read
+                put(&body, sgn > 0 ? ax - 1 : ax + armW, y,
+                    r.shirtless ? "d" : torsoLo)
             }
-            box(&body, ax, yShoulder + 3 + len + dy, armW, 7, "a")
+            // mitt hand at waist level, a touch wider than the sleeve
+            box(&body, ax - 1, yShoulder + 3 + len + dy, armW + 2, 8, "a")
         }
     }
     outlineShape(&body, body: ["e", "f", "+", "=", "y", "a", "-", "d",
@@ -1437,11 +1444,12 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     let hx = profile ? cx + 3 : cx
     fillEllipse(&head, cx: hx, cy: headCY, rx: hr, ry: hr * 0.92, "a")
     let chinY = Int(headCY + hr * 0.92)
-    // one flat shade crescent lower-right (highlight upper-left stays base)
-    for y in Int(headCY)...chinY { for x in Int(hx)..<Int(hx + hr) + 1
-        where head[y][x] == "a" {
+    // thin shade rim along the jaw only — the old full crescent read as a
+    // five-o'clock shadow across half the face
+    for y in Int(headCY)...chinY { for x in Int(hx - hr)...Int(hx + hr)
+        where x >= 0 && x < HW && head[y][x] == "a" {
         let dx = Double(x) - hx, dy = Double(y) - headCY
-        if dx * dx + dy * dy > (hr - 5) * (hr - 5) { head[y][x] = "d" }
+        if dy > hr * 0.45, dx * dx + dy * dy > (hr - 4) * (hr - 4) { head[y][x] = "d" }
     } }
     if profile {
         // tiny nose nub, nothing else
@@ -1456,17 +1464,26 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             if Double(y) < fringeY { head[y][x] = "p" }
         } }
         if dir == 0 {
+            // gentle rounded fringe (the old 5/2/4/3 sawtooth read as teeth)
             var x = Int(hx - hr * 0.88)
             var k = 0
             while x < Int(hx + hr * 0.88) {
-                let drop = [5, 2, 4, 3][k % 4]
+                let drop = [3, 4, 4, 3][k % 4]
                 for dyy in 0..<drop {
                     put(&head, x, Int(fringeY) + dyy, "p")
                     put(&head, x + 1, Int(fringeY) + dyy, "p")
                     put(&head, x + 2, Int(fringeY) + dyy, "p")
                 }
-                x += 4; k += 1
+                x += 3; k += 1
             }
+            // side masses wrapping the head down past the ears
+            for y in 0..<HH { for x in 0..<HW
+                where head[y][x] == "a" || head[y][x] == "d" {
+                let dxx = Double(x) - hx
+                if abs(dxx) > hr * 0.74, Double(y) < headCY + hr * 0.35 {
+                    head[y][x] = "p"
+                }
+            } }
         }
         if profile {
             for y in 0..<HH { for x in 0..<Int(hx - hr * 0.1) where head[y][x] != "." {
@@ -1511,18 +1528,28 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         fillEllipse(&head, cx: hx, cy: headCY - hr * 0.75, rx: hr * 0.56, ry: hr * 0.42, "n")
     default: break
     }
+    // visible side hair under hats — hatted heads looked bald
+    if dir != 1, r.hatStyle != "none", r.hatStyle != "band" {
+        for y in Int(headCY - hr * 0.15)...Int(headCY + hr * 0.3) {
+            for x in 0..<HW where y >= 0 && y < HH && head[y][x] == "a" {
+                let dxx = Double(x) - hx
+                if abs(dxx) > hr * 0.76 { head[y][x] = "(" }
+            }
+        }
+    }
     outlineShape(&head, body: ["a", "d", "-", "p", "(", ")", "n", "o"], outline: ":")
-    // ── FACE: dot eyes, NO mouth (bible 3.4) ──
+    // ── FACE: dot eyes, NO mouth (bible 3.4) — set lower and wider so the
+    // face isn't one vast empty forehead ──
     if dir == 0 {
-        let eyeY = Int(headCY + 2 * sc)
-        for ex in [Int(hx - hr * 0.42), Int(hx + hr * 0.42) - 4] {
-            box(&head, ex, eyeY, 5, 6, "E")
-            put(&head, ex + 1, eyeY + 1, "W")   // single catchlight pixel
+        let eyeY = Int(headCY + hr * 0.15)
+        for ex in [Int(hx - hr * 0.46) - 2, Int(hx + hr * 0.46) - 4] {
+            box(&head, ex, eyeY, 6, 7, "E")
+            box(&head, ex + 1, eyeY + 1, 2, 2, "W")   // catchlight
         }
     } else if profile {
-        let ex = Int(hx + hr * 0.45), eyeY = Int(headCY + 2 * sc)
-        box(&head, ex, eyeY, 5, 6, "E")
-        put(&head, ex + 1, eyeY + 1, "W")
+        let ex = Int(hx + hr * 0.5) - 2, eyeY = Int(headCY + hr * 0.15)
+        box(&head, ex, eyeY, 6, 7, "E")
+        box(&head, ex + 1, eyeY + 1, 2, 2, "W")
     }
     if r.name == "birdwatcher", dir == 0 {
         box(&head, Int(cx) - 11, Int(shoY) + 4, 8, 6, "E")
@@ -1535,6 +1562,10 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         box(&head, Int(cx) - 17, Int(shoY) + 10, 6, 6, "y")
     }
     composite(&g, head, dx: 0, dy: bob)
+    // ── unified dark outline around the whole silhouette (EB-style) ──
+    var fig: Set<Character> = []
+    for row in g { for ch in row where ch != "." && ch != "S" { fig.insert(ch) } }
+    outlineShape(&g, body: fig, outline: "!")
     return g
 }
 
