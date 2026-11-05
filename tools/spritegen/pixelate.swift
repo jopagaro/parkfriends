@@ -23,7 +23,9 @@ func factor(for name: String) -> Double? {
     if name.contains("-battle-") || name.contains("preview") { return nil }
     if name.hasPrefix("npc-") { return 6 }           // 128x192 shown 64x96pt → 3pt vpx
     for p in ["shelly-", "hazel-", "spike-", "pip-"] where name.hasPrefix(p) {
-        return 5                                      // 64x96 shown ~0.6x → ~3pt vpx
+        // Gentle: the 64x96 canvases are too small for the full ruler — k>=3
+        // mangles faces (user: "way too pixelated"). k=2 keeps every feature.
+        return 2
     }
     if name.hasPrefix("sheet-") { return 3 }          // 48px cells shown 48pt → 3pt vpx
     if name.hasPrefix("bldg-") { return 3 }           // canvases shown 1:1 → 3pt vpx
