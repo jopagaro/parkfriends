@@ -1251,8 +1251,9 @@ func applyRolePalette(_ r: NPCRole) {
 }
 
 /// One human frame. dir: 0=S 1=N 2=E. step: 0/1 walk alternation.
-/// v5 rig — native 128×192 (double density): short neck, smaller head,
-/// finer faces (irises, nostrils, lips), hair strands, cloth folds.
+/// v6 rig — EB clay-figure (bible 3.4): big round head (~45% of the figure),
+/// dot eyes, NO mouth, stubby legs, flat fills, dark outline. Role hats,
+/// vest/apron/sash and the censor mosaic ride the same skeleton.
 let HW = 128, HH = 192
 func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     applyRolePalette(r)
@@ -1261,14 +1262,15 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
     let cx = 64.0
     let profile = dir == 2
 
-    // vertical metrics — feet planted at y≈180
+    // vertical metrics — feet planted at y≈180; clay-figure stack:
+    // stubby legs, compact torso, no neck, BIG head.
     let footY   = 180.0
-    let legTop  = footY - 54 * sc
+    let legTop  = footY - 28 * sc
     let hemY    = legTop + 4 * sc
-    let shoY    = legTop - 46 * sc
-    let neckTop = shoY - 6 * sc               // SHORT neck
-    let headCY  = neckTop - 18 * sc
-    let hr      = 18.5 * sc                   // head half-width (vs shoulder 25)
+    let shoY    = legTop - 38 * sc
+    let neckTop = shoY - 1 * sc               // no visible neck
+    let headCY  = neckTop - 28 * sc
+    let hr      = 31.0 * sc                   // head half-width (wider than shoulders)
     let bob = step == 0 ? 0 : 2
 
     fillEllipse(&g, cx: cx, cy: footY + 5, rx: 27 * sc, ry: 5.5, "S")
@@ -1290,52 +1292,34 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         } }
     }
 
-    // ── LEGS + SHOES ──
+    // ── LEGS + SHOES (stubby toddle) ──
     var legs = emptyGrid(w: HW, h: HH)
-    let legW = Int(12 * sc)
+    let legW = Int(13 * sc)
     let legMain: Character = r.pantless ? "a" : "i"
-    let legHi:   Character = r.pantless ? "-" : "~"
     let legLo:   Character = r.pantless ? "d" : "l"
     for (side, fwd) in [(-1.0, step == 0), (1.0, step == 1)] {
-        let stride = profile ? (fwd ? 7.0 : -7.0) * sc : 0
-        let lift = profile ? (fwd ? 0.0 : 4.0) : (fwd ? 0.0 : 5.0 * sc)
-        let lx = Int(cx + side * 9.0 * sc - Double(legW) / 2 + stride)
+        let stride = profile ? (fwd ? 6.0 : -6.0) * sc : 0
+        let lift = profile ? (fwd ? 0.0 : 3.0) : (fwd ? 0.0 : 4.0 * sc)
+        let lx = Int(cx + side * 8.0 * sc - Double(legW) / 2 + stride)
         let bottom = Int(footY - lift)
         box(&legs, lx, Int(legTop), legW, bottom - Int(legTop) - 6, legMain)
+        // one flat shade column on the right — no dither, no creases
         for y in Int(legTop)..<(bottom - 6) {
-            put(&legs, lx, y, legHi); put(&legs, lx + 1, y, legHi)
             put(&legs, lx + legW - 1, y, legLo); put(&legs, lx + legW - 2, y, legLo)
-            put(&legs, lx + legW - 3, y, legLo)
         }
-        for y in Int(legTop)..<(bottom - 6) {
-            if (lx + 2 + y) % 2 == 0 { put(&legs, lx + 2, y, legHi) }
-            if (lx + legW - 4 + y) % 2 == 0 { put(&legs, lx + legW - 4, y, legLo) }
-        }
-        hline(&legs, lx + 2, lx + legW - 3, Int(legTop + 26 * sc), legLo)   // knee crease
-        if !r.pantless {
-            hline(&legs, lx + 1, lx + legW - 4, Int(legTop + 27 * sc), legLo)
-            hline(&legs, lx, lx + legW - 1, bottom - 8, legLo)              // cuff
-            hline(&legs, lx, lx + legW - 1, bottom - 7, legLo)
-        }
-        // shoe: upper + midsole + dark sole + toe cap
-        let shoeW = legW + 4
-        box(&legs, lx - 2, bottom - 6, shoeW, 6, "z")
-        hline(&legs, lx - 2, lx + shoeW - 3, bottom - 2, "1")               // midsole
-        hline(&legs, lx - 2, lx + shoeW - 3, bottom - 1, "E")               // sole
-        if profile {
-            box(&legs, lx + shoeW - 3, bottom - 4, 3, 4, "z")
-            hline(&legs, lx + shoeW - 3, lx + shoeW - 1, bottom - 1, "E")
-        } else {
-            put(&legs, lx - 1, bottom - 6, "1"); put(&legs, lx, bottom - 6, "1")
-        }
+        // shoe: simple dark lump
+        let shoeW = legW + 3
+        box(&legs, lx - 1, bottom - 6, shoeW, 6, "z")
+        hline(&legs, lx - 1, lx + shoeW - 2, bottom - 1, "E")
+        if profile { box(&legs, lx + shoeW - 2, bottom - 4, 2, 4, "z") }
     }
-    outlineShape(&legs, body: ["i", "l", "~", "z", "1", "a", "d", "-"], outline: r.pantless ? ":" : "l")
+    outlineShape(&legs, body: ["i", "l", "z", "a", "d"], outline: r.pantless ? ":" : "l")
     composite(&g, legs, dx: 0, dy: 0)
 
-    // ── TORSO ──
+    // ── TORSO (narrower than the head — clay-figure) ──
     var body = emptyGrid(w: HW, h: HH)
-    let shoHalf  = (profile ? 17.0 : 25.0) * sc
-    let waistHalf = (profile ? 15.0 : 19.0) * sc
+    let shoHalf  = (profile ? 15.0 : 21.0) * sc
+    let waistHalf = (profile ? 14.0 : 18.0) * sc
     let torsoMain: Character = r.shirtless ? "a" : "e"
     let torsoHi:   Character = r.shirtless ? "-" : "+"
     let torsoLo:   Character = r.shirtless ? "d" : "f"
@@ -1348,25 +1332,14 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         if t < 0.10 { half -= (0.10 - t) * 44 }             // shoulder slope
         hline(&body, Int(cx - half), Int(cx + half), y, torsoMain)
     }
-    // 3 hi columns left, 5 lo columns right, checker dither ONLY at the
-    // seams (pixel-art rule: dither tapers edges, it is not texture)
+    // flat fill + ONE shadow band on the right (bible 3.3: one hard-edged
+    // shadow tone per material; no dither, no cloth folds)
     for y in yShoulder..<yHem {
         var xs: [Int] = []
         for x in 0..<HW where body[y][x] == torsoMain { xs.append(x) }
-        guard let x0 = xs.first, let x1 = xs.last else { continue }
-        for i in 0..<3 { put(&body, x0 + i, y, torsoHi) }
-        for i in 0..<5 { put(&body, x1 - i, y, torsoLo) }
-        for i in 5..<8 where (x1 - i + y) % 2 == 0 { put(&body, x1 - i, y, torsoLo) }
-        for i in 3..<5 where (x0 + i + y) % 2 == 0 { put(&body, x0 + i, y, torsoHi) }
+        guard let x1 = xs.last else { continue }
+        for i in 0..<4 { put(&body, x1 - i, y, torsoLo) }
     }
-    // folds: waist ticks, underarm creases, chest crease
-    hline(&body, Int(cx - 7 * sc), Int(cx - 2 * sc), yHem - 6, torsoLo)
-    hline(&body, Int(cx + 2 * sc), Int(cx + 7 * sc), yHem - 10, torsoLo)
-    hline(&body, Int(cx - 5 * sc), Int(cx - 1 * sc), yHem - 5, torsoDark)
-    put(&body, Int(cx - shoHalf + 4), yShoulder + 8, torsoDark)
-    put(&body, Int(cx - shoHalf + 5), yShoulder + 9, torsoDark)
-    put(&body, Int(cx + shoHalf - 4), yShoulder + 8, torsoDark)
-    put(&body, Int(cx + shoHalf - 5), yShoulder + 9, torsoDark)
     hline(&body, Int(cx - waistHalf - 2), Int(cx + waistHalf + 2), yHem - 1, torsoDark)
     if r.shirtless, dir == 0 {
         hline(&body, Int(cx - 11 * sc), Int(cx - 2), Int(shoY + 14 * sc), "d")
@@ -1425,49 +1398,33 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         }
     }
 
-    // ── ARMS ──
+    // ── ARMS (stubby, straight down, simple mitt hands) ──
     let armCh: Character = r.shirtless ? "a" : "e"
     let armW = max(6, Int(8 * sc))
     if profile {
-        let swing = (step == 0 ? 6.0 : -6.0) * sc
+        let swing = (step == 0 ? 5.0 : -5.0) * sc
         let ax = Int(cx)
-        let len = Int(36 * sc)
+        let len = Int(22 * sc)
         for i in 0..<len {
             let t = Double(i) / Double(len)
             let x = ax + Int(t * swing) - armW / 2
-            let y = yShoulder + 4 + i
-            let ch: Character = (t < 0.5 && !r.shirtless) ? armCh : "a"
-            hline(&body, x, x + armW - 1, y, ch)
-            put(&body, x + armW - 1, y, ch == "a" ? "d" : torsoLo)
-            put(&body, x, y, ch == "a" ? "-" : torsoHi)
+            let y = yShoulder + 3 + i
+            hline(&body, x, x + armW - 1, y, armCh)
+            put(&body, x + armW - 1, y, r.shirtless ? "d" : torsoLo)
         }
-        hline(&body, ax + Int(swing * 0.5) - armW / 2, ax + Int(swing * 0.5) + armW / 2 - 1,
-              yShoulder + 4 + len / 2, r.shirtless ? "d" : torsoLo)
-        box(&body, ax + Int(swing) - 4, yShoulder + 4 + len, 8, 8, "a")
-        hline(&body, ax + Int(swing) - 4, ax + Int(swing) + 3, yShoulder + 10 + len, "d")
+        box(&body, ax + Int(swing) - 3, yShoulder + 3 + len, 7, 7, "a")
     } else {
-        for (sgn, dy) in [(-1.0, step == 0 ? 0 : 4), (1.0, step == 0 ? 4 : 0)] {
+        for (sgn, dy) in [(-1.0, step == 0 ? 0 : 3), (1.0, step == 0 ? 3 : 0)] {
             let ax = Int(cx + sgn * (shoHalf + 1.0 * sc)) - armW / 2
-            let len = Int(34 * sc)
+            let len = Int(20 * sc)
             for i in 0..<len {
-                let t = Double(i) / Double(len)
-                let ch: Character = (t < 0.5 && !r.shirtless) ? armCh : "a"
-                let y = yShoulder + 4 + i + dy
-                hline(&body, ax, ax + armW - 1, y, ch)
+                let y = yShoulder + 3 + i + dy
+                hline(&body, ax, ax + armW - 1, y, armCh)
                 if sgn > 0 {
-                    put(&body, ax + armW - 1, y, ch == "a" ? "d" : torsoLo)
-                    put(&body, ax + armW - 2, y, ch == "a" ? "d" : torsoLo)
-                } else {
-                    put(&body, ax, y, ch == "a" ? "-" : torsoHi)
+                    put(&body, ax + armW - 1, y, r.shirtless ? "d" : torsoLo)
                 }
             }
-            // sleeve cuff + elbow crease
-            hline(&body, ax, ax + armW - 1, yShoulder + 4 + len / 2 + dy, r.shirtless ? "d" : torsoLo)
-            hline(&body, ax, ax + armW - 1, yShoulder + 5 + len / 2 + dy, r.shirtless ? "d" : torsoDark)
-            // hand with knuckle + finger lines
-            box(&body, ax, yShoulder + 4 + len + dy, armW, 8, "a")
-            hline(&body, ax, ax + armW - 1, yShoulder + 4 + len + dy + 7, "d")
-            put(&body, ax + armW / 2, yShoulder + 4 + len + dy + 5, "d")
+            box(&body, ax, yShoulder + 3 + len + dy, armW, 7, "a")
         }
     }
     outlineShape(&body, body: ["e", "f", "+", "=", "y", "a", "-", "d",
@@ -1475,55 +1432,26 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
                  outline: r.shirtless ? ":" : "=")
     composite(&g, body, dx: 0, dy: bob)
 
-    // ── NECK (short, wide, mostly chin shadow) ──
-    var neck = emptyGrid(w: HW, h: HH)
-    box(&neck, Int(cx - 5.5 * sc), Int(neckTop), Int(11 * sc), Int(shoY - neckTop) + 3, "a")
-    hline(&neck, Int(cx - 5.5 * sc), Int(cx + 5.5 * sc), Int(neckTop), "d")
-    hline(&neck, Int(cx - 5 * sc), Int(cx + 5 * sc), Int(neckTop) + 1, "d")
-    for y in Int(neckTop)..<Int(shoY) + 3 { put(&neck, Int(cx + 5 * sc), y, "d") }
-    composite(&g, neck, dx: 0, dy: bob)
-
-    // ── HEAD: skull + jaw + chin ──
+    // ── HEAD: one big round mass sitting straight on the shoulders ──
     var head = emptyGrid(w: HW, h: HH)
-    let hx = profile ? cx + 4 : cx
-    fillEllipse(&head, cx: hx, cy: headCY - 2, rx: hr, ry: hr * 0.94, "a")
-    let jawTop = Int(headCY + 4 * sc), chinY = Int(headCY + hr * 1.02)
-    for y in jawTop...chinY {
-        let t = Double(y - jawTop) / Double(max(1, chinY - jawTop))
-        let half = hr * (1.0 - t * 0.52)
-        hline(&head, Int(hx - half), Int(hx + half), y, "a")
-    }
-    for y in jawTop...chinY {
-        let t = Double(y - jawTop) / Double(max(1, chinY - jawTop))
-        let edge = Int(hx + hr * (1.0 - t * 0.52))
-        put(&head, edge, y, "d"); put(&head, edge - 1, y, "d")
-    }
-    hline(&head, Int(hx) - 3, Int(hx) + 3, chinY, "d")      // chin shade
+    let hx = profile ? cx + 3 : cx
+    fillEllipse(&head, cx: hx, cy: headCY, rx: hr, ry: hr * 0.92, "a")
+    let chinY = Int(headCY + hr * 0.92)
+    // one flat shade crescent lower-right (highlight upper-left stays base)
+    for y in Int(headCY)...chinY { for x in Int(hx)..<Int(hx + hr) + 1
+        where head[y][x] == "a" {
+        let dx = Double(x) - hx, dy = Double(y) - headCY
+        if dx * dx + dy * dy > (hr - 5) * (hr - 5) { head[y][x] = "d" }
+    } }
     if profile {
-        // nose wedge + lip step + jaw line
-        let ny = Int(headCY + 2 * sc)
-        box(&head, Int(hx + hr) - 1, ny, 4, 3, "a")
-        put(&head, Int(hx + hr) + 2, ny + 2, "d")
+        // tiny nose nub, nothing else
+        let ny = Int(headCY + 4 * sc)
+        box(&head, Int(hx + hr) - 1, ny, 3, 4, "a")
         put(&head, Int(hx + hr) + 1, ny + 3, "d")
-        hline(&head, Int(hx + hr) - 3, Int(hx + hr) - 1, ny + 7, "d")     // lips
-        hline(&head, Int(hx + hr) - 6, Int(hx + hr) - 3, chinY - 1, "d")  // jaw line
     }
-    // ears
-    if !profile && dir == 0 {
-        box(&head, Int(hx - hr) - 2, Int(headCY + 2), 3, 7, "a")
-        box(&head, Int(hx + hr) - 1, Int(headCY + 2), 3, 7, "a")
-        put(&head, Int(hx - hr) - 1, Int(headCY + 4), "d")
-        put(&head, Int(hx - hr) - 1, Int(headCY + 5), "d")
-        put(&head, Int(hx + hr), Int(headCY + 4), "d")
-        put(&head, Int(hx + hr), Int(headCY + 5), "d")
-    } else if profile {
-        box(&head, Int(hx - 4), Int(headCY + 2), 5, 9, "a")
-        for dyy in 1..<7 { put(&head, Int(hx - 2), Int(headCY + 2) + dyy, "d") }
-        put(&head, Int(hx - 3), Int(headCY + 5), "d")
-    }
-    // ── HAIR: mass + clumped fringe + strand streaks + highlight ──
+    // ── HAIR: flat mass + scalloped fringe + flat dark underside ──
     if r.hatStyle == "none" || r.hatStyle == "band" || dir == 1 {
-        let fringeY = dir == 1 ? Double(chinY) : headCY - hr * 0.26
+        let fringeY = dir == 1 ? Double(chinY) : headCY - hr * 0.22
         for y in 0..<HH { for x in 0..<HW where head[y][x] != "." {
             if Double(y) < fringeY { head[y][x] = "p" }
         } }
@@ -1531,7 +1459,7 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
             var x = Int(hx - hr * 0.88)
             var k = 0
             while x < Int(hx + hr * 0.88) {
-                let drop = [4, 1, 3, 2][k % 4]
+                let drop = [5, 2, 4, 3][k % 4]
                 for dyy in 0..<drop {
                     put(&head, x, Int(fringeY) + dyy, "p")
                     put(&head, x + 1, Int(fringeY) + dyy, "p")
@@ -1542,32 +1470,19 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         }
         if profile {
             for y in 0..<HH { for x in 0..<Int(hx - hr * 0.1) where head[y][x] != "." {
-                if Double(y) < headCY + hr * 0.55 { head[y][x] = "p" }
+                if Double(y) < headCY + hr * 0.5 { head[y][x] = "p" }
             } }
-            // sideburn
-            box(&head, Int(hx - 6), Int(headCY + 2), 3, 6, "p")
+            box(&head, Int(hx - 6), Int(headCY), 3, 6, "p")   // sideburn
         }
-        // strand streaks: alternating light/dark vertical flecks
-        for x in stride(from: Int(hx - hr * 0.8), to: Int(hx + hr * 0.8), by: 5) {
-            for y in Int(headCY - hr)..<Int(headCY - hr * 0.3) where head[y][x] == "p" && y % 3 != 0 {
-                head[y][x] = "("
-            }
-        }
-        // highlight band
-        for x in Int(hx - hr * 0.65)...Int(hx + hr * 0.2) {
-            let yy = Int(headCY - hr * 0.72)
-            if head[yy][x] == "p" || head[yy][x] == "(" { head[yy][x] = ")" }
-            if head[yy + 1][x] == "p", x % 2 == 0 { head[yy + 1][x] = ")" }
-        }
-        // dark underside
+        // flat dark underside (single tone, no streaks)
         for y in 0..<HH { for x in 0..<HW where head[y][x] == "p" {
-            if Double(y) > headCY - hr * 0.32 { head[y][x] = "(" }
+            if Double(y) > headCY - hr * 0.42 { head[y][x] = "(" }
         } }
     }
     switch r.hatStyle {
     case "brim":
-        for dyy in 0..<3 { hline(&head, Int(hx - hr - 10), Int(hx + hr + 10), Int(headCY - hr * 0.5) + dyy, "n") }
-        hline(&head, Int(hx - hr - 10), Int(hx + hr + 10), Int(headCY - hr * 0.5) + 3, "o")
+        for dyy in 0..<5 { hline(&head, Int(hx - hr - 10), Int(hx + hr + 10), Int(headCY - hr * 0.5) + dyy, "n") }
+        hline(&head, Int(hx - hr - 10), Int(hx + hr + 10), Int(headCY - hr * 0.5) + 5, "o")
         fillEllipse(&head, cx: hx, cy: headCY - hr * 0.8, rx: hr * 0.62, ry: hr * 0.5, "n")
         hline(&head, Int(hx - hr * 0.6), Int(hx + hr * 0.6), Int(headCY - hr * 0.58), "o")
         hline(&head, Int(hx - hr * 0.58), Int(hx + hr * 0.58), Int(headCY - hr * 0.58) + 1, "o")
@@ -1591,43 +1506,23 @@ func humanFrame(_ r: NPCRole, dir: Int, step: Int) -> Grid {
         hline(&head, Int(hx - hr), Int(hx + hr), Int(headCY - hr * 0.1) + 1, "o")
         box(&head, Int(hx) - 2, Int(headCY - hr * 1.15), 5, 8, "o")
     case "straw":
-        for dyy in 0..<3 { hline(&head, Int(hx - hr - 12), Int(hx + hr + 12), Int(headCY - hr * 0.45) + dyy, "n") }
-        hline(&head, Int(hx - hr - 12), Int(hx + hr + 12), Int(headCY - hr * 0.45) + 3, "o")
+        for dyy in 0..<5 { hline(&head, Int(hx - hr - 12), Int(hx + hr + 12), Int(headCY - hr * 0.45) + dyy, "n") }
+        hline(&head, Int(hx - hr - 12), Int(hx + hr + 12), Int(headCY - hr * 0.45) + 5, "o")
         fillEllipse(&head, cx: hx, cy: headCY - hr * 0.75, rx: hr * 0.56, ry: hr * 0.42, "n")
     default: break
     }
     outlineShape(&head, body: ["a", "d", "-", "p", "(", ")", "n", "o"], outline: ":")
-    // ── FACE (double-density detail) ──
+    // ── FACE: dot eyes, NO mouth (bible 3.4) ──
     if dir == 0 {
-        let eyeY = Int(headCY + 1 * sc)
-        for (ex, inner) in [(Int(hx - 12 * sc), 1), (Int(hx + 5 * sc), -1)] {
-            // brow: 2px, slight slant toward the nose
-            hline(&head, ex - 1, ex + 6, eyeY - 4, "(")
-            put(&head, ex + (inner == 1 ? 6 : -1), eyeY - 3, "(")
-            // eye: white, iris, pupil, glint, lower lid
-            box(&head, ex, eyeY, 7, 7, "W")
-            box(&head, ex + 2, eyeY + 1, 4, 5, "I")
-            box(&head, ex + 3, eyeY + 2, 2, 3, "E")
-            put(&head, ex + 3, eyeY + 2, "W")
-            hline(&head, ex, ex + 6, eyeY + 7, "d")
+        let eyeY = Int(headCY + 2 * sc)
+        for ex in [Int(hx - hr * 0.42), Int(hx + hr * 0.42) - 4] {
+            box(&head, ex, eyeY, 5, 6, "E")
+            put(&head, ex + 1, eyeY + 1, "W")   // single catchlight pixel
         }
-        // nose: bridge + base + nostrils
-        for dyy in 0..<5 { put(&head, Int(hx) - 1, Int(headCY + 8 * sc) + dyy, "d") }
-        hline(&head, Int(hx) - 2, Int(hx) + 2, Int(headCY + 13 * sc), "d")
-        put(&head, Int(hx) - 3, Int(headCY + 12 * sc), "d")
-        put(&head, Int(hx) + 3, Int(headCY + 12 * sc), "d")
-        // lips: line + lower-lip shadow
-        hline(&head, Int(hx) - 4, Int(hx) + 4, chinY - 5, "d")
-        hline(&head, Int(hx) - 3, Int(hx) + 3, chinY - 4, ":")
-        put(&head, Int(hx) - 5, chinY - 6, "d")
-        put(&head, Int(hx) + 5, chinY - 6, "d")
     } else if profile {
-        let ex = Int(hx + hr * 0.4), eyeY = Int(headCY + 1 * sc)
-        hline(&head, ex - 1, ex + 4, eyeY - 4, "(")
-        box(&head, ex, eyeY, 6, 7, "W")
-        box(&head, ex + 2, eyeY + 1, 3, 5, "I")
-        box(&head, ex + 3, eyeY + 2, 2, 3, "E")
-        hline(&head, ex, ex + 5, eyeY + 7, "d")
+        let ex = Int(hx + hr * 0.45), eyeY = Int(headCY + 2 * sc)
+        box(&head, ex, eyeY, 5, 6, "E")
+        put(&head, ex + 1, eyeY + 1, "W")
     }
     if r.name == "birdwatcher", dir == 0 {
         box(&head, Int(cx) - 11, Int(shoY) + 4, 8, 6, "E")
