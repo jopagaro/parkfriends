@@ -526,7 +526,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let tile = GameConstants.tileSize
         let sShort = (11.5 * tile) / min(size.width, size.height)
         let sCap   = (20.0 * tile) / max(size.width, size.height)
-        camScale = min(sShort, sCap)
+        // Never zoom IN past native 1:1 (user: sprites should stay small);
+        // only zoom out when the window is too small to fit ~11.5 tiles.
+        camScale = max(1.0, min(sShort, sCap))
         cam.setScale(camScale)
         uiRoot.setScale(1 / camScale)
     }
