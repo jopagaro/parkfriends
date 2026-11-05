@@ -14,6 +14,7 @@ enum CitySouthWorld {
         let playerSpawn: CGPoint
         let benchPositions: [CGPoint]
         let zoneExitNodes: [ZoneExitNode]
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
     static func build() -> BuildResult {
@@ -79,8 +80,9 @@ enum CitySouthWorld {
         painter.placeSprite(SpecRect(44, 18, 3, 2),
                             texture: ImportedArt.genTile("prop-dumpster-96x64"), layer: .props)
         painter.addBlockingRect(SpecRect(44, 18, 3, 2))
-        painter.placeSprite(SpecRect(45, 21, 1, 1),
-                            texture: ImportedArt.genTile("prop-trashcan-32x48"), layer: .props)
+        // The dumpster-alley can is searchable — raccoon territory.
+        painter.placeSearchable(.trashCan, at: 45, 21)
+        painter.placeSearchable(.trashCan, at: 7, 17)
 
         // Street furniture.
         for (xT, yT) in [(4, 10), (20, 10), (40, 10), (56, 10), (20, 24), (42, 27)] {
@@ -140,7 +142,8 @@ enum CitySouthWorld {
             ],
             playerSpawn: painter.center(SpecRect(30, 2, 1, 1)),
             benchPositions: benchSpots.map { painter.center(SpecRect($0.0, $0.1, 1, 1)) },
-            zoneExitNodes: exits
+            zoneExitNodes: exits,
+            searchSpawns: painter.searchSpawns
         )
     }
 }

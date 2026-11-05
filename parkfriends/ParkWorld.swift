@@ -18,6 +18,7 @@ enum ParkWorld {
         let gate: GateNode?
         let chest: TreasureChestNode?
         let boulder: PushableRockNode?
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
     // MARK: - Park (Zone 1B) — MAP_SPEC §4
@@ -347,6 +348,17 @@ enum ParkWorld {
 
         let playerSpawn = painter.center(SpecRect(46, 2, 1, 1))
 
+        // One-time search spots (EB "check" culture). The plaza-east cans
+        // are the ones Hazel says the pigeons posted up next to.
+        painter.placeSearchable(.trashCan, at: 57, 24)
+        painter.placeSearchable(.trashCan, at: 59, 28)
+        painter.placeSearchable(.trashCan, at: 74, 9)    // gazebo lawn
+        painter.placeSearchable(.trashCan, at: 23, 54)   // playground
+        painter.placeSearchable(.bush, at: 10, 48)       // by the oak
+        painter.placeSearchable(.bush, at: 64, 47)       // statue plaza edge
+        painter.placeSearchable(.bush, at: 84, 30)       // east meadow
+        painter.placeSearchable(.flowerbed, at: 26, 32)  // below the pond
+
         // Ambient NPC rotation points (grass / plaza edges, off the water).
         let npcSpawns: [CGPoint] = [
             SpecRect(45, 35, 1, 1), SpecRect(24, 36, 1, 1),
@@ -384,7 +396,8 @@ enum ParkWorld {
             playerSpawn: playerSpawn,
             benchPositions: benchPositions,
             zoneExitNodes: exits,
-            pressurePlate: nil, gate: nil, chest: nil, boulder: nil
+            pressurePlate: nil, gate: nil, chest: nil, boulder: nil,
+            searchSpawns: painter.searchSpawns
         )
     }
 
@@ -516,6 +529,10 @@ enum ParkWorld {
                             texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
         let benchPositions = [painter.center(SpecRect(52, 45, 1, 1))]
 
+        // Search spots: suburban lawns hide things too.
+        painter.placeSearchable(.trashCan, at: 50, 45)
+        painter.placeSearchable(.bush, at: 80, 44)
+
         // §3.3 — Tree-wall hedge border, 2 thick, gap at the park path (S).
         var hedgeTiles = painter.tiles([
             SpecRect(0, 0, cols, 2), SpecRect(0, rows - 2, cols, 2),
@@ -575,7 +592,8 @@ enum ParkWorld {
             playerSpawn: playerSpawn,
             benchPositions: benchPositions,
             zoneExitNodes: [sExit],
-            pressurePlate: nil, gate: nil, chest: nil, boulder: nil
+            pressurePlate: nil, gate: nil, chest: nil, boulder: nil,
+            searchSpawns: painter.searchSpawns
         )
     }
 
@@ -669,6 +687,14 @@ final class ScenePainter {
         self.root = root
         self.cols = cols
         self.rows = rows
+    }
+
+    /// One-time searchable props (EB "check" spots). Registered here in
+    /// painter coordinates; GameScene spawns the actual nodes.
+    private(set) var searchSpawns: [(SearchableKind, CGPoint)] = []
+
+    func placeSearchable(_ kind: SearchableKind, at xT: Int, _ yT: Int) {
+        searchSpawns.append((kind, center(SpecRect(xT, yT, 1, 1))))
     }
 
     /// Pixel center of a SpecRect (top-left tile = (rect.x, rect.y)).

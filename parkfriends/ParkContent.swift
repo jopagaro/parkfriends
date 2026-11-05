@@ -42,62 +42,74 @@ enum BattleBackground {
         }
     }
 
-    func buildNode(size: CGSize) -> SKNode {
-        let node = SKNode()
+    /// EarthBound HDMA-style animated background: per-scanline sine
+    /// distortion over a wobbly procedural plaid, with slow palette cycling.
+    /// `intense` (bosses) cranks amplitude, speed and the accent sweep —
+    /// distortion telegraphs threat (handoff §2.5).
+    func buildNode(size: CGSize, intense: Bool = false) -> SKNode {
         let (c1, c2, accent) = colors
-
-        let base = SKSpriteNode(color: c1, size: size)
-        base.position = .zero
-        node.addChild(base)
-
-        let bandHeight: CGFloat = 26
-        let bandCount = Int(ceil(size.height / bandHeight)) + 2
-        let bandLayer = SKNode()
-        for index in 0..<bandCount {
-            let band = SKSpriteNode(
-                color: index.isMultiple(of: 2) ? c1 : c2,
-                size: CGSize(width: size.width * 1.15, height: bandHeight)
-            )
-            band.position = CGPoint(
-                x: 0,
-                y: -size.height / 2 + CGFloat(index) * bandHeight
-            )
-            band.alpha = 0.65
-            bandLayer.addChild(band)
+        let sprite = SKSpriteNode(texture: BattleBackground.whiteTexture, size: size)
+        sprite.color = c1
+        sprite.shader = BattleBackground.distortionShader
+        func rgb(_ c: SKColor) -> vector_float3 {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return vector_float3(Float(r), Float(g), Float(b))
         }
-        bandLayer.run(
-            .repeatForever(
-                .sequence([
-                    .moveBy(x: 0, y: -bandHeight, duration: 1.8),
-                    .moveBy(x: 0, y: bandHeight, duration: 0)
-                ])
-            )
-        )
-        node.addChild(bandLayer)
-
-        let accentLayer = SKNode()
-        for index in 0..<6 {
-            let blob = SKShapeNode(
-                ellipseOf: CGSize(width: 130 + CGFloat(index * 14), height: 36 + CGFloat(index * 8))
-            )
-            blob.fillColor = accent
-            blob.strokeColor = .clear
-            blob.position = CGPoint(
-                x: -size.width * 0.34 + CGFloat(index) * 58,
-                y: size.height * 0.24 - CGFloat(index) * 40
-            )
-            accentLayer.addChild(blob)
-        }
-        accentLayer.run(
-            .repeatForever(
-                .sequence([
-                    .moveBy(x: 18, y: 0, duration: 3.0),
-                    .moveBy(x: -18, y: 0, duration: 3.0)
-                ])
-            )
-        )
-        node.addChild(accentLayer)
-
-        return node
+        sprite.setValue(SKAttributeValue(vectorFloat3: rgb(c1)), forAttribute: "a_c1")
+        sprite.setValue(SKAttributeValue(vectorFloat3: rgb(c2)), forAttribute: "a_c2")
+        sprite.setValue(SKAttributeValue(vectorFloat3: rgb(accent)), forAttribute: "a_c3")
+        sprite.setValue(SKAttributeValue(float: intense ? 1.0 : 0.0), forAttribute: "a_boss")
+        return sprite
     }
+
+    /// Plain white texture so the shader gets well-defined v_tex_coord.
+    private static let whiteTexture: SKTexture = {
+        let side = 4
+        let ctx = CGContext(data: nil, width: side, height: side,
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        return SKTexture(cgImage: ctx.makeImage()!)
+    }()
+
+    /// One compiled shader shared by every battle; per-battle values ride
+    /// on attributes so recompilation never happens mid-session.
+    private static let distortionShader: SKShader = {
+        let src = """
+        void main() {
+            float boss = a_boss;
+            float t = u_time * (0.55 + 0.75 * boss);
+            vec2 uv = v_tex_coord;
+            // per-scanline horizontal waves: one broad, one interlaced
+            float amp  = 0.012 + 0.03 * boss;
+            float iamp = 0.006 + 0.018 * boss;
+            float wave  = amp * sin(uv.y * (9.0 + 5.0 * boss) + t * 2.3);
+            float phase = mod(floor(uv.y * 224.0), 2.0) * 2.0 - 1.0;
+            float ilace = iamp * phase * sin(uv.y * 23.0 - t * 2.9);
+            float x = uv.x + wave + ilace + t * 0.02;
+            float y = uv.y + (0.01 + 0.02 * boss) * sin(t * 0.8) + t * 0.012;
+            // wobbly plaid
+            float a = sin((x * 3.0 + 0.14 * sin(y * 9.0 + t * 0.7)) * 6.2831);
+            float b = sin((y * 2.2 + 0.16 * sin(x * 7.0 - t * 0.5)) * 6.2831);
+            float m = a * b;
+            float band = smoothstep(-0.25, 0.25, m);
+            // slow palette cycle + accent sweep on the pattern ridges
+            float cyc = 0.5 + 0.5 * sin(t * (0.6 + 0.9 * boss) + (a + b) * 1.6);
+            vec3 col = mix(a_c1, a_c2, band);
+            col = mix(col, a_c3, (0.35 + 0.4 * boss) * cyc * smoothstep(0.55, 1.0, abs(m)));
+            gl_FragColor = vec4(col, 1.0) * v_color_mix.a;
+        }
+        """
+        let shader = SKShader(source: src)
+        shader.attributes = [
+            SKAttribute(name: "a_c1", type: .vectorFloat3),
+            SKAttribute(name: "a_c2", type: .vectorFloat3),
+            SKAttribute(name: "a_c3", type: .vectorFloat3),
+            SKAttribute(name: "a_boss", type: .float)
+        ]
+        return shader
+    }()
 }

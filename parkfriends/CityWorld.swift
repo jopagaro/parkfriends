@@ -14,6 +14,7 @@ enum CityWorld {
         let playerSpawn: CGPoint
         let benchPositions: [CGPoint]
         let zoneExitNodes: [ZoneExitNode]
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
     static func build() -> BuildResult {

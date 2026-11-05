@@ -16,6 +16,7 @@ enum CityNorthWorld {
         let benchPositions: [CGPoint]
         let zoneExitNodes: [ZoneExitNode]
         let quackNode: QuackNode?
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
     static func build() -> BuildResult {

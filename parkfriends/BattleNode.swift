@@ -22,8 +22,19 @@ final class BattleNode: SKNode {
     private let backgroundContainer   = SKNode()
     private let panel                 = SKShapeNode()
     private let enemySprite           = SKSpriteNode()
-    private let enemyShadow           = SKSpriteNode(color: SKColor(white: 0, alpha: 0.24),
-                                                     size: CGSize(width: 116, height: 18))
+    private let enemyShadow: SKSpriteNode = {
+        // Soft dark ellipse, not a gray slab.
+        let w = 64, h = 16
+        let ctx = CGContext(data: nil, width: w, height: h,
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(gray: 0, alpha: 0.4))
+        ctx.fillEllipse(in: CGRect(x: 1, y: 1, width: w - 2, height: h - 2))
+        let node = SKSpriteNode(texture: SKTexture(cgImage: ctx.makeImage()!),
+                                size: CGSize(width: 116, height: 18))
+        return node
+    }()
     private let impactFlash           = SKSpriteNode(color: .white,
                                                      size: CGSize(width: 4000, height: 4000))
     private let enemyNameLbl          = SKLabelNode()
@@ -62,6 +73,8 @@ final class BattleNode: SKNode {
 
     private let panelW: CGFloat = 760
     private let panelH: CGFloat = 580
+    /// Shrink-to-fit for phone-sized scenes (panel was laid out for desktop).
+    private var fitScale: CGFloat = 1
 
     // MARK: - Init
 
@@ -82,8 +95,16 @@ final class BattleNode: SKNode {
         addChild(backdrop)
 
         let pr = CGRect(x: -panelW/2, y: -panelH/2, width: panelW, height: panelH)
+        // Fill lives on its own node BELOW the animated background (the
+        // SpriteView runs with ignoresSiblingOrder, so zPosition is global):
+        // fill (-0.7) < distortion bg (-0.5) < panel stroke + content (0+).
+        let panelFill = SKShapeNode(path: CGPath(roundedRect: pr, cornerWidth: 18, cornerHeight: 18, transform: nil))
+        panelFill.fillColor   = SKColor(red: 0.08, green: 0.07, blue: 0.12, alpha: 0.97)
+        panelFill.strokeColor = .clear
+        panelFill.zPosition   = -0.7
+        addChild(panelFill)
         panel.path        = CGPath(roundedRect: pr, cornerWidth: 18, cornerHeight: 18, transform: nil)
-        panel.fillColor   = SKColor(red: 0.08, green: 0.07, blue: 0.12, alpha: 0.97)
+        panel.fillColor   = .clear
         panel.strokeColor = SKColor(red: 0.50, green: 0.42, blue: 0.78, alpha: 1)
         panel.lineWidth   = 3
         addChild(panel)
@@ -222,11 +243,15 @@ final class BattleNode: SKNode {
 
         isHidden = false
         alpha = 1
-        setScale(0.86)
+        if let sceneSize = scene?.size, sceneSize.width > 0 {
+            fitScale = min(1, (sceneSize.width - 16) / panelW,
+                           (sceneSize.height - 120) / panelH)
+        }
+        setScale(0.86 * fitScale)
         enemySprite.alpha = 0
         enemySprite.position = CGPoint(x: 340, y: enemyBaseY + 16)
         enemyShadow.alpha = 0
-        let pop = SKAction.group([.scale(to: 1.0, duration: 0.18), .fadeIn(withDuration: 0.18)])
+        let pop = SKAction.group([.scale(to: fitScale, duration: 0.18), .fadeIn(withDuration: 0.18)])
         pop.timingMode = .easeOut
         run(pop)
         animateBattleIntro(isBoss: enemy.kind.isBoss)
@@ -234,7 +259,7 @@ final class BattleNode: SKNode {
     }
 
     func hide(completion: @escaping () -> Void = {}) {
-        let shrink = SKAction.group([.scale(to: 0.90, duration: 0.14),
+        let shrink = SKAction.group([.scale(to: 0.90 * fitScale, duration: 0.14),
                                       .fadeOut(withDuration: 0.14)])
         run(.sequence([shrink, .run {
             self.isHidden = true; self.phase = .none
@@ -991,7 +1016,8 @@ final class BattleNode: SKNode {
 
     private func rebuildBackground(for kind: EnemyKind) {
         backgroundContainer.removeAllChildren()
-        let bg = kind.battleBackground.buildNode(size: CGSize(width: panelW - 8, height: panelH - 8))
+        let bg = kind.battleBackground.buildNode(size: CGSize(width: panelW - 8, height: panelH - 8),
+                                                 intense: kind.isBoss)
         bg.position = CGPoint(x: -4, y: -4)
         bg.alpha = 0.92
         backgroundContainer.addChild(bg)

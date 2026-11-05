@@ -97,6 +97,7 @@ private struct SaveData: Codable {
     var quackCluesRaw:      [String]        // QuackClue.rawValue set
     var defeatedBossesRaw:  [String]        // EnemyKind.rawValue set
     var encounterClearsRaw: [String: TimeInterval]
+    var searchedSpotsRaw:   [String]        // one-time searchable prop ids
 
     // Custom decoder so old saves missing defeatedBossesRaw still load cleanly.
     init(from decoder: Decoder) throws {
@@ -112,11 +113,13 @@ private struct SaveData: Codable {
         quackCluesRaw   = try c.decode([String].self,         forKey: .quackCluesRaw)
         defeatedBossesRaw = (try? c.decode([String].self, forKey: .defeatedBossesRaw)) ?? []
         encounterClearsRaw = (try? c.decode([String: TimeInterval].self, forKey: .encounterClearsRaw)) ?? [:]
+        searchedSpotsRaw = (try? c.decode([String].self, forKey: .searchedSpotsRaw)) ?? []
     }
 
     init(party: [PartyMember], activeIndex: Int, inventoryRaw: [String: Int],
          score: Int, coins: Int, enemiesDefeated: Int, zone: GameZone, storyProgressRaw: String,
-         quackCluesRaw: [String], defeatedBossesRaw: [String], encounterClearsRaw: [String: TimeInterval]) {
+         quackCluesRaw: [String], defeatedBossesRaw: [String], encounterClearsRaw: [String: TimeInterval],
+         searchedSpotsRaw: [String]) {
         self.party              = party
         self.activeIndex        = activeIndex
         self.inventoryRaw       = inventoryRaw
@@ -128,6 +131,7 @@ private struct SaveData: Codable {
         self.quackCluesRaw      = quackCluesRaw
         self.defeatedBossesRaw  = defeatedBossesRaw
         self.encounterClearsRaw = encounterClearsRaw
+        self.searchedSpotsRaw   = searchedSpotsRaw
     }
 }
 
@@ -162,6 +166,10 @@ final class GameState {
     // MARK: - Defeated bosses (no respawn)
     var defeatedBosses:  Set<EnemyKind>  = []
     var encounterClears: [String: TimeInterval] = [:]
+
+    /// One-time searchable props (trash cans, bushes, flowerbeds) already
+    /// checked — EB-style "present" spots never refill.
+    var searchedSpots: Set<String> = []
 
     static let encounterRespawnInterval: TimeInterval = 180
 
@@ -452,6 +460,7 @@ final class GameState {
         quackClues.removeAll()
         defeatedBosses.removeAll()
         encounterClears.removeAll()
+        searchedSpots.removeAll()
     }
 
     // MARK: - Save / Load
@@ -471,7 +480,8 @@ final class GameState {
             storyProgressRaw:   storyProgress.rawValue,
             quackCluesRaw:      quackClues.map(\.rawValue),
             defeatedBossesRaw:  defeatedBosses.map(\.rawValue),
-            encounterClearsRaw: encounterClears
+            encounterClearsRaw: encounterClears,
+            searchedSpotsRaw:   Array(searchedSpots)
         )
         if let encoded = try? JSONEncoder().encode(data) {
             UserDefaults.standard.set(encoded, forKey: Self.saveKey)
@@ -494,6 +504,7 @@ final class GameState {
         quackClues      = Set(data.quackCluesRaw.compactMap { QuackClue(rawValue: $0) })
         defeatedBosses  = Set(data.defeatedBossesRaw.compactMap { EnemyKind(rawValue: $0) })
         encounterClears = data.encounterClearsRaw
+        searchedSpots   = Set(data.searchedSpotsRaw)
         pruneExpiredEncounterClears()
     }
 

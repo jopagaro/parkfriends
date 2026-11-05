@@ -44,6 +44,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - State
     private weak var nearbyNPC:     NPCNode?
     private var nearbyBench:        Bool        = false
+    private var searchables:        [SearchableNode] = []
+    private var nearbySearchable:   SearchableNode?
+    private var talkButtonShown:    Bool        = false
     private var lastDamageTime:     TimeInterval = 0
     private let damageCooldown:     TimeInterval = 0.9
     private var lastUpdate:         TimeInterval = 0
@@ -93,6 +96,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         buildPlayerAndFollowers()
         refreshPartySprites()
         layoutControls()
+        checkBattleTestTrigger()
     }
 
     // MARK: - Build
@@ -110,6 +114,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         quackNode     = nil
         nearbyNPC     = nil
         nearbyBench   = false
+        searchables.removeAll()
+        nearbySearchable = nil
         nearbyQuack   = false
         isBossIntro   = false
         attacks.removeAll()
@@ -182,7 +188,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: openingEnemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         updateParkCenterExits()
         pressurePlate = result.pressurePlate
@@ -207,7 +214,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = result.pressurePlate
         gate          = result.gate
@@ -236,7 +244,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = nil; gate = nil; chest = nil; quackNode = nil
     }
@@ -252,7 +261,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = nil; gate = nil; chest = nil; quackNode = nil
     }
@@ -270,7 +280,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = nil; gate = nil; chest = nil
         quackNode = result.quackNode
@@ -287,13 +298,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         npcSpawns: [CGPoint],
         enemySpawns: [(EnemyKind, CGPoint)],
         benchPositions: [CGPoint],
-        zoneExitNodes: [ZoneExitNode]
+        zoneExitNodes: [ZoneExitNode],
+        searchSpawns: [(SearchableKind, CGPoint)] = []
     ) {
         worldRoot    = root
         pendingSpawn = playerSpawn
         self.benchPositions = benchPositions
         self.zoneExitNodes  = zoneExitNodes
         addChild(worldRoot)
+
+        // One-time searchable props (trash cans, bushes, flowerbeds)
+        let searchZone = gameState?.currentZone ?? .parkCenter
+        for (kind, pos) in searchSpawns {
+            let spot = SearchableNode(kind: kind, zone: searchZone, position: pos)
+            worldRoot.addChild(spot)
+            searchables.append(spot)
+        }
 
         // Fixed story items — skip ones whose clue is already found
         for (kind, pos) in fixedItems {
@@ -552,6 +572,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleInteract() {
         if let npc = nearbyNPC {
             handleTalk(npc: npc)
+        } else if let spot = nearbySearchable {
+            searchSpot(spot)
         } else if nearbyQuack, let quack = quackNode, !quack.isRescued {
             quack.rescue()
         } else if nearbyBench {
@@ -560,6 +582,25 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func handleTalk() { handleInteract() }
+
+    /// Search a one-time spot: deadpan flavor, then the find. The spot stays
+    /// in the world looking ordinary — it just has nothing more to say.
+    private func searchSpot(_ spot: SearchableNode) {
+        guard let state = gameState, !state.searchedSpots.contains(spot.spotID) else { return }
+        state.searchedSpots.insert(spot.spotID)
+        nearbySearchable = nil
+        spot.playSearchBounce()
+
+        let item = spot.loot
+        state.collect(item)
+        var lines = spot.kind.flavorLines(variant: spot.flavorVariant)
+        lines.append(("Shelly", "Found a \(item.displayName)!"))
+        dialogue?.presentScriptedConversation(title: "Checked", lines: lines, onDismiss: nil)
+        DamageLabel.collect("+\(item.displayName)",
+                            at: CGPoint(x: spot.position.x, y: spot.position.y + 30),
+                            in: worldRoot)
+        state.save()
+    }
 
     private func handleTalk(npc: NPCNode) {
         guard let state = gameState else { return }
@@ -783,6 +824,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Battle trigger
 
+    /// Debug battle tester (handoff §2.13): drop `pf-battle-test.txt` into the
+    /// app container tmp with an EnemyKind rawValue (e.g. "pigeon",
+    /// "grandGooseGerald") and the fight starts seconds after launch.
+    func checkBattleTestTrigger() {
+        let path = NSTemporaryDirectory() + "pf-battle-test.txt"
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let raw = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        try? FileManager.default.removeItem(atPath: path)
+        let kind = EnemyKind(rawValue: raw) ?? .pigeon
+        run(.sequence([.wait(forDuration: 1.5), .run { [weak self] in
+            guard let self else { return }
+            let enemy = EnemyNode(kind: kind)
+            enemy.position = CGPoint(x: self.player.position.x,
+                                     y: self.player.position.y + 80)
+            self.worldRoot.addChild(enemy)
+            self.enemies.append(enemy)
+            self.triggerBattle(with: enemy)
+        }]))
+    }
+
     private func triggerBattle(with enemy: EnemyNode) {
         guard battleNode.phase == .none,
               !enemy.isDead,
@@ -805,16 +867,89 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
 
-        // Bosses get a dramatic intro screen first
+        // EarthBound battle swirl wipes the screen; bosses then get their
+        // dramatic intro card behind a faster, red swirl.
         if enemy.kind.isBoss {
-            showBossIntro(for: enemy) { [weak self] in
+            runBattleSwirl(boss: true) { [weak self] in
                 guard let self else { return }
-                self.isBossIntro = false
-                self.battleNode.show(enemy: enemy, state: state)
+                self.showBossIntro(for: enemy) { [weak self] in
+                    guard let self else { return }
+                    self.isBossIntro = false
+                    self.battleNode.show(enemy: enemy, state: state)
+                }
             }
         } else {
-            battleNode.show(enemy: enemy, state: state)
+            runBattleSwirl(boss: false) { [weak self] in
+                self?.battleNode.show(enemy: enemy, state: state)
+            }
         }
+    }
+
+    // MARK: - Battle swirl transition
+
+    private static let swirlShader: SKShader = {
+        let src = """
+        void main() {
+            vec2 p = v_tex_coord - vec2(0.5);
+            p.x *= a_aspect;
+            float r = length(p) * 1.7;
+            float ang = atan(p.y, p.x);
+            float spiral = sin(ang * 3.0 + r * 13.0 - u_time * (6.0 + 6.0 * a_boss));
+            float cover = smoothstep(a_prog * 2.1, a_prog * 2.1 - 0.22, r + 0.13 * spiral);
+            float pulse = 0.82 + 0.18 * sin(u_time * (14.0 + 10.0 * a_boss) + r * 9.0);
+            vec3 col = a_col * pulse;
+            gl_FragColor = vec4(col * cover, cover);
+        }
+        """
+        let shader = SKShader(source: src)
+        shader.attributes = [
+            SKAttribute(name: "a_col", type: .vectorFloat3),
+            SKAttribute(name: "a_prog", type: .float),
+            SKAttribute(name: "a_aspect", type: .float),
+            SKAttribute(name: "a_boss", type: .float)
+        ]
+        return shader
+    }()
+
+    private static let swirlWhiteTexture: SKTexture = {
+        let ctx = CGContext(data: nil, width: 4, height: 4,
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        return SKTexture(cgImage: ctx.makeImage()!)
+    }()
+
+    /// Spiral wipe (green-blue for regular fights, red for bosses), then
+    /// `completion` fires behind the covered screen and the swirl melts away.
+    private func runBattleSwirl(boss: Bool, completion: @escaping () -> Void) {
+        isTransitioning = true
+        let overlay = SKSpriteNode(texture: Self.swirlWhiteTexture, size: size)
+        overlay.shader    = Self.swirlShader
+        overlay.zPosition = GameConstants.ZPos.battle + 1
+        overlay.setValue(SKAttributeValue(vectorFloat3:
+            boss ? vector_float3(0.78, 0.10, 0.10) : vector_float3(0.10, 0.42, 0.34)),
+            forAttribute: "a_col")
+        overlay.setValue(SKAttributeValue(float: 0), forAttribute: "a_prog")
+        overlay.setValue(SKAttributeValue(float: Float(size.width / max(size.height, 1))),
+                         forAttribute: "a_aspect")
+        overlay.setValue(SKAttributeValue(float: boss ? 1 : 0), forAttribute: "a_boss")
+        cam.addChild(overlay)
+
+        let swirlIn = SKAction.customAction(withDuration: boss ? 0.45 : 0.6) { node, elapsed in
+            let t = Float(elapsed / (boss ? 0.45 : 0.6))
+            node.setValue(SKAttributeValue(float: min(1, t)), forAttribute: "a_prog")
+        }
+        overlay.run(.sequence([
+            swirlIn,
+            .run { [weak self] in
+                self?.isTransitioning = false
+                completion()
+            },
+            .fadeOut(withDuration: 0.3),
+            .removeFromParent()
+        ]))
     }
 
     // MARK: - Boss intro title card
@@ -1556,7 +1691,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         if nearNPC !== nearbyNPC {
             nearbyNPC = nearNPC
-            showTalkButton(nearNPC != nil)
 #if canImport(AppKit)
             if nearNPC != nil {
                 DamageLabel.spawn(text: "Press E to talk",
@@ -1583,6 +1717,33 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                                   in: worldRoot)
             }
 #endif
+        }
+
+        // Searchable prop proximity (one-time EB "check" spots)
+        let nearSearch = searchables.first {
+            guard !($0.parent == nil) else { return false }
+            if gameState?.searchedSpots.contains($0.spotID) == true { return false }
+            let dx = $0.position.x - player.position.x
+            let dy = $0.position.y - player.position.y
+            return dx*dx + dy*dy < 60*60
+        }
+        if nearSearch !== nearbySearchable {
+            nearbySearchable = nearSearch
+#if canImport(AppKit)
+            if nearSearch != nil {
+                DamageLabel.spawn(text: "Press E to check",
+                                  color: SKColor(red: 0.96, green: 0.89, blue: 0.55, alpha: 1),
+                                  at: CGPoint(x: player.position.x, y: player.position.y + 48),
+                                  in: worldRoot)
+            }
+#endif
+        }
+        // The talk button serves every nearby interaction on touch builds.
+        let wantsTalkButton = nearbyNPC != nil || nearbySearchable != nil
+                           || nearbyBench || nearbyQuack
+        if wantsTalkButton != talkButtonShown {
+            talkButtonShown = wantsTalkButton
+            showTalkButton(wantsTalkButton)
         }
 
         // Quack proximity (side-quest rescue)
