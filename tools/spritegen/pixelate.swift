@@ -21,15 +21,18 @@ func factor(for name: String) -> Double? {
     // Battle portraits keep their painterly register (bible: enemies are a
     // deliberately different style) — and previews aren't game assets.
     if name.contains("-battle-") || name.contains("preview") { return nil }
-    if name.hasPrefix("npc-") { return 6 }           // 128x192 humans → ~21x32
+    if name.hasPrefix("npc-") { return 6 }           // 128x192 shown 64x96pt → 3pt vpx
     for p in ["shelly-", "hazel-", "spike-", "pip-"] where name.hasPrefix(p) {
-        return 5                                      // 64x96 party → ~13x19
+        return 5                                      // 64x96 shown ~0.6x → ~3pt vpx
     }
-    if name.hasPrefix("sheet-") { return 2 }          // 32px blob cells → 16
-    if name.hasPrefix("bldg-") { return 2 }           // shown at 1.5pt/px
-    for p in ["critter-", "tile-", "prop-", "tree-", "furn-", "house-", "enemy-"]
+    if name.hasPrefix("sheet-") { return 3 }          // 48px cells shown 48pt → 3pt vpx
+    if name.hasPrefix("bldg-") { return 3 }           // canvases shown 1:1 → 3pt vpx
+    if name.hasPrefix("tree-") { return 2 }           // shown ~2x canvas → ~3.4-4.5pt vpx
+    if name.hasPrefix("prop-statue-") { return 2 }    // shown 1.5x canvas → 3pt vpx
+    if name.hasPrefix("critter-duck-") { return 2 }   // 36px shown 48pt → 2.7pt vpx
+    for p in ["critter-", "tile-", "prop-", "furn-", "house-", "enemy-"]
         where name.hasPrefix(p) {
-        return 3                                      // shown at 1pt/px
+        return 3                                      // shown ~1:1 → 3pt vpx
     }
     return nil
 }
