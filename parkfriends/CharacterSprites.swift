@@ -80,12 +80,15 @@ enum CharacterSprites {
         if let cached = overworldSizeCache[species] { return cached }
         // EarthBound ruler: adult humans show ~72pt (1.5 tiles) of content,
         // so the animal party stays clearly below them — around one tile.
+        // Near-uniform party (user: the size DIFFERENCE between playable
+        // characters read as a bug). EB parties stand almost equal; keep
+        // only a hint of species variety (max spread 4pt, not 12).
         let targetContentHeight: CGFloat
         switch species {
         case .turtle:   targetContentHeight = 46
-        case .squirrel: targetContentHeight = 50
-        case .hedgehog: targetContentHeight = 48
-        case .hamster:  targetContentHeight = 38
+        case .squirrel: targetContentHeight = 48
+        case .hedgehog: targetContentHeight = 46
+        case .hamster:  targetContentHeight = 44
         }
         // Measure ONLY the generated idle (known 64x96 canvas). If the
         // generated art is missing we fall back to a fixed legacy size —
