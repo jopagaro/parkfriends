@@ -94,8 +94,16 @@ final class PlayerNode: SKSpriteNode {
         removeAction(forKey: "walk")
         let frames = CharacterSprites.generatedWalkFrames(species: species, direction: walkDirection)
         if frames.count == 4 {
-            run(.repeatForever(.animate(with: frames, timePerFrame: 0.12, resize: false, restore: false)),
-                withKey: "walk")
+            // Swap textures by property assignment, never SKAction.animate /
+            // .setTexture: those reset the node to texture-native size (64x96)
+            // on their first tick even with resize:false, which made the
+            // leader balloon versus the party after every setSpecies.
+            var steps: [SKAction] = []
+            for f in frames {
+                steps.append(.run { [weak self] in self?.texture = f })
+                steps.append(.wait(forDuration: 0.12))
+            }
+            run(.repeatForever(.sequence(steps)), withKey: "walk")
         } else {
             // Legacy fallback: 2-frame procedural toggle.
             let cycle = SKAction.repeatForever(.sequence([
@@ -119,11 +127,12 @@ final class PlayerNode: SKSpriteNode {
         removeAction(forKey: "walk")
         let idle = CharacterSprites.generatedIdleFrames(species: species)
         if idle.count == 2 {
-            // Mostly-still idle with an occasional blink.
+            // Mostly-still idle with an occasional blink. Property assignment,
+            // not .setTexture — see the note in startWalkCycle.
             run(.repeatForever(.sequence([
-                .setTexture(idle[0], resize: false),
+                .run { [weak self] in self?.texture = idle[0] },
                 .wait(forDuration: 2.6),
-                .setTexture(idle[1], resize: false),
+                .run { [weak self] in self?.texture = idle[1] },
                 .wait(forDuration: 0.14),
             ])), withKey: "walk")
         } else {

@@ -72,6 +72,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Keyboard (macOS)
     private var pressedKeys: Set<UInt16> = []
 
+    private var sizeDebugLastCheck: TimeInterval = 0
+
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
@@ -1584,6 +1586,36 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     override func update(_ currentTime: TimeInterval) {
         let dt = lastUpdate == 0 ? 1/60.0 : min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
+
+        // Debug: drop pf-size-debug.txt in tmp → sizes report written back.
+        if currentTime - sizeDebugLastCheck > 2 {
+            sizeDebugLastCheck = currentTime
+            let trigger = NSTemporaryDirectory() + "pf-size-debug.txt"
+            if FileManager.default.fileExists(atPath: trigger) {
+                let mode = (try? String(contentsOfFile: trigger, encoding: .utf8)) ?? ""
+                try? FileManager.default.removeItem(atPath: trigger)
+                var r = "zone=\(gameState?.currentZone.rawValue ?? "?") active=\(gameState?.activeSpecies.rawValue ?? "?")\n"
+                if let p = player {
+                    r += "player size=\(p.size) scale=(\(p.xScale),\(p.yScale)) tex=\(p.texture?.size() ?? .zero)\n"
+                    r += "overworldSize(active)=\(CharacterSprites.overworldSize(species: p.species))\n"
+                    if mode.contains("respecies") {
+                        p.setSpecies(p.species)
+                        r += "after setSpecies: size=\(p.size)\n"
+                    }
+                    if mode.contains("cycle") {
+                        cycleParty()
+                        r += "after cycleParty: active=\(gameState?.activeSpecies.rawValue ?? "?") size=\(p.size)\n"
+                    }
+                }
+                for (i, f) in followers.enumerated() {
+                    let sp = i < followerSpecies.count ? followerSpecies[i].rawValue : "?"
+                    r += "follower[\(i)] \(sp) size=\(f.size) scale=(\(f.xScale),\(f.yScale)) tex=\(f.texture?.size() ?? .zero)\n"
+                }
+                r += "cam=\(cam.xScale) uiRoot=\(uiRoot.xScale)\n"
+                try? r.write(toFile: NSTemporaryDirectory() + "pf-size-report.txt",
+                             atomically: true, encoding: .utf8)
+            }
+        }
 
         // Freeze world during dialogue, battle, zone transition, boss intro, or overlays
         let frozen = isTransitioning
