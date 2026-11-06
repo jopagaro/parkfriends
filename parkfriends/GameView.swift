@@ -66,8 +66,11 @@ struct GameView: View {
                 }
 
                 if g.state.mapOverviewOpen {
-                    WorldOverviewModal(state: g.state) { g.state.mapOverviewOpen = false }
-                        .transition(.opacity)
+                    WorldOverviewModal(state: g.state,
+                                       playerFraction: g.scene.playerWorldFraction) {
+                        g.state.mapOverviewOpen = false
+                    }
+                    .transition(.opacity)
                 }
 
                 if g.state.isPaused {
@@ -342,10 +345,20 @@ struct WorldOverviewModal: View {
     let onClose: () -> Void
     @State private var scene: WorldOverviewScene
 
-    init(state: GameState, onClose: @escaping () -> Void) {
+    init(state: GameState, playerFraction: CGPoint = CGPoint(x: 0.5, y: 0.5),
+         onClose: @escaping () -> Void) {
         self.state = state
         self.onClose = onClose
-        _scene = State(initialValue: WorldOverviewScene(currentZone: state.currentZone))
+        var locked: Set<GameZone> = []
+        if !state.hasHazelJoined { locked.insert(.parkNorth) }
+        if !state.defeatedBosses.contains(.grandGooseGerald) {
+            locked.formUnion([.citySouth, .cityCenter, .cityNorth])
+        } else if !state.defeatedBosses.contains(.officerGrumble) {
+            locked.insert(.cityNorth)
+        }
+        _scene = State(initialValue: WorldOverviewScene(currentZone: state.currentZone,
+                                                        lockedZones: locked,
+                                                        playerFraction: playerFraction))
     }
 
     var body: some View {
@@ -374,7 +387,8 @@ struct WorldOverviewModal: View {
 
                 SpriteView(scene: scene, options: [.ignoresSiblingOrder])
                     .frame(maxWidth: 1260, maxHeight: 820)
-                    .aspectRatio(1680.0 / 1180.0, contentMode: .fit)
+                    .aspectRatio(WorldOverviewScene.sceneSize.width / WorldOverviewScene.sceneSize.height,
+                                 contentMode: .fit)
                     .overlay(Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 2))
             }
             .padding(18)

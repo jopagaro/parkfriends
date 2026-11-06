@@ -521,6 +521,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// EarthBound framing: the camera always shows ~11.5 tiles on the short
     /// screen axis (capped at 20 on the long one), whatever the window or
     /// device size. UI on `uiRoot` is counter-scaled back to point size.
+    /// Player position as a 0–1 fraction of the current zone — the world
+    /// overview uses it to place the "you are here" marker.
+    var playerWorldFraction: CGPoint {
+        guard player != nil, let zone = gameState?.currentZone else {
+            return CGPoint(x: 0.5, y: 0.5)
+        }
+        let b = zone.boundsSize
+        return CGPoint(x: min(1, max(0, player.position.x / b.width)),
+                       y: min(1, max(0, player.position.y / b.height)))
+    }
+
     private func updateCameraScale() {
         // Always native 1:1 — no auto-zoom. The fit-N-tiles framing made the
         // world rescale when the scene size settled after load (sprites
