@@ -42,18 +42,18 @@ extension GameZone {
 
     var displayTitle: String {
         switch self {
-        case .parkNorth:  return "Bellwether Pond"
-        case .parkCenter: return "Bellwether Fountain"
+        case .parkNorth:  return "Green Shire Suburb"
+        case .parkCenter: return "Bellwether Park"
         case .citySouth:  return "City South"
         case .cityCenter: return "City Center"
-        case .cityNorth:  return "Construction Edge"
+        case .cityNorth:  return "Construction Zone"
         }
     }
 
     var zoneSubtitle: String {
         switch self {
-        case .parkNorth:  return "Pond  ·  Meadow  ·  Broken Quiet"
-        case .parkCenter: return "Entrance  ·  Fountain Plaza  ·  Strange Birds"
+        case .parkNorth:  return "Houses  ·  Lab  ·  Quiet Road"
+        case .parkCenter: return "Pond  ·  Fountain  ·  Statue  ·  Oak"
         case .citySouth:  return "Alleys  ·  Corner Store  ·  Spillover"
         case .cityCenter: return "Main Street  ·  Records  ·  Subway Gate"
         case .cityNorth:  return "Construction Zone  ·  Warehouses  ·  Deep Roots"
@@ -97,6 +97,7 @@ private struct SaveData: Codable {
     var quackCluesRaw:      [String]        // QuackClue.rawValue set
     var defeatedBossesRaw:  [String]        // EnemyKind.rawValue set
     var encounterClearsRaw: [String: TimeInterval]
+    var searchedSpotsRaw:   [String]        // one-time searchable prop ids
 
     // Custom decoder so old saves missing defeatedBossesRaw still load cleanly.
     init(from decoder: Decoder) throws {
@@ -112,11 +113,13 @@ private struct SaveData: Codable {
         quackCluesRaw   = try c.decode([String].self,         forKey: .quackCluesRaw)
         defeatedBossesRaw = (try? c.decode([String].self, forKey: .defeatedBossesRaw)) ?? []
         encounterClearsRaw = (try? c.decode([String: TimeInterval].self, forKey: .encounterClearsRaw)) ?? [:]
+        searchedSpotsRaw = (try? c.decode([String].self, forKey: .searchedSpotsRaw)) ?? []
     }
 
     init(party: [PartyMember], activeIndex: Int, inventoryRaw: [String: Int],
          score: Int, coins: Int, enemiesDefeated: Int, zone: GameZone, storyProgressRaw: String,
-         quackCluesRaw: [String], defeatedBossesRaw: [String], encounterClearsRaw: [String: TimeInterval]) {
+         quackCluesRaw: [String], defeatedBossesRaw: [String], encounterClearsRaw: [String: TimeInterval],
+         searchedSpotsRaw: [String]) {
         self.party              = party
         self.activeIndex        = activeIndex
         self.inventoryRaw       = inventoryRaw
@@ -128,6 +131,7 @@ private struct SaveData: Codable {
         self.quackCluesRaw      = quackCluesRaw
         self.defeatedBossesRaw  = defeatedBossesRaw
         self.encounterClearsRaw = encounterClearsRaw
+        self.searchedSpotsRaw   = searchedSpotsRaw
     }
 }
 
@@ -146,8 +150,14 @@ final class GameState {
     var isPaused:        Bool            = false
     var shopOpen:        Bool            = false   // corner store overlay
     var statsOpen:       Bool            = false   // party stats / inventory screen
+    var mapOverviewOpen: Bool            = false   // whole-world debug overview
     var queueTitleReturn: Bool           = false   // signal GameView to fade back to title
     var currentZone:     GameZone        = .parkCenter
+
+    // Interior state — transient, never persisted. Saving inside a building
+    // records the outdoor zone; reload puts you back outside its door.
+    var currentInterior: InteriorKind?   = nil
+    var interiorReturnPoint: CGPoint?    = nil
     var storyProgress:   StoryProgress   = .introCheckFountain
 
     // MARK: - "Find Quack" story
@@ -156,6 +166,10 @@ final class GameState {
     // MARK: - Defeated bosses (no respawn)
     var defeatedBosses:  Set<EnemyKind>  = []
     var encounterClears: [String: TimeInterval] = [:]
+
+    /// One-time searchable props (trash cans, bushes, flowerbeds) already
+    /// checked — EB-style "present" spots never refill.
+    var searchedSpots: Set<String> = []
 
     static let encounterRespawnInterval: TimeInterval = 180
 
@@ -437,6 +451,7 @@ final class GameState {
         isPaused          = false
         shopOpen          = false
         statsOpen         = false
+        mapOverviewOpen   = false
         queueTitleReturn  = false
         lastAttackTime.removeAll()
         currentZone = .parkCenter
@@ -445,6 +460,7 @@ final class GameState {
         quackClues.removeAll()
         defeatedBosses.removeAll()
         encounterClears.removeAll()
+        searchedSpots.removeAll()
     }
 
     // MARK: - Save / Load
@@ -464,7 +480,8 @@ final class GameState {
             storyProgressRaw:   storyProgress.rawValue,
             quackCluesRaw:      quackClues.map(\.rawValue),
             defeatedBossesRaw:  defeatedBosses.map(\.rawValue),
-            encounterClearsRaw: encounterClears
+            encounterClearsRaw: encounterClears,
+            searchedSpotsRaw:   Array(searchedSpots)
         )
         if let encoded = try? JSONEncoder().encode(data) {
             UserDefaults.standard.set(encoded, forKey: Self.saveKey)
@@ -487,6 +504,7 @@ final class GameState {
         quackClues      = Set(data.quackCluesRaw.compactMap { QuackClue(rawValue: $0) })
         defeatedBosses  = Set(data.defeatedBossesRaw.compactMap { EnemyKind(rawValue: $0) })
         encounterClears = data.encounterClearsRaw
+        searchedSpots   = Set(data.searchedSpotsRaw)
         pruneExpiredEncounterClears()
     }
 
@@ -524,6 +542,11 @@ final class GameState {
 
         switch currentZone {
         case .parkCenter:
+            if storyProgress == .hazelJoined,
+               quackClues.contains(.foundFeather),
+               !defeatedBosses.contains(.grandGooseGerald) {
+                return "Objective: Grand Goose Gerald holds the fountain plaza and the south path. Settle it."
+            }
             switch storyProgress {
             case .introCheckFountain:
                 return "Objective: Talk to the ranger and check the fountain."
@@ -540,12 +563,21 @@ final class GameState {
             if !quackClues.contains(.foundFeather) {
                 return "Objective: Search the pond for what scared the park's missing duck."
             }
+            if !defeatedBosses.contains(.flockLeader) {
+                return "Objective: The rooftop flock's leader saw everything. Make him talk."
+            }
             return "Objective: Bring the feather back through the park and ask who saw Quack last."
         case .citySouth:
             return "Objective: Track the breadcrumb trail through the alleys and chip bags."
         case .cityCenter:
+            if !defeatedBosses.contains(.officerGrumble) {
+                return "Objective: Officer Grumble guards the north gate from the station steps. Change his mind."
+            }
             return "Objective: Push toward the records district and find out why the city paperwork feels wrong."
         case .cityNorth:
+            if !defeatedBosses.contains(.foremanRex) {
+                return "Objective: Foreman Rex stands between you and the dig. Get past him."
+            }
             return "Objective: Reach the construction site and uncover what woke up beneath the concrete."
         }
     }

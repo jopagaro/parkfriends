@@ -1,13 +1,15 @@
 import SpriteKit
 
-/// Zone 1B (center) + Zone 1A (north) — Part 1 world structure.
+// Generated from MAP_SPEC.md.
+// - buildCenter() → §4 (scene `park`): pond, fountain plaza, statue plaza, oak.
+// - buildNorth()  → §3 (scene `suburb_north`): lab, row houses, road, creek.
 enum ParkWorld {
 
     struct BuildResult {
         let root: SKNode
         let npcSpawns: [CGPoint]
         let itemSpawns: [CGPoint]
-        let fixedItems: [(ItemKind, CGPoint)]  // deterministic story items
+        let fixedItems: [(ItemKind, CGPoint)]
         let enemySpawns: [(EnemyKind, CGPoint)]
         let playerSpawn: CGPoint
         let benchPositions: [CGPoint]
@@ -16,266 +18,373 @@ enum ParkWorld {
         let gate: GateNode?
         let chest: TreasureChestNode?
         let boulder: PushableRockNode?
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
-    // MARK: - Zone 1B — Park Center (105×65, south toward city)
+    // MARK: - Park (Zone 1B) — MAP_SPEC §4
 
     static func buildCenter() -> BuildResult {
         let root = SKNode(); root.name = "world"
-        let tile = GameConstants.tileSize
-        let cols = GameConstants.parkCenterCols   // 105
-        let rows = GameConstants.parkCenterRows   // 65
-        let worldSize = GameConstants.parkCenterWorldSize
+        let painter = ScenePainter(
+            root: root,
+            cols: GameConstants.parkCenterCols,
+            rows: GameConstants.parkCenterRows
+        )
 
-        // Ground layer
-        let groundLayer = SKNode()
-        groundLayer.zPosition = GameConstants.ZPos.ground
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let surface: TerrainSurface = (c < 8 || c > cols - 9) ? .grassShade : .grass
-                let n = makeParkGroundTile(surface: surface, col: c, row: r, tile: tile)
-                n.anchorPoint = .zero
-                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
-                groundLayer.addChild(n)
+        // §4.2 — L0 bright grass everywhere, with darker patches under the
+        // tree clusters so the fill doesn't read as one flat sheet.
+        painter.fillGrass(rect: SpecRect(0, 0, painter.cols, painter.rows))
+
+        // §4.2/§4.8 — Water: pond + creek painted as ONE autotiled blob so
+        // shores wrap every edge and the creek merges seamlessly into the pond.
+        let pondRect = SpecRect(8, 14, 22, 16)
+        let creekArm = SpecRect(49, 0, 2, 13)
+        let creekSteps = [
+            SpecRect(46, 12, 5, 2),
+            SpecRect(42, 13, 5, 2),
+            SpecRect(38, 14, 5, 2),
+            SpecRect(34, 15, 5, 2),
+            SpecRect(30, 16, 5, 2),
+            SpecRect(27, 17, 3, 2)   // merges into pond edge at x=28..29
+        ]
+        let waterRects = [pondRect, creekArm] + creekSteps
+        painter.autotile(painter.tiles(waterRects),
+                         z: PaintLayer.ground.z + 0.1,
+                         interior: { ImportedArt.genTile("tile-water-\(($0 * 7 + $1 * 11) % 3)-32") },
+                         tile: ImportedArt.pondBlobTile)
+
+        // §4.10 — Fountain plaza, octagonal: 14×14 stone with 4 corner 2×2
+        // blocks cut out. Stone-path autotile gives it a grass border.
+        let plazaRect = SpecRect(38, 18, 14, 14)
+        var plazaTiles = painter.tiles([plazaRect])
+        plazaTiles.subtract(painter.tiles([
+            SpecRect(38, 18, 2, 2), SpecRect(50, 18, 2, 2),
+            SpecRect(38, 30, 2, 2), SpecRect(50, 30, 2, 2)
+        ]))
+        painter.autotile(plazaTiles,
+                         z: PaintLayer.ground.z + 0.2,
+                         interior: { ImportedArt.genTile("tile-stonefill-p\($0 % 2)\($1 % 2)-32") },
+                         tile: ImportedArt.parkStoneBlobTile)
+
+        // §4.1 — Statue plaza.
+        let statuePlazaRect = SpecRect(66, 38, 10, 10)
+        painter.autotile(painter.tiles([statuePlazaRect]),
+                         z: PaintLayer.ground.z + 0.2,
+                         interior: { ImportedArt.genTile("tile-stonefill-p\($0 % 2)\($1 % 2)-32") },
+                         tile: ImportedArt.parkStoneBlobTile)
+
+        // §4.3 — Dirt path network, autotiled so ends and corners are rounded.
+        // Water and plazas are excluded; the bridge covers the creek crossing.
+        let pathExclusions = [plazaRect, statuePlazaRect] + waterRects
+        let pathTiles = painter.tiles([
+            SpecRect(44, 0, 4, 64),
+            SpecRect(28, 18, 20, 2),
+            SpecRect(47, 38, 22, 2),
+            SpecRect(8, 50, 40, 2)
+        ], excluding: pathExclusions)
+        painter.autotile(pathTiles,
+                         z: PaintLayer.ground.z + 0.3,
+                         interior: { ImportedArt.genTile("tile-dirt-\(($0 * 5 + $1 * 3) % 3)-32") },
+                         tile: ImportedArt.parkPathBlobTile)
+
+        // §4.8 — Wooden bridge where the main N-S path crosses the creek
+        // diagonal: the path funnels onto a 2-wide plank walkway. Collision
+        // below leaves x=45..46 open and rails off the water beside it.
+        painter.placeSprite(SpecRect(45, 12, 2, 3),
+                            texture: ImportedArt.sproutBridgeVertical(),
+                            layer: .props)
+        painter.addBlockingRect(SpecRect(44, 12, 1, 3))
+        painter.addBlockingRect(SpecRect(47, 12, 1, 3))
+
+        // §4.4 / §4.5 — Trees with collision.
+        painter.placeTree(SpecRect(3, 44, 5, 8),  texture: ImportedArt.parkOakTree())       // oak landmark
+        painter.placeTree(SpecRect(11, 3, 4, 5),  texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(59, 4, 4, 5),  texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(79, 8, 3, 4),  texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(33, 30, 3, 5), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(55, 48, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(81, 50, 3, 4), texture: ImportedArt.parkWideTree())
+        painter.placeTree(SpecRect(17, 36, 2, 4), texture: ImportedArt.parkSmallConifer())
+        painter.placeTree(SpecRect(27, 54, 3, 4), texture: ImportedArt.parkMediumTree())
+
+        // Density pass: 16 more medium/small trees scattered in empty grass quadrants.
+        // (Avoiding paths, plaza, pond, and the perimeter where the tree-wall sits.)
+        let extraTrees: [(Int, Int, TreeKind)] = [
+            (16, 4, .medium), (24, 6, .small), (40, 4, .medium), (52, 4, .conifer),
+            (74, 4, .wide),   (90, 4, .medium), (96, 14, .conifer),
+            (4, 14, .medium), (4, 28, .medium), (4, 38, .small),
+            (88, 26, .medium), (94, 38, .wide), (90, 50, .medium),
+            (60, 56, .medium), (72, 56, .wide), (40, 60, .conifer)
+        ]
+        for (xT, yT, kind) in extraTrees {
+            painter.placeTree(SpecRect(xT, yT, kind.w, kind.h), texture: kind.texture)
+        }
+
+        // §4.1 — Tree-wall border: dense hedge autotile, 2 thick, with gaps at
+        // the N + S path transitions (x=44..47).
+        let cols = painter.cols, rows = painter.rows
+        var hedgeTiles = painter.tiles([
+            SpecRect(0, 0, cols, 2), SpecRect(0, rows - 2, cols, 2),
+            SpecRect(0, 2, 2, rows - 4), SpecRect(cols - 2, 2, 2, rows - 4)
+        ])
+        hedgeTiles.subtract(painter.tiles([
+            SpecRect(44, 0, 4, 2), SpecRect(44, rows - 2, 4, 2)
+        ]))
+        painter.autotile(hedgeTiles,
+                         z: PaintLayer.props.z,
+                         interior: { ImportedArt.genTile("tile-hedge-\(($0 * 3 + $1 * 7) % 3)-32") },
+                         tile: ImportedArt.parkHedgeBlobTile)
+        for wall in [
+            SpecRect(0, 0, 44, 2), SpecRect(48, 0, cols - 48, 2),
+            SpecRect(0, rows - 2, 44, 2), SpecRect(48, rows - 2, cols - 48, 2),
+            SpecRect(0, 2, 2, rows - 4), SpecRect(cols - 2, 2, 2, rows - 4)
+        ] {
+            painter.addBlockingRect(wall)
+        }
+
+        // §4.4 — Fountain: generated two-tier stone fountain.
+        painter.placeSprite(SpecRect(43, 22, 4, 5),
+                            texture: ImportedArt.genTile("prop-fountain-128x160"),
+                            layer: .props)
+        painter.addBlockingRect(SpecRect(43, 23, 4, 4))
+
+        // §4.4 — Statue: stone duck memorial. Nobody explains it.
+        painter.placeSprite(SpecRect(69, 40, 3, 4),
+                            texture: ImportedArt.genTile("prop-statue-64x96"),
+                            layer: .props)
+        painter.addBlockingRect(SpecRect(69, 42, 3, 2))
+
+        // §4.9 — Pier: horizontal plank walkway extending east into the pond.
+        // ── Park fill: landmarks, playground, picnic spots, flowers, ducks ──
+        // Gazebo on the NE lawn
+        painter.placeSprite(SpecRect(68, 6, 5, 5),
+                            texture: ImportedArt.genTile("prop-gazebo-160x160"), layer: .props)
+        painter.addBlockingRect(SpecRect(68, 8, 5, 3))
+        // Playground on the SW lawn
+        painter.placeSprite(SpecRect(12, 54, 3, 3),
+                            texture: ImportedArt.genTile("prop-slide-96x96"), layer: .props)
+        painter.addBlockingRect(SpecRect(12, 55, 3, 2))
+        painter.placeSprite(SpecRect(18, 55, 4, 2),
+                            texture: ImportedArt.genTile("prop-swings-128x80"), layer: .props)
+        painter.addBlockingRect(SpecRect(18, 56, 4, 1))
+        // Ice cream cart by the plaza
+        painter.placeSprite(SpecRect(54, 27, 2, 3),
+                            texture: ImportedArt.genTile("prop-icecream-80x112"), layer: .props)
+        painter.addBlockingRect(SpecRect(54, 28, 2, 2))
+        // Picnic blankets (walkable)
+        for (px, py) in [(58, 32), (20, 36)] {
+            painter.placeSprite(SpecRect(px, py, 2, 2),
+                                texture: ImportedArt.genTile("prop-picnic-64x64"), layer: .decor)
+        }
+        // Flower beds edging the lawns
+        for (fx, fy) in [(34, 22), (53, 15), (30, 33), (58, 52)] {
+            painter.placeSprite(SpecRect(fx, fy, 3, 1),
+                                texture: ImportedArt.genTile("prop-flowerbed-96x40"), layer: .props)
+            painter.addBlockingRect(SpecRect(fx, fy, 3, 1))
+        }
+        // Signposts at the gates and the statue plaza
+        for (sx, sy) in [(42, 4), (48, 59), (64, 37)] {
+            painter.placeSprite(SpecRect(sx, sy, 1, 1),
+                                texture: ImportedArt.genTile("prop-sign-32x48"), layer: .props)
+        }
+        // Lily pads on the pond + resident mallards
+        for (lx, ly, v) in [(10, 17, 0), (16, 27, 1), (25, 16, 0), (12, 25, 1)] {
+            painter.placeSprite(SpecRect(lx, ly, 1, 1),
+                                texture: ImportedArt.genTile("prop-lilypad-\(v)-32"), layer: .decor)
+        }
+        for (dx, dy, dirRow) in [(13, 21, 6), (22, 24, 2), (18, 18, 0)] {
+            let frames = ImportedArt.genCritterFrames("duck", "36x36", directionRow: dirRow)
+            if !frames.isEmpty {
+                painter.placeAnimated(SpecRect(dx, dy, 1, 1), frames: frames, timePerFrame: 0.24)
             }
         }
-        root.addChild(groundLayer)
+        // Second canopy pass for the open lawns
+        painter.placeTree(SpecRect(84, 44, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(92, 56, 3, 4), texture: ImportedArt.parkWideTree())
+        painter.placeTree(SpecRect(14, 40, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(86, 16, 3, 5), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(31, 25, 2, 3), texture: ImportedArt.parkSmallConifer())
+        painter.placeTree(SpecRect(63, 55, 3, 4), texture: ImportedArt.parkMediumTree())
+        for (rx, ry, v) in [(78, 52, 3), (20, 32, 1), (94, 30, 2)] {
+            painter.placeRock(SpecRect(rx, ry, 1, 1), variant: v)
+        }
+        painter.placeSprite(SpecRect(80, 20, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
+        painter.placeSprite(SpecRect(66, 12, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
 
-        let terrainLayer = SKNode()
-        terrainLayer.zPosition = GameConstants.ZPos.ground + 0.6
-        root.addChild(terrainLayer)
-
-        paintRectSurface(on: terrainLayer, surface: .road, cols: 0...104, rows: 0...1, tile: tile)
-        paintRectSurface(on: terrainLayer, surface: .sidewalk, cols: 0...104, rows: 2...3, tile: tile)
-        paintDirtRibbon(
-            on: terrainLayer,
-            path: [(52, 4), (52, 6), (52, 8), (52, 10), (51, 12), (50, 14), (49, 16), (48, 18), (47, 20),
-                   (47, 22), (47, 24), (47, 26), (47, 28), (47, 30)],
-            radius: 3,
-            tile: tile
-        )
-        paintRectSurface(on: terrainLayer, surface: .path, cols: 41...63, rows: 30...42, tile: tile)
-        paintRectSurface(on: terrainLayer, surface: .water, cols: 47...56, rows: 33...38, tile: tile)
-        paintDirtRibbon(
-            on: terrainLayer,
-            path: [(47, 30), (42, 28), (36, 26), (30, 24), (24, 23), (18, 22)],
-            radius: 1,
-            tile: tile
-        )
-        paintDirtRibbon(
-            on: terrainLayer,
-            path: [(57, 31), (63, 28), (69, 25), (76, 22), (83, 21)],
-            radius: 1,
-            tile: tile
-        )
-        paintRectSurface(on: terrainLayer, surface: .path, cols: 77...92, rows: 12...18, tile: tile)
-        paintFenceRun(on: terrainLayer, startCol: 77, row: 11, length: 16, tile: tile)
-        paintFenceRun(on: terrainLayer, startCol: 77, row: 19, length: 16, tile: tile)
-        addCliffFace(on: terrainLayer, startCol: 9, startRow: 25, length: 13, horizontal: true, tile: tile)
-        addCliffFace(on: terrainLayer, startCol: 83, startRow: 24, length: 12, horizontal: true, tile: tile)
-        sprinkleGrassTufts(on: terrainLayer,
-                           points: [(32, 7), (36, 8), (41, 10), (24, 13), (67, 13), (72, 15),
-                                    (30, 20), (36, 22), (44, 24), (76, 22), (84, 18), (14, 18),
-                                    (18, 27), (23, 29), (28, 30), (76, 29), (82, 27), (88, 24),
-                                    (46, 46), (56, 46), (64, 49)],
-                           tile: tile)
-
-        let border = SKNode()
-        border.physicsBody = {
-            let b = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
-            b.categoryBitMask = GameConstants.Category.wall
-            return b
-        }()
-        root.addChild(border)
-
-        let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
-
-        // ── Entrance area (rows 2-10) ────────────────────────────────────────
-        let entranceDecor: [(String, Int, Int, Bool)] = [
-            ("🚧", 31, 3, true), ("🚧", 35, 3, true), ("🚧", 69, 3, true), ("🚧", 73, 3, true),
-            ("🪧", 52, 2, false), ("🚫", 58, 3, false),
-            ("🥀", 34, 4, false), ("🥀", 35, 4, false), ("🥀", 36, 4, false),
-            ("🌷", 20, 5, false), ("🌷", 84, 5, false),
-            ("🌸", 22, 6, false), ("🌸", 82, 6, false),
-            ("🪑", 25, 7, false), ("🪑", 79, 7, false),
-            ("🗑️", 29, 7, false), ("🗑️", 75, 7, false),
-            ("🌳", 12, 6, true),  ("🌳", 92, 6, true),
-            ("🌳", 6, 8, true),   ("🌳", 98, 8, true),
-            ("🌿", 16, 7, false), ("🌿", 88, 7, false),
-        ]
-        addDecor(decorLayer, spots: entranceDecor, tile: tile)
-
-        // ── Dog Run (east area, rows 6-18) ───────────────────────────────────
-        let dogRunDecor: [(String, Int, Int, Bool)] = [
-            ("🎾", 78, 10, false), ("🎾", 84, 14, false),
-            ("🦴", 80, 8, false),  ("🦴", 88, 16, false),
-            ("🥣", 82, 11, false),
-            ("🐕", 76, 12, false), ("🐕", 85, 9, false),
-            ("🌳", 76, 7, true),   ("🌳", 90, 7, true),
-            ("🌳", 76, 18, true),  ("🌳", 90, 18, true),
-        ]
-        addDecor(decorLayer, spots: dogRunDecor, tile: tile)
-
-        // ── Fountain Plaza (center, rows 28-42) ───────────────────────────────
-        let fountainDecor: [(String, Int, Int, Bool)] = [
-            ("⛲", 52, 35, true),
-            ("🌳", 42, 40, true), ("🌳", 63, 40, true),
-            ("🪑", 45, 33, false), ("🪑", 59, 33, false),
-            ("🪑", 44, 38, false), ("🪑", 60, 38, false),
-            ("🪑", 52, 42, false),
-            ("🐦", 48, 36, false), ("🐦", 54, 34, false), ("🐦", 50, 40, false),
-            ("🐦", 57, 39, false), ("🐦", 43, 41, false),
-            ("🗑️", 47, 33, false), ("🗑️", 57, 39, false),
-            ("🚫", 59, 37, false), ("🪧", 46, 29, false),
-            ("🌿", 40, 31, false), ("🌿", 41, 31, false), ("🌿", 62, 31, false), ("🌿", 63, 31, false),
-            ("🌸", 46, 30, false), ("🌸", 58, 30, false),
-            ("🌸", 44, 35, false), ("🌸", 60, 35, false),
-            ("🌻", 41, 42, false), ("🌻", 63, 42, false),
-        ]
-        addDecor(decorLayer, spots: fountainDecor, tile: tile)
-
-        // ── West forest / meadow (cols 2-18, rows 14-55) ─────────────────────
-        let westForestDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 3, 15, true),  ("🌳", 6, 14, true),  ("🌳", 2, 20, true),
-            ("🌳", 8, 22, true),  ("🌳", 3, 28, true),  ("🌳", 10, 30, true),
-            ("🌲", 5, 35, true),  ("🌲", 10, 38, true), ("🌲", 3, 42, true),
-            ("🌲", 8, 46, true),  ("🌳", 4, 50, true),  ("🌳", 12, 52, true),
-            ("🌲", 14, 17, true), ("🌲", 16, 22, true), ("🌲", 14, 27, true),
-            ("🌳", 15, 33, true), ("🌳", 16, 39, true), ("🌲", 15, 45, true),
-            ("🌿", 6, 18, false), ("🌿", 4, 25, false), ("🌿", 9, 32, false),
-            ("🌿", 6, 40, false), ("🌿", 11, 47, false), ("🌿", 14, 24, false),
-            ("🌿", 15, 36, false), ("🌿", 13, 49, false),
-            ("🍄", 7, 20, false), ("🍄", 3, 35, false), ("🍄", 9, 48, false),
-            ("🪨", 5, 18, true),  ("🪨", 8, 26, true),  ("🪨", 12, 44, true),
-            ("🎤", 12, 20, false),
-        ]
-        addDecor(decorLayer, spots: westForestDecor, tile: tile)
-
-        // ── East garden (cols 82-103, rows 14-55) ────────────────────────────
-        let eastGardenDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 84, 14, true),  ("🌳", 92, 16, true),  ("🌳", 100, 18, true),
-            ("🌳", 86, 24, true),  ("🌳", 96, 20, true),  ("🌳", 102, 28, true),
-            ("🌲", 84, 30, true),  ("🌲", 90, 35, true),  ("🌲", 98, 40, true),
-            ("🌲", 85, 45, true),  ("🌳", 94, 50, true),  ("🌳", 102, 52, true),
-            ("🌲", 78, 17, true),  ("🌲", 80, 24, true),  ("🌳", 79, 31, true),
-            ("🌳", 80, 39, true),  ("🌲", 81, 47, true),
-            ("🌺", 83, 18, false), ("🌺", 95, 22, false), ("🌺", 101, 36, false),
-            ("🌸", 87, 28, false), ("🌸", 97, 44, false),
-            ("🌻", 84, 42, false), ("🌻", 99, 48, false),
-            ("🌿", 82, 20, false), ("🌿", 79, 28, false), ("🌿", 83, 36, false),
-            ("🌿", 81, 44, false), ("🌿", 92, 30, false),
-            ("🪑", 88, 20, false), ("🪑", 95, 35, false),
-            ("🪑", 83, 50, false),
-        ]
-        addDecor(decorLayer, spots: eastGardenDecor, tile: tile)
-
-        // ── North meadow (rows 48-63) ─────────────────────────────────────────
-        let northMeadowDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 22, 50, true),  ("🌳", 32, 52, true),  ("🌳", 44, 54, true),
-            ("🌳", 56, 56, true),  ("🌳", 68, 52, true),  ("🌳", 78, 50, true),
-            ("🌲", 18, 55, true),  ("🌲", 38, 58, true),  ("🌲", 52, 60, true),
-            ("🌲", 62, 58, true),  ("🌲", 74, 55, true),
-            ("🌿", 26, 53, false), ("🌿", 42, 57, false), ("🌿", 60, 61, false),
-            ("🌿", 72, 57, false),
-            ("🍄", 30, 55, false), ("🍄", 48, 59, false), ("🍄", 66, 56, false),
-            ("🪨", 20, 58, true),  ("🪨", 50, 62, true),  ("🪨", 80, 57, true),
-            ("🌸", 35, 56, false), ("🌸", 64, 60, false),
-        ]
-        addDecor(decorLayer, spots: northMeadowDecor, tile: tile)
-
-        // ── Mid-park trees along paths ────────────────────────────────────────
-        let midParkDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 22, 28, true),  ("🌳", 28, 22, true),
-            ("🌳", 42, 20, true),  ("🌳", 62, 22, true),  ("🌳", 72, 28, true),
-            ("🌳", 36, 27, true),  ("🌳", 68, 25, true),
-            ("🌲", 18, 35, true),  ("🌲", 86, 32, true),
-            ("🌿", 34, 23, false), ("🌿", 38, 25, false), ("🌿", 66, 23, false),
-            ("🌿", 70, 25, false), ("🌸", 34, 30, false), ("🌸", 68, 30, false),
-            ("🪑", 95, 42, false), ("🌸", 96, 40, false),
-            ("🗑️", 95, 40, false), ("🌿", 94, 43, false),
-            ("🌻", 100, 44, false),
-        ]
-        addDecor(decorLayer, spots: midParkDecor, tile: tile)
-
-        root.addChild(decorLayer)
-
-        // ── Lamp posts along main paths ───────────────────────────────────────
-        let lampCoords: [(Int, Int)] = [
-            (52, 26), (52, 20), (52, 14), (52, 8),   // central north-south path
-            (40, 33), (64, 33),                        // fountain east-west
-            (30, 38), (74, 38),                        // mid-park cross
-            (20, 28), (84, 28),                        // outer paths
-            (95, 22), (95, 42),                        // east garden lamps
-            (10, 22), (10, 42),                        // west forest edge
-        ]
-        for (lc, lr) in lampCoords {
-            let lamp = WorldSprites.makeLampPost(city: false)
-            lamp.position = CGPoint(x: CGFloat(lc) * tile + tile / 2, y: CGFloat(lr) * tile)
-            lamp.zPosition = GameConstants.ZPos.decor + 1
-            decorLayer.addChild(lamp)
+        // Tall grass tufts scattered on the lawns
+        for (i, (gx, gy)) in [(58, 8), (88, 12), (97, 20), (10, 36), (33, 43),
+                              (55, 45), (76, 30), (90, 52), (24, 47), (63, 15),
+                              (37, 57), (70, 56)].enumerated() {
+            painter.placeSprite(SpecRect(gx, gy, 1, 1),
+                                texture: ImportedArt.genTile("prop-tallgrass-\(i % 2)-32"),
+                                layer: .decor)
         }
 
-        // ── Amphitheater (west area, rows 16-32) ────────────────────────────
-        buildAmphitheater(root: root, originCol: 2, originRow: 16, tileW: 22, tileH: 18, tile: tile)
+        painter.placeSprite(SpecRect(26, 19, 4, 1),
+                            texture: ImportedArt.sproutBridgeHorizontal(),
+                            layer: .props)
 
-        // ── Zone exits ────────────────────────────────────────────────────────
-        let southExit = ZoneExitNode(
-            destination: .citySouth,
-            triggerSize: CGSize(width: worldSize.width, height: tile),
-            arrowCount: 8, edgeLabel: "→ City South")
-        southExit.position = CGPoint(x: worldSize.width / 2, y: tile / 2)
-        root.addChild(southExit)
+        // §4.9 — Shore reeds.
+        for (xT, yT) in [(9, 22), (11, 28), (26, 26), (14, 18), (22, 28)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.parkGrassBlade(),
+                                layer: .decor)
+        }
 
-        let northExit = ZoneExitNode(
+        // §4.6/§4.9 — Pond shore rocks (textured).
+        painter.placeRock(SpecRect(8, 16, 1, 1),  variant: 1)
+        painter.placeRock(SpecRect(28, 14, 1, 1), variant: 4)
+        painter.placeRock(SpecRect(14, 30, 1, 1), variant: 2)
+        // Density pass: rocks scattered around the park.
+        for (xT, yT, v) in [
+            (6, 8, 1),  (16, 12, 2), (4, 22, 4),  (32, 38, 1), (38, 56, 2),
+            (54, 8, 4), (60, 22, 1), (78, 32, 2), (88, 42, 4), (96, 28, 1),
+            (8, 56, 2), (24, 60, 4), (60, 62, 1), (76, 58, 2), (90, 62, 4)
+        ] {
+            painter.placeRock(SpecRect(xT, yT, 1, 1), variant: v)
+        }
+
+        // §4.10 — Fountain plaza furnishings: corner lamps + chair benches.
+        let lampTex = ImportedArt.lampTexture(city: false)
+        for (xT, yT) in [(40, 19), (49, 19), (40, 28), (49, 28)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 2), texture: lampTex, layer: .props)
+        }
+        let benchTex = ImportedArt.genTile("prop-bench-64x40")
+        for (xT, yT) in [(44, 20), (44, 30), (50, 24), (37, 24)] {
+            painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
+        }
+
+        // §4.10/§4.11 — Flower clumps (generated) on the plaza corner cuts
+        // and open grass — never on the stones themselves.
+        for (xT, yT, v) in [
+            (38, 18, 0), (50, 18, 1), (38, 30, 2), (50, 30, 0),
+            (65, 40, 1), (76, 40, 2), (65, 45, 0), (76, 45, 1),
+            (53, 10, 0), (56, 12, 1), (36, 48, 2)
+        ] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-flower-\(v)-32"),
+                                layer: .decor)
+        }
+        // §4.11 — Bench facing the statue.
+        painter.placeSprite(SpecRect(70, 47, 2, 1), texture: benchTex, layer: .props)
+
+        // §4.12 — Bushes (generated), scattered on open grass only.
+        let bushSpots: [(Int, Int)] = [
+            (6, 8), (18, 6), (56, 8), (88, 14), (10, 58), (78, 56), (32, 60),
+            (22, 12), (32, 22), (42, 56), (64, 12), (74, 28), (84, 6), (94, 22),
+            (6, 32), (8, 55), (16, 60), (40, 60), (68, 60), (88, 56), (96, 8),
+            (54, 24), (60, 32), (78, 14), (84, 50), (94, 50), (32, 48), (52, 60),
+            (22, 4), (76, 4), (10, 40), (96, 50)
+        ]
+        for (i, spot) in bushSpots.enumerated() {
+            painter.placeSprite(SpecRect(spot.0, spot.1, 1, 1),
+                                texture: ImportedArt.genTile("prop-bush-\(i % 2)-32"),
+                                layer: .decor)
+        }
+
+        // §4.6 — Generic park benches (returned in benchPositions for the engine).
+        let benchSpots = [(40, 32), (20, 30), (66, 50)]
+        let benchPositions: [CGPoint] = benchSpots.map {
+            painter.center(SpecRect($0.0, $0.1, 1, 1))
+        }
+        for (xT, yT) in benchSpots {
+            painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
+        }
+
+        // Pond collision: walls around the water, leaving the pier row
+        // (x=26..29, y=19) open so you can actually walk out on the dock.
+        painter.addBlockingRect(SpecRect(8, 14, 22, 5))     // north band
+        painter.addBlockingRect(SpecRect(8, 19, 18, 1))     // pier row, west of planks
+        painter.addBlockingRect(SpecRect(8, 20, 22, 10))    // south band
+        // Creek collision — everything except the bridge band (x=44..47,
+        // y=12..14) so the main path stays crossable.
+        painter.addBlockingRect(SpecRect(49, 0, 2, 12))     // north arm
+        painter.addBlockingRect(SpecRect(48, 12, 3, 2))     // step 1, east of bridge
+        painter.addBlockingRect(SpecRect(42, 13, 2, 2))     // step 2, west of bridge
+        painter.addBlockingRect(SpecRect(38, 14, 5, 2))
+        painter.addBlockingRect(SpecRect(34, 15, 5, 2))
+        painter.addBlockingRect(SpecRect(30, 16, 5, 2))
+        painter.addBlockingRect(SpecRect(27, 17, 3, 2))
+
+        // §4.7 — Ambient creatures (animated decor; not battle actors) —
+        // generated art: grass ducks by the plaza, a cat lazing under the oak.
+        let grassDuck = ImportedArt.genCritterFrames("duck", "36x36", directionRow: 0)
+        if !grassDuck.isEmpty {
+            painter.placeAnimated(SpecRect(58, 30, 1, 1), frames: grassDuck, timePerFrame: 0.26)
+        }
+        let grassDuckE = ImportedArt.genCritterFrames("duck", "36x36", directionRow: 6)
+        if !grassDuckE.isEmpty {
+            painter.placeAnimated(SpecRect(60, 29, 1, 1), frames: grassDuckE, timePerFrame: 0.30)
+        }
+        let oakCat = ImportedArt.genCritterFrames("cat", "44x44", directionRow: 0)
+        if !oakCat.isEmpty {
+            painter.placeAnimated(SpecRect(5, 53, 1, 1), frames: oakCat, timePerFrame: 0.32)
+        }
+
+        // Scene-boundary walls so the player can't walk off the edge.
+        painter.addSceneBoundary()
+
+        // Zone exits (matches §2 transition coords).
+        var exits: [ZoneExitNode] = []
+        let nExit = ZoneExitNode(
             destination: .parkNorth,
-            triggerSize: CGSize(width: worldSize.width, height: tile),
-            arrowCount: 8, edgeLabel: "→ Park North")
-        northExit.position = CGPoint(x: worldSize.width / 2, y: worldSize.height - tile / 2)
-        root.addChild(northExit)
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "Suburb"
+        )
+        nExit.position = painter.center(SpecRect(44, 0, 4, 1))
+        root.addChild(nExit)
+        exits.append(nExit)
 
-        // ── Benches ───────────────────────────────────────────────────────────
-        let benchCoords: [(Int, Int)] = [
-            (45, 33), (59, 33), (44, 38), (60, 38), (95, 22), (10, 22)
-        ]
-        let benchPositions = benchCoords.map {
-            CGPoint(x: CGFloat($0.0) * tile + tile / 2, y: CGFloat($0.1) * tile + tile / 2)
-        }
+        let sExit = ZoneExitNode(
+            destination: .citySouth,
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "City"
+        )
+        sExit.position = painter.center(SpecRect(44, 63, 4, 1))
+        root.addChild(sExit)
+        exits.append(sExit)
 
-        let playerSpawn = CGPoint(x: tile * 52.5, y: tile * 4)
+        let playerSpawn = painter.center(SpecRect(46, 2, 1, 1))
 
-        let itemSpawns: [CGPoint] = [
-            CGPoint(x: tile * 22, y: tile * 18),
-            CGPoint(x: tile * 82, y: tile * 20),
-            CGPoint(x: tile * 10, y: tile * 10),
-            CGPoint(x: tile * 95, y: tile * 10),
-            CGPoint(x: tile * 40, y: tile * 50),
-            CGPoint(x: tile * 64, y: tile * 50),
-            CGPoint(x: tile * 52, y: tile * 58),
-            CGPoint(x: tile * 18, y: tile * 55),
-            CGPoint(x: tile * 86, y: tile * 55),
-        ]
+        // One-time search spots (EB "check" culture). The plaza-east cans
+        // are the ones Hazel says the pigeons posted up next to.
+        painter.placeSearchable(.trashCan, at: 57, 24)
+        painter.placeSearchable(.trashCan, at: 59, 28)
+        painter.placeSearchable(.trashCan, at: 74, 9)    // gazebo lawn
+        painter.placeSearchable(.trashCan, at: 23, 54)   // playground
+        painter.placeSearchable(.bush, at: 10, 48)       // by the oak
+        painter.placeSearchable(.bush, at: 64, 47)       // statue plaza edge
+        painter.placeSearchable(.bush, at: 84, 30)       // east meadow
+        painter.placeSearchable(.flowerbed, at: 26, 32)  // below the pond
 
+        // Ambient NPC rotation points (grass / plaza edges, off the water).
         let npcSpawns: [CGPoint] = [
-            CGPoint(x: tile * 48, y: tile * 36),   // fountain area
-            CGPoint(x: tile * 24, y: tile * 20),   // west forest edge
-            CGPoint(x: tile * 80, y: tile * 22),   // east garden
-            CGPoint(x: tile * 52, y: tile * 14),   // central path
-            CGPoint(x: tile * 14, y: tile * 40),   // west benches
-            CGPoint(x: tile * 90, y: tile * 38),   // east benches
-            CGPoint(x: tile * 52, y: tile * 55),   // north meadow
-        ]
+            SpecRect(45, 35, 1, 1), SpecRect(24, 36, 1, 1),
+            SpecRect(60, 44, 1, 1), SpecRect(76, 24, 1, 1),
+            SpecRect(36, 8, 1, 1), SpecRect(56, 29, 1, 1),
+            SpecRect(15, 57, 1, 1), SpecRect(70, 10, 1, 1)
+        ].map(painter.center)
 
+        // Consumable pickups from ItemKind.parkSpawnPool.
+        let itemSpawns: [CGPoint] = [
+            SpecRect(14, 8, 1, 1), SpecRect(70, 14, 1, 1),
+            SpecRect(20, 44, 1, 1), SpecRect(52, 56, 1, 1),
+            SpecRect(86, 36, 1, 1), SpecRect(64, 20, 1, 1),
+            SpecRect(60, 33, 1, 1), SpecRect(21, 37, 1, 1)
+        ].map(painter.center)
+
+        // Zone 1 roster: pigeons own the plaza, goose patrols the pond,
+        // raccoon works the south path, wasp in the NE meadow.
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.ranger,      CGPoint(x: tile * 70, y: tile * 14)),
-            (.sternAdult,  CGPoint(x: tile * 30, y: tile * 30)),
-            (.wasp,        CGPoint(x: tile * 88, y: tile * 44)),
-            (.wasp,        CGPoint(x: tile * 14, y: tile * 44)),
-            (.pigeon,      CGPoint(x: tile * 50, y: tile * 34)),
-            (.pigeon,      CGPoint(x: tile * 38, y: tile * 18)),
-            (.pigeon,      CGPoint(x: tile * 64, y: tile * 18)),
-            (.flockLeader, CGPoint(x: tile * 52, y: tile * 38)),   // fountain boss
-            (.raccoon,     CGPoint(x: tile * 20, y: tile * 54)),
-            (.raccoon,     CGPoint(x: tile * 84, y: tile * 54)),
+            (.pigeon,  painter.center(SpecRect(56, 22, 1, 1))),
+            (.pigeon,  painter.center(SpecRect(58, 26, 1, 1))),
+            (.goose,   painter.center(SpecRect(18, 34, 1, 1))),
+            (.raccoon, painter.center(SpecRect(36, 54, 1, 1))),
+            (.wasp,    painter.center(SpecRect(78, 8, 1, 1))),
+            // BOSS 1 — Grand Goose Gerald holds the fountain plaza (§5.2)
+            (.grandGooseGerald, painter.center(SpecRect(48, 27, 1, 1)))
         ]
 
         return BuildResult(
@@ -286,594 +395,522 @@ enum ParkWorld {
             enemySpawns: enemySpawns,
             playerSpawn: playerSpawn,
             benchPositions: benchPositions,
-            zoneExitNodes: [southExit, northExit],
-            pressurePlate: nil,
-            gate: nil,
-            chest: nil,
-            boulder: nil
+            zoneExitNodes: exits,
+            pressurePlate: nil, gate: nil, chest: nil, boulder: nil,
+            searchSpawns: painter.searchSpawns
         )
     }
 
-    // MARK: - Zone 1A — Park North (105×50, pond, ruins, meadow)
+    // MARK: - Suburb (Zone 1A) — MAP_SPEC §3, adapted to the 105×50 canvas
 
     static func buildNorth() -> BuildResult {
         let root = SKNode(); root.name = "world"
-        let tile = GameConstants.tileSize
-        let cols = GameConstants.parkNorthCols   // 105
-        let rows = GameConstants.parkNorthRows   // 50
-        let worldSize = GameConstants.parkNorthWorldSize
+        let painter = ScenePainter(
+            root: root,
+            cols: GameConstants.parkNorthCols,
+            rows: GameConstants.parkNorthRows
+        )
+        let cols = painter.cols, rows = painter.rows
 
-        let groundLayer = SKNode()
-        groundLayer.zPosition = GameConstants.ZPos.ground
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let surface: TerrainSurface = (c < 10 || c > cols - 11) ? .grassShade : .grass
-                let n = makeParkGroundTile(surface: surface, col: c, row: r, tile: tile)
-                n.anchorPoint = .zero
-                n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
-                groundLayer.addChild(n)
+        // §3.2 — L0 grass everywhere.
+        painter.fillGrass(rect: SpecRect(0, 0, cols, rows))
+
+        // §3.2 — Road band across the full width, sidewalk curbs above/below.
+        let roadRect = SpecRect(0, 21, cols, 5)
+        for yT in roadRect.y..<(roadRect.y + roadRect.h) {
+            for xT in 0..<cols {
+                painter.place1x1(at: xT, yT,
+                                 texture: ImportedArt.suburbPavementTile(col: xT, rowFromTop: yT),
+                                 z: PaintLayer.ground.z + 0.2)
             }
         }
-        root.addChild(groundLayer)
-
-        let terrainLayer = SKNode()
-        terrainLayer.zPosition = GameConstants.ZPos.ground + 0.6
-        root.addChild(terrainLayer)
-
-        paintDirtRibbon(
-            on: terrainLayer,
-            path: [(52, 4), (50, 6), (46, 8), (41, 10), (36, 12), (31, 14), (26, 16), (21, 18), (17, 19)],
-            radius: 2,
-            tile: tile
-        )
-        paintDirtRibbon(
-            on: terrainLayer,
-            path: [(52, 4), (57, 6), (62, 8), (67, 10), (72, 12), (77, 13)],
-            radius: 1,
-            tile: tile
-        )
-        paintRectSurface(on: terrainLayer, surface: .water, cols: 8...20, rows: 15...24, tile: tile)
-        paintRectSurface(on: terrainLayer, surface: .water, cols: 71...80, rows: 10...15, tile: tile)
-        paintBridgePatch(on: terrainLayer, originCol: 13, originRow: 24, tile: tile)
-        paintRectSurface(on: terrainLayer, surface: .stone, cols: 72...87, rows: 8...23, tile: tile)
-        paintFenceRun(on: terrainLayer, startCol: 10, row: 25, length: 10, tile: tile)
-        paintFenceRun(on: terrainLayer, startCol: 39, row: 12, length: 8, tile: tile)
-        addCliffFace(on: terrainLayer, startCol: 10, startRow: 26, length: 14, horizontal: true, tile: tile)
-        addCliffFace(on: terrainLayer, startCol: 70, startRow: 16, length: 12, horizontal: true, tile: tile)
-        sprinkleGrassTufts(on: terrainLayer,
-                           points: [(18, 18), (22, 19), (27, 17), (33, 15), (40, 14), (47, 15),
-                                    (58, 17), (64, 18), (72, 17), (78, 15), (35, 24), (44, 27),
-                                    (54, 29), (63, 27), (70, 23), (80, 20), (26, 38), (36, 40),
-                                    (48, 42), (60, 42), (72, 39)],
-                           tile: tile)
-
-        let border = SKNode()
-        border.physicsBody = {
-            let b = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
-            b.categoryBitMask = GameConstants.Category.wall
-            return b
-        }()
-        root.addChild(border)
-
-        let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
-
-        // ── Quack clue zone (near main pond, rows 8-16) ──────────────────────
-        let quackZone: [(String, Int, Int, Bool)] = [
-            ("👣", 16, 14,  false),  // duck footprints leading away from pond
-            ("👣", 18, 13,  false),
-            ("👣", 20, 12,  false),  // trail continues east
-            ("⛵", 10, 16, true),   // old rowboat
-            ("🪵", 8,  14, true),   // log
-        ]
-        addDecor(decorLayer, spots: quackZone, tile: tile)
-
-        // ── Gerald's territory markers ────────────────────────────────────────
-        let geraldDecor: [(String, Int, Int)] = [
-            ("👑", 13, 26), ("👑", 22, 27), ("👑", 10, 22), ("👑", 25, 20),
-            ("🪧", 15, 26), // "NO TRESPASSING — By order of Gerald"
-            ("🪧", 21, 20),
-        ]
-        for (g, c, r) in geraldDecor {
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
-            n.size = CGSize(width: tile, height: tile)
-            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
-            n.zPosition = GameConstants.ZPos.decor
-            root.addChild(n)
+        for yT in [20, 26] {
+            for xT in 0..<cols {
+                painter.place1x1(at: xT, yT,
+                                 texture: ImportedArt.parkStoneTile(variant: (xT + yT) % 3),
+                                 z: PaintLayer.ground.z + 0.2)
+            }
         }
 
-        // ── Dense forest (west side, cols 2-12) ──────────────────────────────
-        let westTreeDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 12, 6, true),  ("🌳", 15, 8, true),  ("🌲", 18, 6, true),
-            ("🌲", 21, 9, true),  ("🌿", 17, 11, false), ("🌿", 20, 13, false),
-            ("🌲", 2, 5, true),  ("🌲", 5, 8, true),  ("🌲", 3, 14, true),
-            ("🌲", 8, 10, true), ("🌲", 4, 20, true), ("🌲", 7, 28, true),
-            ("🌲", 3, 34, true), ("🌲", 9, 38, true), ("🌲", 5, 44, true),
-            ("🌳", 2, 30, true), ("🌳", 6, 40, true),
-            ("🌳", 11, 18, true), ("🌳", 13, 24, true), ("🌲", 14, 30, true),
-            ("🌲", 12, 36, true), ("🌲", 11, 42, true),
-            ("🌿", 4, 12, false), ("🌿", 6, 22, false), ("🌿", 3, 36, false),
-            ("🌿", 11, 14, false), ("🌿", 12, 28, false), ("🌿", 10, 34, false),
-            ("🍄", 5, 16, false), ("🍄", 8, 32, false), ("🍄", 4, 46, false),
-        ]
-        addDecor(decorLayer, spots: westTreeDecor, tile: tile)
+        // §3.2 — Dirt path from the road down to the park gap (x=44..47).
+        painter.autotile(painter.tiles([SpecRect(44, 27, 4, 23)]),
+                         z: PaintLayer.ground.z + 0.3,
+                         interior: { ImportedArt.genTile("tile-dirt-\(($0 * 5 + $1 * 3) % 3)-32") },
+                         tile: ImportedArt.parkPathBlobTile)
 
-        // ── East forest (cols 88-103) ─────────────────────────────────────────
-        let eastTreeDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 66, 6, true),  ("🌳", 72, 6, true),  ("🌲", 78, 7, true),
-            ("🌲", 84, 6, true),  ("🌿", 70, 10, false), ("🌿", 81, 11, false),
-            ("🌲", 90, 6, true),  ("🌲", 94, 10, true), ("🌲", 98, 8, true),
-            ("🌲", 92, 16, true), ("🌲", 100, 14, true), ("🌳", 96, 20, true),
-            ("🌲", 88, 22, true), ("🌲", 102, 22, true), ("🌳", 90, 30, true),
-            ("🌲", 96, 34, true), ("🌲", 88, 40, true),  ("🌳", 100, 38, true),
-            ("🌳", 82, 18, true), ("🌳", 84, 26, true), ("🌲", 82, 34, true),
-            ("🌲", 84, 42, true),
-            ("🌿", 92, 12, false), ("🌿", 98, 28, false), ("🌿", 91, 44, false),
-            ("🌿", 84, 15, false), ("🌿", 85, 30, false), ("🌿", 82, 40, false),
-            ("🍄", 94, 24, false), ("🍄", 99, 40, false),
-        ]
-        addDecor(decorLayer, spots: eastTreeDecor, tile: tile)
+        // §3.9 — Creek: spring at the east tree line, diagonal SW through the
+        // lower lawn, then straight south to the park scene (x=49..50 there).
+        // Small 3-tile steps keep the diagonal smooth instead of staircased.
+        var creekRects: [SpecRect] = (0..<17).map { i in
+            SpecRect(97 - 3 * i, 27 + i, 7, 3)
+        }
+        creekRects.append(SpecRect(49, 44, 2, 6))
+        painter.autotile(painter.tiles(creekRects),
+                         z: PaintLayer.ground.z + 0.1,
+                         interior: { ImportedArt.genTile("tile-water-\(($0 * 7 + $1 * 11) % 3)-32") },
+                         tile: ImportedArt.pondBlobTile)
+        for r in creekRects { painter.addBlockingRect(r) }
 
-        // ── Central meadow / upper reaches ────────────────────────────────────
-        let meadowDecor: [(String, Int, Int, Bool)] = [
-            ("🌳", 26, 8, true),   ("🌳", 34, 10, true), ("🌳", 46, 14, true),
-            ("🌳", 58, 16, true),  ("🌳", 68, 18, true),
-            ("🌳", 30, 18, true),  ("🌳", 40, 20, true), ("🌳", 52, 20, true),
-            ("🌳", 64, 22, true),
-            ("🌿", 28, 12, false), ("🌿", 42, 16, false), ("🌿", 62, 18, false),
-            ("🌿", 34, 16, false), ("🌿", 46, 18, false), ("🌿", 56, 20, false),
-            ("🌿", 68, 22, false),
-            ("🌳", 36, 30, true),  ("🌳", 52, 28, true), ("🌳", 68, 32, true),
-            ("🌳", 40, 42, true),  ("🌳", 60, 44, true),
-            ("🌲", 28, 36, true),  ("🌲", 76, 36, true),
-            ("🌿", 44, 30, false), ("🌿", 56, 34, false),
-            ("🌿", 36, 26, false), ("🌿", 48, 26, false), ("🌿", 60, 28, false),
-            ("🌿", 72, 30, false), ("🌸", 38, 24, false), ("🌸", 58, 24, false),
-            ("🍄", 34, 38, false), ("🍄", 70, 40, false),
-            ("🌸", 48, 32, false), ("🌸", 62, 30, false),
-            ("🪑", 44, 16, false), // Scenic bench near east pond
-            ("🪑", 32, 14, false),
-            ("🌺", 36, 10, false), ("🌺", 72, 10, false),
-        ]
-        addDecor(decorLayer, spots: meadowDecor, tile: tile)
+        // §3.12 — Secret-lab plot (top-left): fenced yard, lab house, trees,
+        // stone driveway to the road with a gate gap.
+        fenceRing(painter, SpecRect(3, 2, 17, 13), gateXs: [10, 11])
+        painter.placeSprite(SpecRect(7, 4, 7, 5),
+                            texture: ImportedArt.generatedHouse(variant: "dark_purple"),
+                            layer: .props)
+        painter.addBlockingRect(SpecRect(7, 4, 7, 5))
+        painter.placeTree(SpecRect(4, 2, 3, 4),  texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(15, 2, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.autotile(painter.tiles([SpecRect(10, 9, 2, 12)]),
+                         z: PaintLayer.ground.z + 0.25,
+                         tile: ImportedArt.parkStoneBlobTile)
+        DoorNode.place(.lab, at: SpecRect(10, 9, 2, 1), in: root, painter: painter)
 
-        // ── East secondary pond area ──────────────────────────────────────────
-        let eastPondDecor: [(String, Int, Int, Bool)] = [
-            ("⛵", 74, 10, true),
-            ("🌲", 72, 8, true), ("🌲", 84, 8, true),
-            ("🪵", 78, 12, true), ("🌿", 80, 15, false), ("🌿", 71, 14, false),
-            ("🌿", 75, 14, false),
-            ("🪧", 70, 8, false),  // "East pond — no fishing"
-        ]
-        addDecor(decorLayer, spots: eastPondDecor, tile: tile)
+        // §3.3 — Hedge separator between lab plot and the main suburb row.
+        painter.autotile(painter.tiles([SpecRect(21, 2, 1, 13)]),
+                         z: PaintLayer.props.z,
+                         tile: ImportedArt.parkHedgeBlobTile)
+        painter.addBlockingRect(SpecRect(21, 2, 1, 13))
 
-        // ── Hidden ruins / north area ──────────────────────────────────────────
-        let ruinsDecor: [(String, Int, Int, Bool)] = [
-            ("🪨", 28, 46, true), ("🪨", 36, 44, true), ("🪨", 52, 48, true),
-            ("🪨", 68, 44, true), ("🪨", 78, 46, true),
-            ("🌿", 32, 45, false), ("🌿", 55, 47, false), ("🌿", 72, 45, false),
-            ("🍄", 40, 47, false), ("🍄", 64, 46, false),
+        // §3.4/§3.5/§3.6/§3.11 — Six row-houses with fenced front yards,
+        // yard trees, flowers, and driveways down to the north sidewalk.
+        let topRow: [(Int, String)] = [
+            (24, "blue"), (37, "brown"), (50, "green"),
+            (63, "red_brown"), (76, "dark_red"), (89, "charcoal")
         ]
-        addDecor(decorLayer, spots: ruinsDecor, tile: tile)
-
-        root.addChild(decorLayer)
-
-        // ── Lamp posts ────────────────────────────────────────────────────────
-        let lampCoords: [(Int, Int)] = [
-            (34, 8), (48, 6), (72, 10),
-            (20, 18), (30, 18),
-            (44, 20), (54, 19),
-            (78, 18)
-        ]
-        for (lc, lr) in lampCoords {
-            let lamp = WorldSprites.makeLampPost(city: false)
-            lamp.position = CGPoint(x: CGFloat(lc) * tile + tile / 2, y: CGFloat(lr) * tile)
-            lamp.zPosition = GameConstants.ZPos.decor + 1
-            decorLayer.addChild(lamp)
+        for (seed, (hx, roof)) in topRow.enumerated() {
+            painter.placeSprite(SpecRect(hx, 6, 7, 5),
+                                texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
+            painter.addBlockingRect(SpecRect(hx, 6, 7, 5))
+            fenceRing(painter, SpecRect(hx - 1, 11, 9, 5), gateXs: [hx + 3, hx + 4],
+                      topGateXs: [hx + 3, hx + 4])
+            DoorNode.place(.house(seed: seed), at: SpecRect(hx + 3, 11, 2, 1),
+                           in: root, painter: painter)
+            painter.placeTree(SpecRect(hx, 2, 3, 4),     texture: ImportedArt.parkMediumTree())
+            painter.placeTree(SpecRect(hx + 4, 2, 3, 4), texture: ImportedArt.parkMediumTree())
+            for (fx, v) in [(hx + 1, 0), (hx + 6, 2)] {
+                painter.placeSprite(SpecRect(fx, 13, 1, 1),
+                                    texture: ImportedArt.genTile("prop-flower-\(v)-32"),
+                                    layer: .decor)
+            }
+            painter.autotile(painter.tiles([SpecRect(hx + 3, 16, 2, 4)]),
+                             z: PaintLayer.ground.z + 0.25,
+                             tile: ImportedArt.parkStoneBlobTile)
         }
 
-        // ── Puzzle room (east, col 70+, row 8+) ──────────────────────────────
-        let (plate, gate, chest, boulder) = buildPuzzleRoom16(
-            root: root, originCol: 72, originRow: 8, tile: tile)
+        // §3.4/§3.15 — Lower suburb: two houses + a small cottage.
+        for (i, (hx, roof)) in [(8, "brown"), (22, "tan")].enumerated() {
+            painter.placeSprite(SpecRect(hx, 30, 7, 5),
+                                texture: ImportedArt.generatedHouse(variant: roof), layer: .props)
+            painter.addBlockingRect(SpecRect(hx, 30, 7, 5))
+            fenceRing(painter, SpecRect(hx - 1, 35, 9, 5), gateXs: [hx + 3, hx + 4],
+                      topGateXs: [hx + 3, hx + 4])
+            DoorNode.place(.house(seed: 6 + i), at: SpecRect(hx + 3, 35, 2, 1),
+                           in: root, painter: painter)
+            painter.autotile(painter.tiles([SpecRect(hx + 3, 27, 2, 3)]),
+                             z: PaintLayer.ground.z + 0.25,
+                             tile: ImportedArt.parkStoneBlobTile)
+        }
+        painter.placeSprite(SpecRect(4, 42, 5, 4),
+                            texture: ImportedArt.generatedHouse(variant: "tan"), layer: .props)
+        painter.addBlockingRect(SpecRect(4, 42, 5, 4))
+        DoorNode.place(.house(seed: 8), at: SpecRect(5, 46, 2, 1), in: root, painter: painter)
 
-        // ── Zone exits ────────────────────────────────────────────────────────
-        let southExit = ZoneExitNode(
+        // Lawn dressing: scattered trees, bushes, and a bench by the path.
+        painter.placeTree(SpecRect(33, 38, 4, 6), texture: ImportedArt.parkLargeTree())
+        painter.placeTree(SpecRect(69, 40, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeTree(SpecRect(87, 38, 3, 5), texture: ImportedArt.parkTallConifer())
+        painter.placeTree(SpecRect(57, 42, 3, 4), texture: ImportedArt.parkWideTree())
+        for (i, (bx, by)) in [(30, 36), (55, 42), (78, 38), (16, 47), (68, 46)].enumerated() {
+            painter.placeSprite(SpecRect(bx, by, 1, 1),
+                                texture: ImportedArt.genTile("prop-bush-\(i % 2)-32"),
+                                layer: .decor)
+        }
+        painter.placeSprite(SpecRect(52, 44, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
+        let benchPositions = [painter.center(SpecRect(52, 45, 1, 1))]
+
+        // Search spots: suburban lawns hide things too.
+        painter.placeSearchable(.trashCan, at: 50, 45)
+        painter.placeSearchable(.bush, at: 80, 44)
+
+        // §3.3 — Tree-wall hedge border, 2 thick, gap at the park path (S).
+        var hedgeTiles = painter.tiles([
+            SpecRect(0, 0, cols, 2), SpecRect(0, rows - 2, cols, 2),
+            SpecRect(0, 2, 2, rows - 4), SpecRect(cols - 2, 2, 2, rows - 4)
+        ])
+        hedgeTiles.subtract(painter.tiles([SpecRect(44, rows - 2, 4, 2)]))
+        painter.autotile(hedgeTiles,
+                         z: PaintLayer.props.z,
+                         interior: { ImportedArt.genTile("tile-hedge-\(($0 * 3 + $1 * 7) % 3)-32") },
+                         tile: ImportedArt.parkHedgeBlobTile)
+        for wall in [
+            SpecRect(0, 0, cols, 2),
+            SpecRect(0, rows - 2, 44, 2), SpecRect(48, rows - 2, cols - 48, 2),
+            SpecRect(0, 2, 2, rows - 4), SpecRect(cols - 2, 2, 2, rows - 4)
+        ] {
+            painter.addBlockingRect(wall)
+        }
+        painter.addSceneBoundary()
+
+        // Zone exit: south path gap back into the park.
+        let sExit = ZoneExitNode(
             destination: .parkCenter,
-            triggerSize: CGSize(width: worldSize.width, height: tile),
-            arrowCount: 8, edgeLabel: "→ Park Center")
-        southExit.position = CGPoint(x: worldSize.width / 2, y: tile / 2)
-        root.addChild(southExit)
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "Park"
+        )
+        sExit.position = painter.center(SpecRect(44, rows - 1, 4, 1))
+        root.addChild(sExit)
 
-        let benchPositions: [CGPoint] = [
-            CGPoint(x: tile * 44.5, y: tile * 16.5),
-            CGPoint(x: tile * 32.5, y: tile * 14.5),
-        ]
-
-        let playerSpawn = CGPoint(x: tile * 52.5, y: tile * 5)
-
-        let itemSpawns: [CGPoint] = [
-            CGPoint(x: tile * 38, y: tile * 28),
-            CGPoint(x: tile * 82, y: tile * 20),
-            CGPoint(x: tile * 16, y: tile * 10),
-            CGPoint(x: tile * 52, y: tile * 44),
-            CGPoint(x: tile * 26, y: tile * 44),
-            CGPoint(x: tile * 78, y: tile * 44),
-        ]
-
-        let quackFeatherSpawn = CGPoint(x: tile * 20, y: tile * 14)
+        let playerSpawn = painter.center(SpecRect(46, 46, 1, 1))
 
         let npcSpawns: [CGPoint] = [
-            CGPoint(x: tile * 22, y: tile * 18),  // near main pond
-            CGPoint(x: tile * 80, y: tile * 14),  // near east pond
-            CGPoint(x: tile * 52, y: tile * 36),  // deep meadow
-        ]
+            SpecRect(30, 18, 1, 1), SpecRect(70, 18, 1, 1),
+            SpecRect(40, 33, 1, 1), SpecRect(80, 44, 1, 1)
+        ].map(painter.center)
 
+        let itemSpawns: [CGPoint] = [
+            SpecRect(12, 18, 1, 1), SpecRect(58, 18, 1, 1),
+            SpecRect(26, 44, 1, 1), SpecRect(92, 46, 1, 1)
+        ].map(painter.center)
+
+        // Suburban threats: organized pigeons and one profoundly
+        // disappointed adult.
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.grandGooseGerald, CGPoint(x: tile * 16, y: tile * 22)),  // Boss — guards the main pond
-            (.goose,            CGPoint(x: tile * 20, y: tile * 18)),  // Gerald's lieutenants
-            (.goose,            CGPoint(x: tile * 12, y: tile * 26)),
-            (.raccoon,          CGPoint(x: tile * 84, y: tile * 14)),
-            (.raccoon,          CGPoint(x: tile * 40, y: tile * 42)),
-            (.sternAdult,       CGPoint(x: tile * 14, y: tile * 8)),
-            (.wasp,             CGPoint(x: tile * 90, y: tile * 10)),
-            (.wasp,             CGPoint(x: tile * 55, y: tile * 40)),
-            (.pigeon,           CGPoint(x: tile * 50, y: tile * 20)),
+            (.pigeon,     painter.center(SpecRect(56, 28, 1, 1))),
+            (.pigeon,     painter.center(SpecRect(33, 18, 1, 1))),
+            (.sternAdult, painter.center(SpecRect(75, 27, 1, 1))),
+            // Zone 1B mid-boss — the Pigeon Flock Leader rules the rooftop row
+            (.flockLeader, painter.center(SpecRect(60, 18, 1, 1)))
         ]
 
         return BuildResult(
             root: root,
             npcSpawns: npcSpawns,
             itemSpawns: itemSpawns,
-            fixedItems: [(.quackFeather, quackFeatherSpawn)],
+            fixedItems: [],
             enemySpawns: enemySpawns,
             playerSpawn: playerSpawn,
             benchPositions: benchPositions,
-            zoneExitNodes: [southExit],
-            pressurePlate: plate,
-            gate: gate,
-            chest: chest,
-            boulder: boulder
+            zoneExitNodes: [sExit],
+            pressurePlate: nil, gate: nil, chest: nil, boulder: nil,
+            searchSpawns: painter.searchSpawns
         )
     }
 
-    // MARK: - Shared helpers
-
-    private static func makeParkGroundTile(surface: TerrainSurface, col: Int, row: Int, tile: CGFloat) -> SKSpriteNode {
-        let node: SKSpriteNode
-        let variant = abs(((col &* 73) ^ (row &* 151) ^ ((col + row) &* 19)))
-
-        switch surface {
-        case .grass, .grassShade:
-            if let tex = ImportedArt.sproutGrassTexture(variant: variant) {
-                node = SKSpriteNode(texture: tex)
-            } else {
-                node = SKSpriteNode(color: ParkMapDesign.northGroundColor(col: col, localRow: 0), size: CGSize(width: tile, height: tile))
-            }
-        case .path:
-            if let tex = ImportedArt.sproutPathTexture(variant: variant) {
-                node = SKSpriteNode(texture: tex)
-            } else {
-                node = SKSpriteNode(color: GamePalette.dirtD1, size: CGSize(width: tile, height: tile))
-            }
-        case .water:
-            if let tex = ImportedArt.sproutWaterTexture(variant: variant) {
-                node = SKSpriteNode(texture: tex)
-            } else {
-                node = SKSpriteNode(color: GamePalette.waterMid, size: CGSize(width: tile, height: tile))
-            }
-        case .stone:
-            if let tex = ImportedArt.sproutHillTexture(col: variant % 2, row: 2) {
-                node = SKSpriteNode(texture: tex)
-            } else {
-                node = SKSpriteNode(texture: ImportedArt.placeholderTexture())
-            }
-        case .sidewalk:
-            node = SKSpriteNode(texture: ImportedArt.sproutPathTexture(variant: variant))
-        case .road:
-            node = SKSpriteNode(texture: ImportedArt.sproutPathTexture(variant: variant + 1))
-        case .asphalt:
-            node = SKSpriteNode(texture: ImportedArt.sproutPathTexture(variant: variant + 2))
+    /// Paints a 1-thick fence ring with gate gaps on the bottom edge, and
+    /// adds matching collision segments.
+    private static func fenceRing(_ painter: ScenePainter, _ rect: SpecRect, gateXs: [Int],
+                                  topGateXs: [Int] = []) {
+        let x2 = rect.x + rect.w - 1, y2 = rect.y + rect.h - 1
+        var ring = painter.tiles([
+            SpecRect(rect.x, rect.y, rect.w, 1), SpecRect(rect.x, y2, rect.w, 1),
+            SpecRect(rect.x, rect.y, 1, rect.h), SpecRect(x2, rect.y, 1, rect.h)
+        ])
+        for gx in gateXs { ring.remove(TileXY(x: gx, y: y2)) }
+        for gx in topGateXs { ring.remove(TileXY(x: gx, y: rect.y)) }
+        painter.autotile(ring, z: PaintLayer.decor.z + 0.5) {
+            ImportedArt.genBlobTile("sheet-picket-blob-128", col: $0, rowFromTop: $1)
+                ?? ImportedArt.suburbFenceBlobTile(col: $0, rowFromTop: $1)
         }
-
-        node.size = CGSize(width: tile, height: tile)
-        return node
-    }
-
-    private static func paintRectSurface(
-        on layer: SKNode,
-        surface: TerrainSurface,
-        cols: ClosedRange<Int>,
-        rows: ClosedRange<Int>,
-        tile: CGFloat
-    ) {
-        for row in rows {
-            for col in cols {
-                let node = makeParkGroundTile(surface: surface, col: col, row: row, tile: tile)
-                node.anchorPoint = .zero
-                node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
-                layer.addChild(node)
-            }
+        let gateMin = gateXs.min() ?? x2 + 1
+        let gateMax = gateXs.max() ?? x2 + 1
+        if let tMin = topGateXs.min(), let tMax = topGateXs.max() {
+            painter.addBlockingRect(SpecRect(rect.x, rect.y, tMin - rect.x, 1))
+            painter.addBlockingRect(SpecRect(tMax + 1, rect.y, x2 - tMax, 1))
+        } else {
+            painter.addBlockingRect(SpecRect(rect.x, rect.y, rect.w, 1))
+        }
+        painter.addBlockingRect(SpecRect(rect.x, rect.y, 1, rect.h))
+        painter.addBlockingRect(SpecRect(x2, rect.y, 1, rect.h))
+        if gateMin > rect.x + 1 {
+            painter.addBlockingRect(SpecRect(rect.x, y2, gateMin - rect.x, 1))
+        }
+        if gateMax < x2 - 1 {
+            painter.addBlockingRect(SpecRect(gateMax + 1, y2, x2 - gateMax, 1))
         }
     }
+}
 
-    private static func addDecor(_ layer: SKNode, spots: [(String, Int, Int, Bool)], tile: CGFloat) {
-        for (glyph, c, r, blocks) in spots {
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(glyph, size: 96))
-            n.size = CGSize(width: tile * 1.1, height: tile * 1.1)
-            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
-            n.zPosition = GameConstants.ZPos.decor
-            if blocks {
-                let b = SKPhysicsBody(circleOfRadius: tile * 0.38)
-                b.isDynamic = false
-                b.categoryBitMask = GameConstants.Category.wall
-                n.physicsBody = b
+// MARK: - Spec helpers (private)
+
+/// Rectangle in MAP_SPEC tile coords (origin top-left, y grows down).
+struct SpecRect {
+    let x: Int, y: Int, w: Int, h: Int
+    init(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { self.x = x; self.y = y; self.w = w; self.h = h }
+
+    func contains(tile xT: Int, _ yT: Int) -> Bool {
+        xT >= x && xT < x + w && yT >= y && yT < y + h
+    }
+}
+
+/// Single tile coordinate in MAP_SPEC space (for autotile sets).
+struct TileXY: Hashable {
+    let x: Int
+    let y: Int
+}
+
+enum PaintLayer {
+    case ground, decor, props
+    var z: CGFloat {
+        switch self {
+        case .ground: return GameConstants.ZPos.ground
+        case .decor:  return GameConstants.ZPos.ground + 1
+        case .props:  return GameConstants.ZPos.decor
+        }
+    }
+}
+
+private enum TreeKind {
+    case large, medium, wide, conifer, small
+    var w: Int { self == .large ? 3 : (self == .small ? 1 : 2) }
+    var h: Int { self == .large ? 3 : (self == .conifer ? 3 : (self == .small ? 2 : 2)) }
+    var texture: SKTexture? {
+        switch self {
+        case .large:   return ImportedArt.parkLargeTree()
+        case .medium:  return ImportedArt.parkMediumTree()
+        case .wide:    return ImportedArt.parkWideTree()
+        case .conifer: return ImportedArt.parkTallConifer()
+        case .small:   return ImportedArt.parkSmallConifer()
+        }
+    }
+}
+
+/// Paints SKSpriteNodes onto a scene root using MAP_SPEC tile coords.
+/// Handles spec→SpriteKit y-axis flip and tile→pixel scaling.
+final class ScenePainter {
+    let root: SKNode
+    let cols: Int
+    let rows: Int
+    private let tile: CGFloat = GameConstants.tileSize
+
+    init(root: SKNode, cols: Int, rows: Int) {
+        self.root = root
+        self.cols = cols
+        self.rows = rows
+    }
+
+    /// One-time searchable props (EB "check" spots). Registered here in
+    /// painter coordinates; GameScene spawns the actual nodes.
+    private(set) var searchSpawns: [(SearchableKind, CGPoint)] = []
+
+    func placeSearchable(_ kind: SearchableKind, at xT: Int, _ yT: Int) {
+        searchSpawns.append((kind, center(SpecRect(xT, yT, 1, 1))))
+    }
+
+    /// Pixel center of a SpecRect (top-left tile = (rect.x, rect.y)).
+    func center(_ r: SpecRect) -> CGPoint {
+        CGPoint(
+            x: (CGFloat(r.x) + CGFloat(r.w) / 2) * tile,
+            y: (CGFloat(rows) - CGFloat(r.y) - CGFloat(r.h) / 2) * tile
+        )
+    }
+
+    func fillGrass(rect: SpecRect) {
+        // EB mowed-lawn rhythm: flat base alternating with a barely-lighter
+        // mate per WHOLE tile (2x2 blocks), sprout/flower variants at ~5%.
+        let a = ImportedArt.genTile("tile-grass-0-32") ?? ImportedArt.parkGrassBaseTile()
+        let b = ImportedArt.genTile("tile-grass-3-32") ?? a
+        for yT in rect.y..<(rect.y + rect.h) {
+            for xT in rect.x..<(rect.x + rect.w) {
+                let n = (xT * 13 + yT * 7) % 37
+                let base = ((xT / 2) + (yT / 2)) % 2 == 0 ? a : b
+                let tex: SKTexture?
+                if n == 3 { tex = ImportedArt.genTile("tile-grass-1-32") ?? base }
+                else if n == 17 { tex = ImportedArt.genTile("tile-grass-2-32") ?? base }
+                else { tex = base }
+                place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z)
             }
-            layer.addChild(n)
         }
     }
 
-    private static func makePond(cx: CGFloat, cy: CGFloat, w: CGFloat, h: CGFloat) -> SKNode {
-        let container = SKNode()
-        container.position = CGPoint(x: cx, y: cy)
-
-        let pond = SKShapeNode(ellipseOf: CGSize(width: w, height: h))
-        pond.fillColor   = GamePalette.waterMid
-        pond.strokeColor = GamePalette.waterDeep.withAlphaComponent(0.55)
-        pond.lineWidth   = 4
-        container.addChild(pond)
-
-        // Shore fringe (lighter band)
-        let shore = SKShapeNode(ellipseOf: CGSize(width: w * 1.08, height: h * 1.10))
-        shore.fillColor   = GamePalette.waterMid.withAlphaComponent(0.30)
-        shore.strokeColor = .clear
-        container.addChild(shore)
-        shore.zPosition = -0.1
-
-        // Animated ripple rings
-        for i in 0..<4 {
-            let ripple = SKShapeNode(ellipseOf: CGSize(width: w * 0.32, height: h * 0.32))
-            ripple.fillColor   = .clear
-            ripple.strokeColor = GamePalette.waterHighlight.withAlphaComponent(0.45)
-            ripple.lineWidth   = 1.5
-            ripple.position    = CGPoint(x: CGFloat.random(in: -w*0.2...w*0.2),
-                                         y: CGFloat.random(in: -h*0.15...h*0.15))
-            ripple.alpha       = 0
-            container.addChild(ripple)
-
-            let delay = Double(i) * 1.0
-            ripple.run(.repeatForever(.sequence([
-                .wait(forDuration: delay),
-                .group([
-                    .scale(to: 2.4, duration: 1.8),
-                    .sequence([
-                        .fadeIn(withDuration: 0.3),
-                        .fadeAlpha(to: 0, duration: 1.5)
-                    ])
-                ]),
-                .scale(to: 1.0, duration: 0)
-            ])))
+    /// Darker grass patch (under tree clusters) with mixed sprout variants.
+    func fillDarkGrass(rect: SpecRect) {
+        for yT in rect.y..<(rect.y + rect.h) {
+            for xT in rect.x..<(rect.x + rect.w) {
+                place1x1(at: xT, yT, texture: ImportedArt.darkGrassTile(variant: (xT + yT) % 3),
+                         z: PaintLayer.ground.z + 0.05)
+            }
         }
-
-        let shimmer = SKShapeNode(ellipseOf: CGSize(width: w * 0.28, height: h * 0.18))
-        shimmer.fillColor   = GamePalette.waterHighlight.withAlphaComponent(0.30)
-        shimmer.strokeColor = .clear
-        shimmer.position    = CGPoint(x: -w * 0.15, y: h * 0.1)
-        shimmer.run(.repeatForever(.sequence([
-            .moveBy(x: w * 0.22, y: h * 0.05, duration: 2.8),
-            .moveBy(x: -w * 0.22, y: -h * 0.05, duration: 2.8)
-        ])))
-        container.addChild(shimmer)
-
-        let body = SKPhysicsBody(circleOfRadius: min(w, h) * 0.42)
-        body.isDynamic = false
-        body.categoryBitMask = GameConstants.Category.wall
-        container.physicsBody = body
-
-        return container
     }
 
-    private static func paintDirtRibbon(
-        on layer: SKNode,
-        path: [(Int, Int)],
-        radius: Int,
-        tile: CGFloat
-    ) {
-        for (step, point) in path.enumerated() {
-            for dx in -radius...radius {
-                for dy in -radius...radius {
-                    let distance = abs(dx) + abs(dy)
-                    guard distance <= radius + (step % 2 == 0 ? 0 : 1) else { continue }
-                    let col = point.0 + dx
-                    let row = point.1 + dy
-                    let variant = abs(col * 19 + row * 11 + step * 7)
-                    let texture = ImportedArt.sproutPathTexture(variant: variant)
-                    let node = texture.map { SKSpriteNode(texture: $0) }
-                        ?? SKSpriteNode(color: GamePalette.dirtD1, size: CGSize(width: tile, height: tile))
-                    node.anchorPoint = .zero
-                    node.size = CGSize(width: tile, height: tile)
-                    node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
-                    layer.addChild(node)
+    /// Expands rects into a tile set (minus exclusions) for `autotile`.
+    func tiles(_ rects: [SpecRect], excluding: [SpecRect] = []) -> Set<TileXY> {
+        var out = Set<TileXY>()
+        for r in rects {
+            for yT in r.y..<(r.y + r.h) {
+                for xT in r.x..<(r.x + r.w) {
+                    if excluding.contains(where: { $0.contains(tile: xT, yT) }) { continue }
+                    out.insert(TileXY(x: xT, y: yT))
                 }
             }
         }
+        return out
     }
 
-    private static func addCliffFace(
-        on layer: SKNode,
-        startCol: Int,
-        startRow: Int,
-        length: Int,
-        horizontal: Bool,
-        tile: CGFloat
-    ) {
-        for i in 0..<length {
-            let col = horizontal ? startCol + i : startCol
-            let row = horizontal ? startRow : startRow + i
-            let texCol = horizontal ? (i % 2 == 0 ? 0 : 1) : 3
-            let texRow = horizontal ? 1 : 2
-            let node = ImportedArt.sproutHillTexture(col: texCol, row: texRow)
-                .map { SKSpriteNode(texture: $0) }
-                ?? SKSpriteNode(color: GamePalette.brickWall, size: CGSize(width: tile, height: tile))
-            node.anchorPoint = .zero
-            node.size = CGSize(width: tile, height: tile)
-            node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
-            layer.addChild(node)
-        }
-    }
-
-    private static func paintFenceRun(
-        on layer: SKNode,
-        startCol: Int,
-        row: Int,
-        length: Int,
-        tile: CGFloat
-    ) {
-        for i in 0..<length {
-            let col = startCol + i
-            let texCol = i == 0 ? 0 : (i == length - 1 ? 3 : 1)
-            let tex = ImportedArt.sproutFenceTexture(col: texCol, row: 2)
-            let node = tex.map { SKSpriteNode(texture: $0) }
-                ?? SKSpriteNode(color: GamePalette.woodSiding, size: CGSize(width: tile, height: tile))
-            node.anchorPoint = .zero
-            node.size = CGSize(width: tile, height: tile)
-            node.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
-            layer.addChild(node)
-        }
-    }
-
-    private static func paintBridgePatch(
-        on layer: SKNode,
-        originCol: Int,
-        originRow: Int,
-        tile: CGFloat
-    ) {
-        for r in 0..<2 {
-            for c in 0..<3 {
-                guard let tex = ImportedArt.sproutBridgeTexture(col: c, row: r) else { continue }
-                let node = SKSpriteNode(texture: tex)
-                node.anchorPoint = .zero
-                node.size = CGSize(width: tile, height: tile)
-                node.position = CGPoint(x: CGFloat(originCol + c) * tile, y: CGFloat(originRow + r) * tile)
-                layer.addChild(node)
+    /// Paints a tile set with a 4×4 blob tileset (shared layout: 3×3 blob,
+    /// capsules in row 0 / col 3, single blob at (3,0)). Tile choice is by
+    /// N/S/E/W neighbors within the set — edges wrap every boundary.
+    func autotile(_ tileSet: Set<TileXY>, z: CGFloat,
+                  interior: ((Int, Int) -> SKTexture?)? = nil,
+                  tile texProvider: (Int, Int) -> SKTexture?) {
+        for t in tileSet {
+            let w = tileSet.contains(TileXY(x: t.x - 1, y: t.y))
+            let e = tileSet.contains(TileXY(x: t.x + 1, y: t.y))
+            let n = tileSet.contains(TileXY(x: t.x, y: t.y - 1))
+            let s = tileSet.contains(TileXY(x: t.x, y: t.y + 1))
+            // fully-interior cells: position-varied fill so open areas never
+            // read as repeated boxed cells
+            if n, s, e, w, let interior, let tex = interior(t.x, t.y) {
+                place1x1(at: t.x, t.y, texture: tex, z: z)
+                continue
             }
-        }
-    }
-
-    private static func sprinkleGrassTufts(
-        on layer: SKNode,
-        points: [(Int, Int)],
-        tile: CGFloat
-    ) {
-        for (col, row) in points {
-            let tuft = SKSpriteNode(color: .clear, size: CGSize(width: tile, height: tile))
-            tuft.anchorPoint = .zero
-            tuft.position = CGPoint(x: CGFloat(col) * tile, y: CGFloat(row) * tile)
-
-            let bladeA = SKSpriteNode(color: GamePalette.grassG3Deep, size: CGSize(width: tile * 0.12, height: tile * 0.28))
-            bladeA.anchorPoint = CGPoint(x: 0.5, y: 0)
-            bladeA.position = CGPoint(x: tile * 0.34, y: tile * 0.30)
-            tuft.addChild(bladeA)
-
-            let bladeB = SKSpriteNode(color: GamePalette.grassG3, size: CGSize(width: tile * 0.10, height: tile * 0.22))
-            bladeB.anchorPoint = CGPoint(x: 0.5, y: 0)
-            bladeB.position = CGPoint(x: tile * 0.52, y: tile * 0.34)
-            tuft.addChild(bladeB)
-
-            let bladeC = SKSpriteNode(color: GamePalette.grassG4Worn, size: CGSize(width: tile * 0.08, height: tile * 0.18))
-            bladeC.anchorPoint = CGPoint(x: 0.5, y: 0)
-            bladeC.position = CGPoint(x: tile * 0.66, y: tile * 0.28)
-            tuft.addChild(bladeC)
-
-            layer.addChild(tuft)
-        }
-    }
-
-    private static func buildAmphitheater(
-        root: SKNode, originCol: Int, originRow: Int, tileW: Int, tileH: Int, tile: CGFloat
-    ) {
-        let stoneColor  = SKColor(red: 0.62, green: 0.60, blue: 0.56, alpha: 1)
-        let stoneColor2 = SKColor(red: 0.58, green: 0.56, blue: 0.52, alpha: 1)
-        for r in 0..<tileH {
-            for c in 0..<tileW {
-                let col = (r + c) % 2 == 0 ? stoneColor : stoneColor2
-                let tileNode = SKSpriteNode(color: col, size: CGSize(width: tile, height: tile))
-                tileNode.anchorPoint = .zero
-                tileNode.position = CGPoint(x: CGFloat(originCol + c) * tile,
-                                            y: CGFloat(originRow + r) * tile)
-                tileNode.zPosition = GameConstants.ZPos.ground + 1.2
-                root.addChild(tileNode)
+            let col: Int, rowFromTop: Int
+            if !n && !s {
+                rowFromTop = 0
+                col = (w && e) ? 1 : (e ? 0 : (w ? 2 : 3))
+            } else if !w && !e {
+                col = 3
+                rowFromTop = (n && s) ? 2 : (s ? 1 : 3)
+            } else {
+                col = (w && e) ? 1 : (e ? 0 : 2)
+                rowFromTop = (n && s) ? 2 : (s ? 1 : 3)
             }
+            place1x1(at: t.x, t.y, texture: texProvider(col, rowFromTop), z: z)
         }
-        let centerX = CGFloat(originCol + tileW / 2) * tile
-        let centerY = CGFloat(originRow + tileH / 2) * tile
-        for i in 0..<16 {
-            let angle = CGFloat(i) / 15.0 * .pi
-            let radius: CGFloat = tile * CGFloat(min(tileW, tileH)) * 0.32
-            let sx = centerX + cos(angle) * radius * 1.15
-            let sy = centerY - sin(angle) * radius * 0.55
-            let seat = SKSpriteNode(texture: SpriteFactory.emojiTexture("🪨", size: 96))
-            seat.size = CGSize(width: tile * 0.90, height: tile * 0.90)
-            seat.position = CGPoint(x: sx, y: sy)
-            seat.zPosition = GameConstants.ZPos.decor
-            root.addChild(seat)
+    }
+
+    func placeSprite(_ rect: SpecRect, texture: SKTexture?, layer: PaintLayer) {
+        guard let texture else {
+            placeholder(rect, label: "?", layer: layer); return
         }
-        let stage = SKSpriteNode(
-            color: SKColor(red: 0.70, green: 0.68, blue: 0.64, alpha: 1),
-            size: CGSize(width: tile * CGFloat(tileW / 3), height: tile * 2)
+        texture.filteringMode = .nearest
+        let s = SKSpriteNode(
+            texture: texture,
+            size: CGSize(width: CGFloat(rect.w) * tile, height: CGFloat(rect.h) * tile)
         )
-        stage.position = CGPoint(x: centerX, y: CGFloat(originRow + 1) * tile + tile)
-        stage.zPosition = GameConstants.ZPos.ground + 1.4
-        root.addChild(stage)
+        s.position   = center(rect)
+        s.zPosition  = layer.z
+        root.addChild(s)
     }
 
-    private static func buildPuzzleRoom16(
-        root: SKNode, originCol: Int, originRow: Int, tile: CGFloat
-    ) -> (PressurePlateNode, GateNode, TreasureChestNode, PushableRockNode) {
-
-        let roomLayer = SKNode(); roomLayer.zPosition = GameConstants.ZPos.ground + 2
-        root.addChild(roomLayer)
-
-        func pos(_ c: Int, _ r: Int) -> CGPoint {
-            CGPoint(
-                x: CGFloat(originCol + c) * tile + tile / 2,
-                y: CGFloat(originRow + r) * tile + tile / 2)
+    /// Looping frame animation (ambient creatures). No collision body.
+    func placeAnimated(_ rect: SpecRect, frames: [SKTexture], timePerFrame: TimeInterval) {
+        guard let first = frames.first else { return }
+        for f in frames { f.filteringMode = .nearest }
+        let s = SKSpriteNode(
+            texture: first,
+            size: CGSize(width: CGFloat(rect.w) * tile, height: CGFloat(rect.h) * tile)
+        )
+        s.position  = center(rect)
+        s.zPosition = PaintLayer.props.z
+        if frames.count > 1 {
+            s.run(.repeatForever(.animate(with: frames, timePerFrame: timePerFrame)))
         }
+        root.addChild(s)
+    }
 
-        let sf1 = SKColor(red: 0.60, green: 0.58, blue: 0.55, alpha: 1)
-        let sf2 = SKColor(red: 0.63, green: 0.61, blue: 0.58, alpha: 1)
-        for r in 0..<16 {
-            for c in 0..<16 {
-                let t = SKSpriteNode(color: (r + c) % 2 == 0 ? sf1 : sf2,
-                                     size: CGSize(width: tile, height: tile))
-                t.anchorPoint = .zero
-                t.position = CGPoint(x: CGFloat(originCol + c) * tile, y: CGFloat(originRow + r) * tile)
-                t.zPosition = GameConstants.ZPos.ground + 1.5
-                root.addChild(t)
-            }
+    /// Tree with a small circular collision body at its trunk.
+    func placeTree(_ rect: SpecRect, texture: SKTexture?) {
+        guard let texture else { return }
+        // trunk collision: one cell at the bottom-center of the canopy
+        addBlockingRect(SpecRect(rect.x + rect.w / 2, rect.y + rect.h - 1, 1, 1))
+        texture.filteringMode = .nearest
+        let s = SKSpriteNode(
+            texture: texture,
+            size: CGSize(width: CGFloat(rect.w) * tile, height: CGFloat(rect.h) * tile)
+        )
+        s.position  = center(rect)
+        s.zPosition = PaintLayer.props.z
+        let radius = max(CGFloat(min(rect.w, rect.h)) * tile * 0.30, tile * 0.30)
+        let body = SKPhysicsBody(circleOfRadius: radius, center: CGPoint(x: 0, y: -CGFloat(rect.h) * tile * 0.25))
+        body.isDynamic           = false
+        body.categoryBitMask     = GameConstants.Category.wall
+        body.collisionBitMask    = 0xFFFFFFFF
+        body.contactTestBitMask  = 0
+        s.physicsBody = body
+        root.addChild(s)
+    }
+
+    func placeRock(_ rect: SpecRect, variant: Int) {
+        let genPath = "textures.downloaded.sprites/world.generated/prop-rock-\((variant - 1) % 3 + 1)-48x48.png"
+        let packPath = "textures.downloaded.sprites/world.park/pixel-art-gray-rock-with-grass-sprite-0\(variant).png"
+        guard let tex = ImportedArt.fileTexture(relativePath: genPath)
+                ?? ImportedArt.fileTexture(relativePath: packPath) else { return }
+        tex.filteringMode = .nearest
+        let s = SKSpriteNode(texture: tex,
+                             size: CGSize(width: CGFloat(rect.w) * tile, height: CGFloat(rect.h) * tile))
+        s.position  = center(rect)
+        s.zPosition = PaintLayer.props.z
+        let body = SKPhysicsBody(circleOfRadius: tile * 0.30)
+        body.isDynamic        = false
+        body.categoryBitMask  = GameConstants.Category.wall
+        body.collisionBitMask = 0xFFFFFFFF
+        s.physicsBody = body
+        root.addChild(s)
+    }
+
+    func placeholder(_ rect: SpecRect, label: String, layer: PaintLayer) {
+        let s = SKShapeNode(rectOf: CGSize(width: CGFloat(rect.w) * tile, height: CGFloat(rect.h) * tile))
+        s.fillColor   = SKColor.magenta.withAlphaComponent(0.85)
+        s.strokeColor = .black
+        s.lineWidth   = 1
+        s.position    = center(rect)
+        s.zPosition   = layer.z
+        let lbl = SKLabelNode(text: label)
+        lbl.fontSize  = 9
+        lbl.fontColor = .white
+        lbl.verticalAlignmentMode = .center
+        s.addChild(lbl)
+        root.addChild(s)
+    }
+
+    /// Static rectangular collision body covering a SpecRect.
+    func addBlockingRect(_ rect: SpecRect) {
+        let node = SKNode()
+        node.position = center(rect)
+        let body = SKPhysicsBody(rectangleOf: CGSize(
+            width: CGFloat(rect.w) * tile,
+            height: CGFloat(rect.h) * tile
+        ))
+        body.isDynamic        = false
+        body.categoryBitMask  = GameConstants.Category.wall
+        body.collisionBitMask = 0xFFFFFFFF
+        node.physicsBody = body
+        root.addChild(node)
+    }
+
+    /// Four invisible walls along the scene perimeter so the player can't escape the world.
+    func addSceneBoundary() {
+        let w = CGFloat(cols) * tile
+        let h = CGFloat(rows) * tile
+        let thickness: CGFloat = tile
+        let rects: [(CGPoint, CGSize)] = [
+            (CGPoint(x: w / 2, y: h + thickness / 2),         CGSize(width: w, height: thickness)),  // north
+            (CGPoint(x: w / 2, y: -thickness / 2),            CGSize(width: w, height: thickness)),  // south
+            (CGPoint(x: -thickness / 2, y: h / 2),            CGSize(width: thickness, height: h)),  // west
+            (CGPoint(x: w + thickness / 2, y: h / 2),         CGSize(width: thickness, height: h))   // east
+        ]
+        for (pos, size) in rects {
+            let node = SKNode()
+            node.position = pos
+            let body = SKPhysicsBody(rectangleOf: size)
+            body.isDynamic        = false
+            body.categoryBitMask  = GameConstants.Category.wall
+            body.collisionBitMask = 0xFFFFFFFF
+            node.physicsBody = body
+            root.addChild(node)
         }
+    }
 
-        var walls: [(Int, Int)] = []
-        for c in 0..<16 { walls.append((c, 15)) }
-        for c in 0..<16 where c < 6 || c > 9 { walls.append((c, 0)) }
-        for r in 1..<15 { walls.append((0, r)); walls.append((15, r)) }
-        for r in 10..<16 { for c in 6..<16 { walls.append((c, r)) } }
-
-        for (dc, dr) in walls {
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture("🧱", size: 96))
-            n.size = CGSize(width: tile, height: tile)
-            n.position = pos(dc, dr)
-            n.zPosition = GameConstants.ZPos.decor
-            let b = SKPhysicsBody(rectangleOf: CGSize(width: tile - 4, height: tile - 4))
-            b.isDynamic = false
-            b.categoryBitMask = GameConstants.Category.wall
-            n.physicsBody = b
-            roomLayer.addChild(n)
-        }
-
-        let plate = PressurePlateNode(); plate.position = pos(6, 4); root.addChild(plate)
-        let gate = GateNode(); gate.position = pos(6, 8); root.addChild(gate)
-        let chest = TreasureChestNode(); chest.position = pos(6, 12); root.addChild(chest)
-        let boulder = PushableRockNode(); boulder.position = pos(6, 2); root.addChild(boulder)
-
-        return (plate, gate, chest, boulder)
+    func place1x1(at xT: Int, _ yT: Int, texture: SKTexture?, z: CGFloat) {
+        guard let texture else { return }
+        texture.filteringMode = .nearest
+        let s = SKSpriteNode(texture: texture, size: CGSize(width: tile, height: tile))
+        s.position  = CGPoint(
+            x: (CGFloat(xT) + 0.5) * tile,
+            y: (CGFloat(rows - yT) - 0.5) * tile
+        )
+        s.zPosition = z
+        root.addChild(s)
     }
 }

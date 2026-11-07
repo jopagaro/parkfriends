@@ -33,6 +33,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Camera / overlay nodes
     private let cam = SKCameraNode()
+    /// Screen-space UI layer on the camera, counter-scaled so UI stays at
+    /// point size while the camera zooms the world to a fixed tile count.
+    private let uiRoot = SKNode()
+    private var camScale: CGFloat = 1
     private var joystick:     VirtualJoystick!
     private var talkButton:   ActionButton!
     private var switchButton: ActionButton!
@@ -44,6 +48,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - State
     private weak var nearbyNPC:     NPCNode?
     private var nearbyBench:        Bool        = false
+    private var searchables:        [SearchableNode] = []
+    private var nearbySearchable:   SearchableNode?
+    private var talkButtonShown:    Bool        = false
     private var lastDamageTime:     TimeInterval = 0
     private let damageCooldown:     TimeInterval = 0.9
     private var lastUpdate:         TimeInterval = 0
@@ -64,6 +71,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Keyboard (macOS)
     private var pressedKeys: Set<UInt16> = []
+
+    private var sizeDebugLastCheck: TimeInterval = 0
 
     // MARK: - Lifecycle
 
@@ -93,6 +102,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         buildPlayerAndFollowers()
         refreshPartySprites()
         layoutControls()
+        checkBattleTestTrigger()
     }
 
     // MARK: - Build
@@ -110,6 +120,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         quackNode     = nil
         nearbyNPC     = nil
         nearbyBench   = false
+        searchables.removeAll()
+        nearbySearchable = nil
         nearbyQuack   = false
         isBossIntro   = false
         attacks.removeAll()
@@ -119,6 +131,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func buildWorld() {
+        if let interior = gameState?.currentInterior {
+            buildInterior(interior)
+            return
+        }
         let zone = gameState?.currentZone ?? .parkCenter
         switch zone {
         case .parkCenter: buildParkCenter()
@@ -129,13 +145,33 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
+    private func buildInterior(_ kind: InteriorKind) {
+        backgroundColor = SKColor(red: 0.08, green: 0.07, blue: 0.06, alpha: 1)
+        let result = kind.build()
+        finishWorldBuild(
+            root: result.root,
+            playerSpawn: result.playerSpawn,
+            itemSpawns: [],
+            fixedItems: [],
+            fixedNPCs: [],
+            npcSpawns: result.npcSpawns,
+            enemySpawns: [],
+            benchPositions: [],
+            zoneExitNodes: []
+        )
+        pressurePlate = nil; gate = nil; chest = nil; quackNode = nil
+    }
+
     private func buildParkCenter() {
         backgroundColor = GamePalette.grassG1
         let result = ParkWorld.buildCenter()
         let tile = GameConstants.tileSize
         let storyProgress = gameState?.storyProgress ?? .introCheckFountain
         var fixedNPCs: [(NPCKind, CGPoint)] = [
-            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8))
+            (.rangerGuide, CGPoint(x: tile * 52, y: tile * 8)),
+            (.bird, CGPoint(x: tile * 49, y: tile * 36)),
+            (.bird, CGPoint(x: tile * 55, y: tile * 34)),
+            (.bird, CGPoint(x: tile * 55, y: tile * 39))
         ]
         if !(gameState?.hasHazelJoined ?? false) {
             fixedNPCs.append((.hazel, CGPoint(x: tile * 44, y: tile * 38)))
@@ -158,7 +194,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: openingEnemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         updateParkCenterExits()
         pressurePlate = result.pressurePlate
@@ -170,15 +207,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func buildParkNorth() {
         backgroundColor = GamePalette.grassG1
         let result = ParkWorld.buildNorth()
+        let tile = GameConstants.tileSize
         finishWorldBuild(
             root: result.root,
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: result.fixedItems,
+            fixedNPCs: [
+                (.bird, CGPoint(x: tile * 18, y: tile * 16)),
+                (.bird, CGPoint(x: tile * 78, y: tile * 13))
+            ],
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = result.pressurePlate
         gate          = result.gate
@@ -203,11 +246,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             playerSpawn: result.playerSpawn,
             itemSpawns: result.itemSpawns,
             fixedItems: [],
-            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 22, y: tile * 8))],
+            fixedNPCs: [(.shopkeeper, CGPoint(x: tile * 12, y: tile * 7))],
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = nil; gate = nil; chest = nil; quackNode = nil
     }
@@ -223,7 +267,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = nil; gate = nil; chest = nil; quackNode = nil
     }
@@ -241,7 +286,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             npcSpawns: result.npcSpawns,
             enemySpawns: result.enemySpawns,
             benchPositions: result.benchPositions,
-            zoneExitNodes: result.zoneExitNodes
+            zoneExitNodes: result.zoneExitNodes,
+            searchSpawns: result.searchSpawns
         )
         pressurePlate = nil; gate = nil; chest = nil
         quackNode = result.quackNode
@@ -258,13 +304,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         npcSpawns: [CGPoint],
         enemySpawns: [(EnemyKind, CGPoint)],
         benchPositions: [CGPoint],
-        zoneExitNodes: [ZoneExitNode]
+        zoneExitNodes: [ZoneExitNode],
+        searchSpawns: [(SearchableKind, CGPoint)] = []
     ) {
         worldRoot    = root
         pendingSpawn = playerSpawn
         self.benchPositions = benchPositions
         self.zoneExitNodes  = zoneExitNodes
         addChild(worldRoot)
+
+        // One-time searchable props (trash cans, bushes, flowerbeds)
+        let searchZone = gameState?.currentZone ?? .parkCenter
+        for (kind, pos) in searchSpawns {
+            let spot = SearchableNode(kind: kind, zone: searchZone, position: pos)
+            worldRoot.addChild(spot)
+            searchables.append(spot)
+        }
 
         // Fixed story items — skip ones whose clue is already found
         for (kind, pos) in fixedItems {
@@ -306,10 +361,19 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         // Random NPC rotation — fixed-placement NPCs excluded from pool
+        // Dogs excluded until a working walk-cycle sheet is available
         if !(zone == .parkCenter && !(gameState?.hasHazelJoined ?? false)) {
-            let npcKinds = NPCKind.allCases.filter { !$0.isFixed }
+            let npcKinds: [NPCKind]
+            switch zone {
+            case .parkCenter, .parkNorth:
+                npcKinds = [.bird, .cat, .birdwatcher, .gardener, .child, .jogger, .raccoon, .dogwalker]
+            case .citySouth, .cityCenter:
+                npcKinds = [.jogger, .child, .birdwatcher, .dogwalker, .gardener, .cat, .raccoon, .bird]
+            case .cityNorth:
+                npcKinds = [.worker, .gardener, .cat, .raccoon, .bird]
+            }
             for (i, pos) in npcSpawns.enumerated() {
-                let npc = NPCNode(kind: npcKinds[i % npcKinds.count])
+                let npc = NPCNode(kind: npcKinds[i % npcKinds.count], variant: i)
                 npc.position = pos
                 worldRoot.addChild(npc)
                 npcs.append(npc)
@@ -342,23 +406,25 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(cam)
         camera      = cam
         cam.position = pendingSpawn
+        cam.addChild(uiRoot)
+        updateCameraScale()
 
         joystick = VirtualJoystick(radius: 65)
-        cam.addChild(joystick)
+        uiRoot.addChild(joystick)
 
         talkButton = ActionButton(glyph: "💬", radius: 30, tint: .blue)
         talkButton.onTap = { [weak self] in self?.handleTalk() }
         talkButton.alpha = 0
-        cam.addChild(talkButton)
+        uiRoot.addChild(talkButton)
 
         switchButton = ActionButton(glyph: gameState?.activeSpecies.emoji ?? "🐢",
                                     radius: 26, tint: .purple)
         switchButton.onTap = { [weak self] in self?.cycleParty() }
-        cam.addChild(switchButton)
+        uiRoot.addChild(switchButton)
 
         healButton = ActionButton(glyph: "🍎", radius: 26, tint: .green)
         healButton.onTap = { [weak self] in self?.useQuickItem() }
-        cam.addChild(healButton)
+        uiRoot.addChild(healButton)
 
         // Battle overlay (always on camera, initially hidden)
         battleNode = BattleNode()
@@ -366,9 +432,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         battleNode.onDefeat  = { [weak self] in self?.handleBattleDefeat() }
         battleNode.onFled    = { [weak self] in self?.handleBattleFled() }
         battleNode.onSwitched = { [weak self] _ in self?.refreshPartySprites() }
-        cam.addChild(battleNode)
+        uiRoot.addChild(battleNode)
 
-        addVignette()
         buildChargeBar()
 
 #if canImport(AppKit)
@@ -378,14 +443,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         healButton.isHidden   = true
 
         let hint = SKLabelNode(
-            text: "WASD · Space Attack · E Talk/Rest · H Heal · Tab Switch · I Stats · Esc Pause")
+            text: "WASD · Space Attack · E Talk/Rest · H Heal · Tab Switch · I Stats · M Map · Esc Pause")
         hint.fontName                = "Helvetica Neue"
         hint.fontSize                = 12
         hint.fontColor               = SKColor(white: 1, alpha: 0.55)
         hint.horizontalAlignmentMode = .center
         hint.verticalAlignmentMode   = .bottom
         hint.zPosition               = GameConstants.ZPos.ui
-        cam.addChild(hint)
+        uiRoot.addChild(hint)
         hintLabel = hint
 #endif
 
@@ -414,7 +479,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let barH: CGFloat = 7
         let container = SKNode()
         container.zPosition = GameConstants.ZPos.ui
-        cam.addChild(container)
+        uiRoot.addChild(container)
 
         // Glph label
         let glyphLabel = SKLabelNode(text: "⚡")
@@ -451,7 +516,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
+        updateCameraScale()
         layoutControls()
+    }
+
+    /// EarthBound framing: the camera always shows ~11.5 tiles on the short
+    /// screen axis (capped at 20 on the long one), whatever the window or
+    /// device size. UI on `uiRoot` is counter-scaled back to point size.
+    /// Player position as a 0–1 fraction of the current zone — the world
+    /// overview uses it to place the "you are here" marker.
+    var playerWorldFraction: CGPoint {
+        guard player != nil, let zone = gameState?.currentZone else {
+            return CGPoint(x: 0.5, y: 0.5)
+        }
+        let b = zone.boundsSize
+        return CGPoint(x: min(1, max(0, player.position.x / b.width)),
+                       y: min(1, max(0, player.position.y / b.height)))
+    }
+
+    private func updateCameraScale() {
+        // Always native 1:1 — no auto-zoom. The fit-N-tiles framing made the
+        // world rescale when the scene size settled after load (sprites
+        // "popped" bigger); the user wants the small native size, always.
+        camScale = 1
+        cam.setScale(camScale)
+        uiRoot.setScale(1 / camScale)
     }
 
     // MARK: - macOS input
@@ -460,6 +549,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     override func keyDown(with event: NSEvent) {
         guard !event.isARepeat else { return }
         pressedKeys.insert(event.keyCode)
+
+        if gameState?.mapOverviewOpen == true {
+            switch event.keyCode {
+            case 46, 53: gameState?.mapOverviewOpen = false   // M / Esc
+            default: break
+            }
+            return
+        }
 
         if battleNode.phase == .playerMenu {
             battleNode.handleKey(event.keyCode)
@@ -471,11 +568,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case 48: cycleParty()                              // Tab
         case 49: fireOverworldAttack()                     // Space
         case 34: gameState?.statsOpen.toggle()             // I — stats screen
+        case 46: gameState?.mapOverviewOpen.toggle()       // M — world overview
         case  4: useQuickItem()                            // H — quick-use best consumable
         case 53:                                           // Esc — close overlay or pause
             if let state = gameState {
-                if state.statsOpen      { state.statsOpen = false }
-                else if state.shopOpen  { state.shopOpen  = false }
+                if state.mapOverviewOpen { state.mapOverviewOpen = false }
+                else if state.statsOpen  { state.statsOpen = false }
+                else if state.shopOpen   { state.shopOpen  = false }
                 else                    { state.isPaused.toggle() }
             }
         default: break
@@ -504,6 +603,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleInteract() {
         if let npc = nearbyNPC {
             handleTalk(npc: npc)
+        } else if let spot = nearbySearchable {
+            searchSpot(spot)
         } else if nearbyQuack, let quack = quackNode, !quack.isRescued {
             quack.rescue()
         } else if nearbyBench {
@@ -512,6 +613,25 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func handleTalk() { handleInteract() }
+
+    /// Search a one-time spot: deadpan flavor, then the find. The spot stays
+    /// in the world looking ordinary — it just has nothing more to say.
+    private func searchSpot(_ spot: SearchableNode) {
+        guard let state = gameState, !state.searchedSpots.contains(spot.spotID) else { return }
+        state.searchedSpots.insert(spot.spotID)
+        nearbySearchable = nil
+        spot.playSearchBounce()
+
+        let item = spot.loot
+        state.collect(item)
+        var lines = spot.kind.flavorLines(variant: spot.flavorVariant)
+        lines.append(("Shelly", "Found a \(item.displayName)!"))
+        dialogue?.presentScriptedConversation(title: "Checked", lines: lines, onDismiss: nil)
+        DamageLabel.collect("+\(item.displayName)",
+                            at: CGPoint(x: spot.position.x, y: spot.position.y + 30),
+                            in: worldRoot)
+        state.save()
+    }
 
     private func handleTalk(npc: NPCNode) {
         guard let state = gameState else { return }
@@ -651,7 +771,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                                      y: CGFloat.random(in: -size.height/2...size.height/2))
             label.zPosition = GameConstants.ZPos.ui + 5
             label.alpha = 0
-            cam.addChild(label)
+            uiRoot.addChild(label)
             label.run(.sequence([
                 .wait(forDuration: Double(i) * 0.08),
                 .group([
@@ -700,7 +820,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let restFlash = SKSpriteNode(color: SKColor(white: 1, alpha: 0), size: size)
         restFlash.position  = .zero
         restFlash.zPosition = GameConstants.ZPos.ui + 10
-        cam.addChild(restFlash)
+        uiRoot.addChild(restFlash)
         restFlash.run(.sequence([
             .fadeAlpha(to: 0.25, duration: 0.3),
             .fadeOut(withDuration: 0.5),
@@ -735,6 +855,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Battle trigger
 
+    /// Debug battle tester (handoff §2.13): drop `pf-battle-test.txt` into the
+    /// app container tmp with an EnemyKind rawValue (e.g. "pigeon",
+    /// "grandGooseGerald") and the fight starts seconds after launch.
+    func checkBattleTestTrigger() {
+        let path = NSTemporaryDirectory() + "pf-battle-test.txt"
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let raw = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        try? FileManager.default.removeItem(atPath: path)
+        let kind = EnemyKind(rawValue: raw) ?? .pigeon
+        run(.sequence([.wait(forDuration: 1.5), .run { [weak self] in
+            guard let self else { return }
+            let enemy = EnemyNode(kind: kind)
+            enemy.position = CGPoint(x: self.player.position.x,
+                                     y: self.player.position.y + 80)
+            self.worldRoot.addChild(enemy)
+            self.enemies.append(enemy)
+            self.triggerBattle(with: enemy)
+        }]))
+    }
+
     private func triggerBattle(with enemy: EnemyNode) {
         guard battleNode.phase == .none,
               !enemy.isDead,
@@ -757,16 +898,89 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
 
-        // Bosses get a dramatic intro screen first
+        // EarthBound battle swirl wipes the screen; bosses then get their
+        // dramatic intro card behind a faster, red swirl.
         if enemy.kind.isBoss {
-            showBossIntro(for: enemy) { [weak self] in
+            runBattleSwirl(boss: true) { [weak self] in
                 guard let self else { return }
-                self.isBossIntro = false
-                self.battleNode.show(enemy: enemy, state: state)
+                self.showBossIntro(for: enemy) { [weak self] in
+                    guard let self else { return }
+                    self.isBossIntro = false
+                    self.battleNode.show(enemy: enemy, state: state)
+                }
             }
         } else {
-            battleNode.show(enemy: enemy, state: state)
+            runBattleSwirl(boss: false) { [weak self] in
+                self?.battleNode.show(enemy: enemy, state: state)
+            }
         }
+    }
+
+    // MARK: - Battle swirl transition
+
+    private static let swirlShader: SKShader = {
+        let src = """
+        void main() {
+            vec2 p = v_tex_coord - vec2(0.5);
+            p.x *= a_aspect;
+            float r = length(p) * 1.7;
+            float ang = atan(p.y, p.x);
+            float spiral = sin(ang * 3.0 + r * 13.0 - u_time * (6.0 + 6.0 * a_boss));
+            float cover = smoothstep(a_prog * 2.1, a_prog * 2.1 - 0.22, r + 0.13 * spiral);
+            float pulse = 0.82 + 0.18 * sin(u_time * (14.0 + 10.0 * a_boss) + r * 9.0);
+            vec3 col = a_col * pulse;
+            gl_FragColor = vec4(col * cover, cover);
+        }
+        """
+        let shader = SKShader(source: src)
+        shader.attributes = [
+            SKAttribute(name: "a_col", type: .vectorFloat3),
+            SKAttribute(name: "a_prog", type: .float),
+            SKAttribute(name: "a_aspect", type: .float),
+            SKAttribute(name: "a_boss", type: .float)
+        ]
+        return shader
+    }()
+
+    private static let swirlWhiteTexture: SKTexture = {
+        let ctx = CGContext(data: nil, width: 4, height: 4,
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        return SKTexture(cgImage: ctx.makeImage()!)
+    }()
+
+    /// Spiral wipe (green-blue for regular fights, red for bosses), then
+    /// `completion` fires behind the covered screen and the swirl melts away.
+    private func runBattleSwirl(boss: Bool, completion: @escaping () -> Void) {
+        isTransitioning = true
+        let overlay = SKSpriteNode(texture: Self.swirlWhiteTexture, size: size)
+        overlay.shader    = Self.swirlShader
+        overlay.zPosition = GameConstants.ZPos.battle + 1
+        overlay.setValue(SKAttributeValue(vectorFloat3:
+            boss ? vector_float3(0.78, 0.10, 0.10) : vector_float3(0.10, 0.42, 0.34)),
+            forAttribute: "a_col")
+        overlay.setValue(SKAttributeValue(float: 0), forAttribute: "a_prog")
+        overlay.setValue(SKAttributeValue(float: Float(size.width / max(size.height, 1))),
+                         forAttribute: "a_aspect")
+        overlay.setValue(SKAttributeValue(float: boss ? 1 : 0), forAttribute: "a_boss")
+        uiRoot.addChild(overlay)
+
+        let swirlIn = SKAction.customAction(withDuration: boss ? 0.45 : 0.6) { node, elapsed in
+            let t = Float(elapsed / (boss ? 0.45 : 0.6))
+            node.setValue(SKAttributeValue(float: min(1, t)), forAttribute: "a_prog")
+        }
+        overlay.run(.sequence([
+            swirlIn,
+            .run { [weak self] in
+                self?.isTransitioning = false
+                completion()
+            },
+            .fadeOut(withDuration: 0.3),
+            .removeFromParent()
+        ]))
     }
 
     // MARK: - Boss intro title card
@@ -781,6 +995,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case .grandGooseGerald: stripeColor = SKColor(red: 0.10, green: 0.28, blue: 0.10, alpha: 1)
         case .officerGrumble:   stripeColor = SKColor(red: 0.08, green: 0.16, blue: 0.42, alpha: 1)
         case .foremanRex:       stripeColor = SKColor(red: 0.48, green: 0.22, blue: 0.04, alpha: 1)
+        case .flockLeader:      stripeColor = SKColor(red: 0.22, green: 0.26, blue: 0.34, alpha: 1)
         default:                stripeColor = SKColor(red: 0.35, green: 0.05, blue: 0.05, alpha: 1)
         }
 
@@ -791,7 +1006,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         overlay.position  = .zero
         overlay.zPosition = GameConstants.ZPos.ui + 50
         overlay.alpha     = 0
-        cam.addChild(overlay)
+        uiRoot.addChild(overlay)
 
         // Colored banner stripe across middle
         let stripe = SKSpriteNode(color: stripeColor,
@@ -813,15 +1028,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         bossTag.alpha                   = 0
         overlay.addChild(bossTag)
 
-        // Boss emoji (large, left-of-center)
-        let emojiLabel = SKLabelNode(text: kind.bossEmoji)
-        emojiLabel.fontSize               = 80
-        emojiLabel.horizontalAlignmentMode = .center
-        emojiLabel.verticalAlignmentMode   = .center
-        emojiLabel.position               = CGPoint(x: -160, y: 10)
-        emojiLabel.zPosition              = 0.5
-        emojiLabel.alpha                  = 0
-        overlay.addChild(emojiLabel)
+        // Boss portrait (generated battle art; emoji fallback)
+        let portraitTex = WorldSprites.texture(enemy: kind)
+        let emojiLabel: SKNode
+        let portrait = SKSpriteNode(texture: portraitTex)
+        portrait.texture?.filteringMode = .nearest
+        portrait.size = CGSize(width: 170, height: 170)
+        portrait.position  = CGPoint(x: -160, y: 4)
+        portrait.zPosition = 0.5
+        portrait.alpha     = 0
+        overlay.addChild(portrait)
+        emojiLabel = portrait
 
         // Boss display name (big, white)
         let nameLabel = SKLabelNode(text: kind.displayName.uppercased())
@@ -951,10 +1168,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                               at: CGPoint(x: deathPos.x, y: deathPos.y + 44),
                               in: worldRoot)
 
-            // Bosses: record permanently, no respawn, show victory burst
+            // Bosses: record permanently, no respawn, victory burst, then
+            // the story beats + unlock messages roll in as toasts.
             if kind.isBoss {
                 gameState?.defeatBoss(kind)
                 showBossVictoryBurst(at: deathPos, kind: kind)
+                for (i, line) in kind.bossVictoryBeats.enumerated() {
+                    run(.sequence([
+                        .wait(forDuration: 1.4 + Double(i) * 2.6),
+                        .run { [weak self] in self?.showStoryToast(line) }
+                    ]))
+                }
                 drainPendingLevelUps()
                 return
             }
@@ -1010,7 +1234,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         toast.position                = CGPoint(x: 0, y: 80)
         toast.zPosition               = GameConstants.ZPos.ui + 10
         toast.alpha                   = 0
-        cam.addChild(toast)
+        uiRoot.addChild(toast)
         toast.run(.sequence([
             .group([.fadeIn(withDuration: 0.25), .scale(to: 1.1, duration: 0.25)]),
             .wait(forDuration: 2.0),
@@ -1156,6 +1380,84 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Zone transition
 
+    /// Enter or exit an interior through a DoorNode, with the same fade
+    /// treatment as zone transitions.
+    private func triggerDoorTransition(_ door: DoorNode) {
+        guard !isTransitioning, let state = gameState else { return }
+        isTransitioning = true
+        let entering = door.interior != nil
+        let title: String
+        let sub: String
+        if let kind = door.interior {
+            // Return one tile south of the door so the respawn doesn't sit
+            // inside the trigger and immediately re-enter.
+            let doorScenePos = door.parent.map { convert(door.position, from: $0) } ?? door.position
+            state.interiorReturnPoint = CGPoint(x: doorScenePos.x,
+                                                y: doorScenePos.y - GameConstants.tileSize * 1.2)
+            state.currentInterior = kind
+            title = kind.displayTitle
+            sub = kind.subtitle
+        } else {
+            state.currentInterior = nil
+            title = state.currentZone.displayTitle
+            sub = state.currentZone.zoneSubtitle
+        }
+
+        let overlay = SKSpriteNode(color: .black,
+                                   size: CGSize(width: max(size.width, 900),
+                                                height: max(size.height, 900)))
+        overlay.position  = .zero
+        overlay.zPosition = GameConstants.ZPos.ui + 100
+        overlay.alpha     = 0
+        uiRoot.addChild(overlay)
+        fadeOverlay = overlay
+
+        let titleLabel = SKLabelNode(text: title)
+        titleLabel.fontName                = "Helvetica Neue Bold"
+        titleLabel.fontSize                = 24
+        titleLabel.fontColor               = .white
+        titleLabel.horizontalAlignmentMode = .center
+        titleLabel.verticalAlignmentMode   = .center
+        titleLabel.position                = CGPoint(x: 0, y: 14)
+        titleLabel.zPosition               = 1
+        titleLabel.alpha                   = 0
+        overlay.addChild(titleLabel)
+
+        let subLabel = SKLabelNode(text: sub)
+        subLabel.fontName                = "Helvetica Neue"
+        subLabel.fontSize                = 13
+        subLabel.fontColor               = SKColor(white: 0.60, alpha: 1)
+        subLabel.horizontalAlignmentMode = .center
+        subLabel.verticalAlignmentMode   = .center
+        subLabel.position                = CGPoint(x: 0, y: -8)
+        subLabel.zPosition               = 1
+        subLabel.alpha                   = 0
+        overlay.addChild(subLabel)
+
+        overlay.run(.sequence([
+            .fadeIn(withDuration: 0.30),
+            .run {
+                titleLabel.run(.fadeIn(withDuration: 0.20))
+                subLabel.run(.sequence([.wait(forDuration: 0.08), .fadeIn(withDuration: 0.20)]))
+            },
+            .wait(forDuration: 0.55),
+            .run { [weak self] in
+                guard let self else { return }
+                self.tearDownWorld()
+                self.buildWorld()
+                if !entering, let ret = state.interiorReturnPoint {
+                    self.pendingSpawn = ret
+                }
+                self.buildPlayerAndFollowers()
+                self.cam.position = self.pendingSpawn
+            },
+            .wait(forDuration: 0.08),
+            .fadeOut(withDuration: 0.35),
+            .removeFromParent(),
+            .run { [weak self] in self?.isTransitioning = false }
+        ]))
+    }
+
     private func triggerZoneTransition(to destination: GameZone) {
         guard !isTransitioning, let state = gameState else { return }
 
@@ -1184,7 +1486,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         overlay.position  = .zero
         overlay.zPosition = GameConstants.ZPos.ui + 100
         overlay.alpha     = 0
-        cam.addChild(overlay)
+        uiRoot.addChild(overlay)
         fadeOverlay = overlay
 
         // Zone title card (shown while screen is black)
@@ -1245,7 +1547,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         title.horizontalAlignmentMode = .center
         title.zPosition = GameConstants.ZPos.ui + 25
         title.alpha = 0
-        cam.addChild(title)
+        uiRoot.addChild(title)
 
         let beat = SKLabelNode(text: state.zoneArrivalText)
         beat.fontName = "Helvetica Neue"
@@ -1255,7 +1557,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         beat.horizontalAlignmentMode = .center
         beat.zPosition = GameConstants.ZPos.ui + 25
         beat.alpha = 0
-        cam.addChild(beat)
+        uiRoot.addChild(beat)
 
         let show = SKAction.group([.fadeIn(withDuration: 0.2), .moveBy(x: 0, y: -6, duration: 0.2)])
         let hide = SKAction.group([.fadeOut(withDuration: 0.28), .moveBy(x: 0, y: -4, duration: 0.28)])
@@ -1263,48 +1565,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         beat.run(.sequence([show, .wait(forDuration: 2.8), hide, .removeFromParent()]))
     }
 
-    // MARK: - Visual polish
-
-    private func addVignette() {
-        // Subtle dark vignette on camera edges — size must be large enough to cover any
-        // Mac display so the rectangular edge is never visible on screen.
-        let vigSize = CGSize(width: 4000, height: 4000)
-
-        // Build a radial gradient texture via CGContext (rendered at half res for speed)
-        let pw = 512, ph = 512
-        guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8,
-                               bytesPerRow: pw * 4,
-                               space: CGColorSpaceCreateDeviceRGB(),
-                               bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue |
-                                           CGImageAlphaInfo.premultipliedFirst.rawValue) else { return }
-
-        let cx = CGFloat(pw) / 2, cy = CGFloat(ph) / 2
-        let r  = min(cx, cy) * 0.95
-        let gradient = CGGradient(
-            colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: [
-                CGColor(red: 0, green: 0, blue: 0, alpha: 0),
-                CGColor(red: 0, green: 0, blue: 0, alpha: 0.52)
-            ] as CFArray,
-            locations: [0.35, 1]
-        )
-        if let gradient {
-            ctx.drawRadialGradient(
-                gradient,
-                startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
-                endCenter:   CGPoint(x: cx, y: cy), endRadius:   r,
-                options: [.drawsAfterEndLocation]
-            )
-        }
-        guard let img = ctx.makeImage() else { return }
-        let tex = SKTexture(cgImage: img)
-        tex.filteringMode = .linear
-        let vigNode = SKSpriteNode(texture: tex, size: vigSize)
-        vigNode.position  = .zero
-        vigNode.zPosition = GameConstants.ZPos.ui - 1
-        vigNode.alpha     = 0.55
-        cam.addChild(vigNode)
-    }
 
     // MARK: - Treasure
 
@@ -1327,11 +1587,42 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdate == 0 ? 1/60.0 : min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
 
+        // Debug: drop pf-size-debug.txt in tmp → sizes report written back.
+        if currentTime - sizeDebugLastCheck > 2 {
+            sizeDebugLastCheck = currentTime
+            let trigger = NSTemporaryDirectory() + "pf-size-debug.txt"
+            if FileManager.default.fileExists(atPath: trigger) {
+                let mode = (try? String(contentsOfFile: trigger, encoding: .utf8)) ?? ""
+                try? FileManager.default.removeItem(atPath: trigger)
+                var r = "zone=\(gameState?.currentZone.rawValue ?? "?") active=\(gameState?.activeSpecies.rawValue ?? "?")\n"
+                if let p = player {
+                    r += "player size=\(p.size) scale=(\(p.xScale),\(p.yScale)) tex=\(p.texture?.size() ?? .zero)\n"
+                    r += "overworldSize(active)=\(CharacterSprites.overworldSize(species: p.species))\n"
+                    if mode.contains("respecies") {
+                        p.setSpecies(p.species)
+                        r += "after setSpecies: size=\(p.size)\n"
+                    }
+                    if mode.contains("cycle") {
+                        cycleParty()
+                        r += "after cycleParty: active=\(gameState?.activeSpecies.rawValue ?? "?") size=\(p.size)\n"
+                    }
+                }
+                for (i, f) in followers.enumerated() {
+                    let sp = i < followerSpecies.count ? followerSpecies[i].rawValue : "?"
+                    r += "follower[\(i)] \(sp) size=\(f.size) scale=(\(f.xScale),\(f.yScale)) tex=\(f.texture?.size() ?? .zero)\n"
+                }
+                r += "cam=\(cam.xScale) uiRoot=\(uiRoot.xScale)\n"
+                try? r.write(toFile: NSTemporaryDirectory() + "pf-size-report.txt",
+                             atomically: true, encoding: .utf8)
+            }
+        }
+
         // Freeze world during dialogue, battle, zone transition, boss intro, or overlays
         let frozen = isTransitioning
                   || isBossIntro
                   || (dialogue?.activeNPC != nil)
                   || (battleNode.phase != .none)
+                  || (gameState?.mapOverviewOpen ?? false)
                   || (gameState?.statsOpen ?? false)
                   || (gameState?.shopOpen ?? false)
                   || (gameState?.isPaused ?? false)
@@ -1368,15 +1659,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let dy = target.y - f.position.y
             f.position.x += dx * (playerIsMoving ? 0.28 : 0.18)
             f.position.y += dy * (playerIsMoving ? 0.28 : 0.18)
-            if abs(dx) > 0.5 { f.xScale = dx < 0 ? -1 : 1 }
 
             let spec = i < followerSpecies.count ? followerSpecies[i] : .turtle
             let moving = sqrt(dx*dx + dy*dy) > (playerIsMoving ? 1.5 : 8.0)
-            if moving && playerIsMoving {
+            let dir: CharacterSprites.GenDirection =
+                abs(dx) >= abs(dy) ? (dx < 0 ? .west : .east) : (dy < 0 ? .south : .north)
+            let genWalk = CharacterSprites.generatedWalkFrames(species: spec, direction: dir)
+            if moving && playerIsMoving, genWalk.count == 4 {
+                f.xScale = 1
+                f.texture = genWalk[Int(currentTime / 0.12) % 4]
+            } else if moving && playerIsMoving {
+                if abs(dx) > 0.5 { f.xScale = dx < 0 ? -1 : 1 }
                 let frame: CharacterSprites.WalkFrame = Int(currentTime / 0.18) % 2 == 0 ? .a : .b
                 f.texture = CharacterSprites.texture(species: spec, frame: frame)
             } else {
-                f.texture = CharacterSprites.texture(species: spec, frame: .a)
+                f.xScale = 1
+                f.texture = CharacterSprites.standingTexture(species: spec)
             }
         }
 
@@ -1412,7 +1710,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         if nearNPC !== nearbyNPC {
             nearbyNPC = nearNPC
-            showTalkButton(nearNPC != nil)
 #if canImport(AppKit)
             if nearNPC != nil {
                 DamageLabel.spawn(text: "Press E to talk",
@@ -1441,6 +1738,33 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 #endif
         }
 
+        // Searchable prop proximity (one-time EB "check" spots)
+        let nearSearch = searchables.first {
+            guard !($0.parent == nil) else { return false }
+            if gameState?.searchedSpots.contains($0.spotID) == true { return false }
+            let dx = $0.position.x - player.position.x
+            let dy = $0.position.y - player.position.y
+            return dx*dx + dy*dy < 60*60
+        }
+        if nearSearch !== nearbySearchable {
+            nearbySearchable = nearSearch
+#if canImport(AppKit)
+            if nearSearch != nil {
+                DamageLabel.spawn(text: "Press E to check",
+                                  color: SKColor(red: 0.96, green: 0.89, blue: 0.55, alpha: 1),
+                                  at: CGPoint(x: player.position.x, y: player.position.y + 48),
+                                  in: worldRoot)
+            }
+#endif
+        }
+        // The talk button serves every nearby interaction on touch builds.
+        let wantsTalkButton = nearbyNPC != nil || nearbySearchable != nil
+                           || nearbyBench || nearbyQuack
+        if wantsTalkButton != talkButtonShown {
+            talkButtonShown = wantsTalkButton
+            showTalkButton(wantsTalkButton)
+        }
+
         // Quack proximity (side-quest rescue)
         if let quack = quackNode, !quack.isRescued {
             let dx = quack.position.x - player.position.x
@@ -1465,9 +1789,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let zb = gameState?.currentZone.boundsSize ?? GameConstants.parkCenterWorldSize
         worldW = zb.width
         worldH = zb.height
-        let hw = size.width/2, hh = size.height/2
-        let tx = min(max(player.position.x, hw), worldW - hw)
-        let ty = min(max(player.position.y, hh), worldH - hh)
+        let hw = size.width / 2 * camScale, hh = size.height / 2 * camScale
+        let tx = worldW > hw * 2 ? min(max(player.position.x, hw), worldW - hw) : worldW / 2
+        let ty = worldH > hh * 2 ? min(max(player.position.y, hh), worldH - hh) : worldH / 2
         cam.position = CGPoint(
             x: cam.position.x + (tx - cam.position.x) * 0.10,
             y: cam.position.y + (ty - cam.position.y) * 0.10
@@ -1500,6 +1824,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if second.categoryBitMask == GameConstants.Category.zoneExit,
                let exitNode = second.node as? ZoneExitNode {
                 triggerZoneTransition(to: exitNode.destination)
+            }
+
+            if second.categoryBitMask == GameConstants.Category.zoneExit,
+               let door = second.node as? DoorNode {
+                triggerDoorTransition(door)
             }
 
         case GameConstants.Category.attack:
@@ -1539,8 +1868,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let state = gameState, player != nil else { return }
         followerSpecies = state.party.map(\.species).filter { $0 != state.activeSpecies }
         for (index, spec) in followerSpecies.enumerated() {
-            let follower = SKSpriteNode(texture: CharacterSprites.texture(species: spec, frame: .a))
-            follower.size = CGSize(width: 48, height: 48)
+            let follower = SKSpriteNode(texture: CharacterSprites.standingTexture(species: spec))
+            follower.size = CharacterSprites.overworldSize(species: spec)
             follower.zPosition = GameConstants.ZPos.entity - 0.1
             follower.alpha = 0.88
             let offset = idleFollowerOffset(index: index, facing: player.facing)

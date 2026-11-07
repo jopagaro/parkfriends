@@ -22,8 +22,19 @@ final class BattleNode: SKNode {
     private let backgroundContainer   = SKNode()
     private let panel                 = SKShapeNode()
     private let enemySprite           = SKSpriteNode()
-    private let enemyShadow           = SKSpriteNode(color: SKColor(white: 0, alpha: 0.24),
-                                                     size: CGSize(width: 116, height: 18))
+    private let enemyShadow: SKSpriteNode = {
+        // Soft dark ellipse, not a gray slab.
+        let w = 64, h = 16
+        let ctx = CGContext(data: nil, width: w, height: h,
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(gray: 0, alpha: 0.4))
+        ctx.fillEllipse(in: CGRect(x: 1, y: 1, width: w - 2, height: h - 2))
+        let node = SKSpriteNode(texture: SKTexture(cgImage: ctx.makeImage()!),
+                                size: CGSize(width: 116, height: 18))
+        return node
+    }()
     private let impactFlash           = SKSpriteNode(color: .white,
                                                      size: CGSize(width: 4000, height: 4000))
     private let enemyNameLbl          = SKLabelNode()
@@ -62,6 +73,8 @@ final class BattleNode: SKNode {
 
     private let panelW: CGFloat = 760
     private let panelH: CGFloat = 580
+    /// Shrink-to-fit for phone-sized scenes (panel was laid out for desktop).
+    private var fitScale: CGFloat = 1
 
     // MARK: - Init
 
@@ -82,8 +95,16 @@ final class BattleNode: SKNode {
         addChild(backdrop)
 
         let pr = CGRect(x: -panelW/2, y: -panelH/2, width: panelW, height: panelH)
+        // Fill lives on its own node BELOW the animated background (the
+        // SpriteView runs with ignoresSiblingOrder, so zPosition is global):
+        // fill (-0.7) < distortion bg (-0.5) < panel stroke + content (0+).
+        let panelFill = SKShapeNode(path: CGPath(roundedRect: pr, cornerWidth: 18, cornerHeight: 18, transform: nil))
+        panelFill.fillColor   = SKColor(red: 0.08, green: 0.07, blue: 0.12, alpha: 0.97)
+        panelFill.strokeColor = .clear
+        panelFill.zPosition   = -0.7
+        addChild(panelFill)
         panel.path        = CGPath(roundedRect: pr, cornerWidth: 18, cornerHeight: 18, transform: nil)
-        panel.fillColor   = SKColor(red: 0.08, green: 0.07, blue: 0.12, alpha: 0.97)
+        panel.fillColor   = .clear
         panel.strokeColor = SKColor(red: 0.50, green: 0.42, blue: 0.78, alpha: 1)
         panel.lineWidth   = 3
         addChild(panel)
@@ -217,16 +238,21 @@ final class BattleNode: SKNode {
         enemyShadow.size    = enemy.kind.isBoss ? CGSize(width: 148, height: 22) : CGSize(width: 116, height: 18)
         enemyNameLbl.text   = "\(enemy.kind.displayName)  (Lv.\(levelForEnemy(enemy)))"
         refreshEnemyHP(animated: false)
+        partySlots.forEach { $0.resetHPRoll() }
         refreshPartySlots()
-        logLabel.text = "A \(enemy.kind.displayName) approaches!\nChoose an action."
+        typeLog("A \(enemy.kind.displayName) approaches!\nChoose an action.")
 
         isHidden = false
         alpha = 1
-        setScale(0.86)
+        if let sceneSize = scene?.size, sceneSize.width > 0 {
+            fitScale = min(1, (sceneSize.width - 16) / panelW,
+                           (sceneSize.height - 120) / panelH)
+        }
+        setScale(0.86 * fitScale)
         enemySprite.alpha = 0
         enemySprite.position = CGPoint(x: 340, y: enemyBaseY + 16)
         enemyShadow.alpha = 0
-        let pop = SKAction.group([.scale(to: 1.0, duration: 0.18), .fadeIn(withDuration: 0.18)])
+        let pop = SKAction.group([.scale(to: fitScale, duration: 0.18), .fadeIn(withDuration: 0.18)])
         pop.timingMode = .easeOut
         run(pop)
         animateBattleIntro(isBoss: enemy.kind.isBoss)
@@ -234,7 +260,7 @@ final class BattleNode: SKNode {
     }
 
     func hide(completion: @escaping () -> Void = {}) {
-        let shrink = SKAction.group([.scale(to: 0.90, duration: 0.14),
+        let shrink = SKAction.group([.scale(to: 0.90 * fitScale, duration: 0.14),
                                       .fadeOut(withDuration: 0.14)])
         run(.sequence([shrink, .run {
             self.isHidden = true; self.phase = .none
@@ -857,7 +883,7 @@ final class BattleNode: SKNode {
             playerBonusDEF    = 0
             phase = .playerMenu
             setMenu(true)
-            logLabel.text = "What will you do?"
+            typeLog("What will you do?")
         }
     }
 
@@ -924,7 +950,7 @@ final class BattleNode: SKNode {
         func next() {
             guard !remaining.isEmpty else { completion(); return }
             let lu = remaining.removeFirst()
-            logLabel.text = "⭐ \(lu.name) reached Lv.\(lu.level)!\n\(lu.summary)"
+            self.typeLog("⭐ \(lu.name) reached Lv.\(lu.level)!\n\(lu.summary)")
             run(.wait(forDuration: 1.9)) { next() }
         }
         next()
@@ -983,15 +1009,47 @@ final class BattleNode: SKNode {
 
     // MARK: - Log helper
 
+    /// EarthBound typewriter: reveals the log text character by character
+    /// with a blip every other printable glyph. Returns the reveal duration.
+    @discardableResult
+    private func typeLog(_ text: String) -> TimeInterval {
+        logLabel.removeAction(forKey: "typewriter")
+        let chars = Array(text)
+        guard !chars.isEmpty else { logLabel.text = ""; return 0 }
+        let perChar = 0.016
+        let dur = Double(chars.count) * perChar
+        logLabel.text = ""
+        var revealed = 0
+        var blipTally = 0
+        let act = SKAction.customAction(withDuration: dur) { node, t in
+            let n = max(1, min(chars.count, Int(Double(t) / perChar) + 1))
+            guard n != revealed else { return }
+            var printable = 0
+            for i in revealed..<n where !chars[i].isWhitespace { printable += 1 }
+            blipTally += printable
+            if blipTally >= 2 {
+                blipTally = 0
+                SoundFX.shared.textBlip(voice: 1)
+            }
+            revealed = n
+            (node as? SKLabelNode)?.text = String(chars[0..<n])
+        }
+        logLabel.run(.sequence([act, .run { [weak logLabel] in
+            logLabel?.text = text
+        }]), withKey: "typewriter")
+        return dur
+    }
+
     private func showLog(_ text: String, delay: TimeInterval = 1.1,
                           completion: @escaping () -> Void) {
-        logLabel.text = text
-        run(.sequence([.wait(forDuration: delay), .run(completion)]))
+        let typeTime = typeLog(text)
+        run(.sequence([.wait(forDuration: max(delay, typeTime + 0.55)), .run(completion)]))
     }
 
     private func rebuildBackground(for kind: EnemyKind) {
         backgroundContainer.removeAllChildren()
-        let bg = kind.battleBackground.buildNode(size: CGSize(width: panelW - 8, height: panelH - 8))
+        let bg = kind.battleBackground.buildNode(size: CGSize(width: panelW - 8, height: panelH - 8),
+                                                 intense: kind.isBoss)
         bg.position = CGPoint(x: -4, y: -4)
         bg.alpha = 0.92
         backgroundContainer.addChild(bg)
@@ -1324,29 +1382,71 @@ private final class PartySlot: SKNode {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    // Rolling HP odometer (EarthBound): the shown number crawls toward the
+    // real value at a fixed rate, ticking as it goes.
+    private var shownHP = -1
+    private var targetHP = 0
+    private var memberMaxHP = 1
+    private var ppDisplay = 0
+
+    /// Forget the previous battle's display so a new battle starts snapped.
+    func resetHPRoll() {
+        removeAction(forKey: "hpRoll")
+        shownHP = -1
+    }
+
+    private func applyHP(_ hp: Int) {
+        let frac = CGFloat(hp) / CGFloat(memberMaxHP)
+        hpFill.size.width = max(0, frac * 100)
+        hpFill.color = frac > 0.5 ? .green : (frac > 0.25 ? .yellow : .red)
+        hpNum.text = "\(hp)/\(memberMaxHP)  PP:\(ppDisplay)"
+        alpha = (hp == 0 && targetHP == 0) ? 0.32 : 1.0
+    }
+
+    private func rollHP() {
+        removeAction(forKey: "hpRoll")
+        let start = shownHP, target = targetHP
+        let rate = 28.0   // HP per second — the odometer crawl
+        let dur = Double(abs(target - start)) / rate
+        let act = SKAction.customAction(withDuration: dur) { [weak self] _, t in
+            guard let self else { return }
+            let p = min(1, Double(t) / dur)
+            let hp = start + Int((Double(target - start) * p).rounded(.towardZero))
+            if hp != self.shownHP {
+                self.shownHP = hp
+                self.applyHP(hp)
+                SoundFX.shared.hpTick(down: target < start)
+            }
+        }
+        run(.sequence([act, .run { [weak self] in
+            guard let self else { return }
+            self.shownHP = self.targetHP
+            self.applyHP(self.targetHP)
+        }]), withKey: "hpRoll")
+    }
+
     func configure(member: PartyMember, isActive: Bool) {
         isHidden = false
-        let hpFrac = member.maxHP > 0 ? CGFloat(member.hp) / CGFloat(member.maxHP) : 0
-        let tgtHPW = max(0, hpFrac * 100)
-        let curHPW = hpFill.size.width
-        if abs(tgtHPW - curHPW) > 0.5 {
-            let dur = max(0.2, Double(abs(tgtHPW - curHPW)) / 100.0 * 0.7)
-            let tick = SKAction.customAction(withDuration: dur) { node, t in
-                let p = min(t / CGFloat(dur), 1)
-                (node as? SKSpriteNode)?.size.width = curHPW + (tgtHPW - curHPW) * p
-            }
-            hpFill.run(tick)
+        memberMaxHP = max(1, member.maxHP)
+        ppDisplay = member.pp
+        targetHP = member.hp
+        if shownHP < 0 {
+            removeAction(forKey: "hpRoll")
+            shownHP = member.hp
+            applyHP(shownHP)
+        } else if shownHP != targetHP {
+            rollHP()
+        } else {
+            applyHP(shownHP)   // refresh PP text / bar colour
         }
-        hpFill.color = hpFrac > 0.5 ? .green : (hpFrac > 0.25 ? .yellow : .red)
 
         let ppFrac = member.maxPP > 0 ? CGFloat(member.pp) / CGFloat(member.maxPP) : 0
         ppFill.size.width = max(0, ppFrac * 100)
 
-        sprite.texture = CharacterSprites.texture(species: member.species, frame: .a)
+        sprite.texture = CharacterSprites.generatedBattleTexture(species: member.species, pose: "idle-f1")
+            ?? CharacterSprites.texture(species: member.species, frame: .a)
         nameL.text     = member.species.displayName
         lvlL.text      = "Lv.\(member.level)"
-        hpNum.text     = "\(member.hp)/\(member.maxHP)  PP:\(member.pp)"
-        alpha          = member.hp > 0 ? 1.0 : 0.32
         nameL.fontColor = isActive ? SKColor(red: 1, green: 0.92, blue: 0.28, alpha: 1) : .white
 
         let icons = member.statusEffects.prefix(3).map(\.emoji).joined()

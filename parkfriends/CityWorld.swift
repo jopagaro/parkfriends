@@ -1,6 +1,9 @@
 import SpriteKit
 
-/// Zone 2 — City Center: main street, apartments, subway to Zone 3 (88×65).
+// City Center (64×48, compact per EB density rules): a tight downtown
+// grid — shops on the north row, apartments + police + Development Corp
+// in the middle band, cafe row south. Streets are corridors between
+// buildings, not oceans. North spur → construction, south → city south.
 enum CityWorld {
 
     struct BuildResult {
@@ -11,206 +14,159 @@ enum CityWorld {
         let playerSpawn: CGPoint
         let benchPositions: [CGPoint]
         let zoneExitNodes: [ZoneExitNode]
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
     static func build() -> BuildResult {
         let root = SKNode(); root.name = "world"
-        let tile = GameConstants.tileSize
-        let cols = GameConstants.cityCenterCols   // 88
-        let rows = GameConstants.cityCenterRows   // 65
-        let worldW = CGFloat(cols) * tile
-        let worldH = CGFloat(rows) * tile
+        let painter = ScenePainter(
+            root: root,
+            cols: GameConstants.cityCenterCols,
+            rows: GameConstants.cityCenterRows
+        )
+        let cols = painter.cols, rows = painter.rows
 
-        // Ground layer — real textures via ImportedArt, solid-color fallback.
-        let groundLayer = SKNode()
-        groundLayer.zPosition = GameConstants.ZPos.ground
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let n = WorldTerrain.makeCityGroundTile(
-                    col: c, row: r, tile: tile,
-                    isSidewalk:        CityMapDesign.isSidewalk(col: c, row: r),
-                    isRoad:            CityMapDesign.isMainStreetRoad(col: c, row: r),
-                    isCrosswalkArea:   CityMapDesign.isCrosswalkArea(col: c, row: r),
-                    isCrosswalkStripe: CityMapDesign.isCrosswalkStripe(col: c, row: r),
-                    isCurbLip:         CityMapDesign.isCurbLip(col: c, row: r)
-                )
-                groundLayer.addChild(n)
+        // L0 — concrete sidewalk everywhere, asphalt streets on top.
+        for yT in 0..<rows { for xT in 0..<cols {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.parkStoneTile(variant: (xT * 7 + yT * 13) % 3),
+                             z: PaintLayer.ground.z)
+        } }
+        // streets: two vertical avenues, two horizontal, N+S exit spurs
+        let streets = [
+            SpecRect(14, 0, 4, rows), SpecRect(46, 0, 4, rows),
+            SpecRect(0, 14, cols, 4), SpecRect(0, 32, cols, 4),
+            SpecRect(30, 0, 4, 14), SpecRect(30, 36, 4, rows - 36)
+        ]
+        for r in streets {
+            for yT in r.y..<(r.y + r.h) { for xT in r.x..<(r.x + r.w) {
+                let horizontal = r.h <= 4
+                let isCenter = horizontal ? (yT == r.y + 2) : (xT == r.x + 2)
+                let tex = isCenter
+                    ? ImportedArt.genTile("tile-road-dash-32")
+                    : ImportedArt.genTile("tile-road-\((xT + yT) % 2)-32")
+                painter.place1x1(at: xT, yT, texture: tex, z: PaintLayer.ground.z + 0.1)
+            } }
+        }
+        // zebra crosswalks on the walking routes
+        let crossings = [
+            SpecRect(7, 14, 2, 4), SpecRect(26, 14, 2, 4), SpecRect(56, 14, 2, 4),
+            SpecRect(7, 32, 2, 4), SpecRect(26, 32, 2, 4), SpecRect(56, 32, 2, 4),
+            SpecRect(30, 14, 4, 4), SpecRect(30, 32, 4, 4),
+            SpecRect(14, 24, 4, 2), SpecRect(46, 24, 4, 2)
+        ]
+        for r in crossings {
+            for yT in r.y..<(r.y + r.h) { for xT in r.x..<(r.x + r.w) {
+                painter.place1x1(at: xT, yT,
+                                 texture: ImportedArt.genTile("tile-road-cross-32"),
+                                 z: PaintLayer.ground.z + 0.15)
+            } }
+        }
+
+        // Buildings (blocking rect = footprint, door trigger below the facade).
+        func building(_ name: String, _ rect: SpecRect, door interior: InteriorKind? = nil) {
+            painter.placeSprite(rect, texture: ImportedArt.genTile(name), layer: .props)
+            painter.addBlockingRect(rect)
+            if let interior {
+                DoorNode.place(interior,
+                               at: SpecRect(rect.x + rect.w / 2 - 1, rect.y + rect.h, 2, 1),
+                               in: root, painter: painter)
             }
         }
-        root.addChild(groundLayer)
+        // North row (shops face the first street).
+        building("bldg-cafe-256x192",      SpecRect(3, 6, 8, 6),   door: .cafe)
+        building("bldg-hospital-256x224",  SpecRect(20, 5, 8, 7),  door: .hospital)
+        building("bldg-store-256x192",     SpecRect(36, 6, 8, 6),  door: .store)
+        building("bldg-store-256x192",     SpecRect(52, 6, 8, 6),  door: .store)
+        // Middle band between the streets.
+        building("bldg-apartment-256x256", SpecRect(2, 19, 8, 8),  door: .apartment)
+        building("bldg-police-256x224",    SpecRect(20, 20, 8, 7), door: .police)
+        building("bldg-devcorp-224x288",   SpecRect(36, 19, 7, 9))   // locked until the story says so
+        building("bldg-apartment-256x256", SpecRect(52, 19, 8, 8), door: .apartment)
+        // South row.
+        building("bldg-apartment-256x256", SpecRect(3, 37, 8, 8),  door: .apartment)
+        building("bldg-cafe-256x192",      SpecRect(20, 38, 8, 6), door: .cafe)
+        building("bldg-store-256x192",     SpecRect(52, 38, 8, 6), door: .store)
 
-        let border = SKNode()
-        border.physicsBody = {
-            let b = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero,
-                                                       size: CGSize(width: worldW, height: worldH)))
-            b.categoryBitMask = GameConstants.Category.wall
-            return b
-        }()
-        root.addChild(border)
-
-        // ── Buildings ─────────────────────────────────────────────────────────
-        let buildingLayer = SKNode(); buildingLayer.zPosition = GameConstants.ZPos.ground + 1
-
-        struct Spec {
-            let c: Int; let r: Int; let w: Int; let h: Int
-            let pal: BuildingFacade.PaletteKind; let seed: UInt64
+        // Street furniture: lamps at corners, hydrants, trash, trees, cars.
+        for (xT, yT) in [(2, 13), (20, 13), (44, 13), (61, 13),
+                         (2, 31), (20, 31), (44, 31), (61, 31)] {
+            painter.placeSprite(SpecRect(xT, yT - 1, 1, 2),
+                                texture: ImportedArt.lampTexture(city: true), layer: .props)
         }
-        let specs: [Spec] = [
-            // North apartment row (top, rows 34-52)
-            Spec(c: 1,  r: 34, w: 16, h: 18, pal: .brick,    seed: 501),
-            Spec(c: 21, r: 36, w: 14, h: 16, pal: .concrete, seed: 502),
-            Spec(c: 39, r: 34, w: 12, h: 16, pal: .wood,     seed: 503),
-            Spec(c: 55, r: 36, w: 14, h: 16, pal: .brick,    seed: 504),
-            Spec(c: 73, r: 34, w: 14, h: 18, pal: .concrete, seed: 505),
-            // Mid commercial row (rows 10-26)
-            Spec(c: 1,  r: 10, w: 16, h: 14, pal: .concrete, seed: 506),
-            Spec(c: 22, r: 10, w: 14, h: 14, pal: .wood,     seed: 507),
-            Spec(c: 40, r: 10, w: 12, h: 14, pal: .brick,    seed: 508),
-            Spec(c: 56, r: 10, w: 14, h: 14, pal: .concrete, seed: 509),
-            Spec(c: 74, r: 10, w: 13, h: 14, pal: .brick,    seed: 510),
-            // South plaza (rows 42-58)
-            Spec(c: 1,  r: 42, w: 16, h: 14, pal: .wood,     seed: 511),
-            Spec(c: 72, r: 42, w: 15, h: 14, pal: .brick,    seed: 512),
-        ]
-        for s in specs {
-            let facade = BuildingFacade.makeNode(
-                widthTiles: s.w, heightTiles: s.h, tile: tile,
-                palette: s.pal, seed: s.seed)
-            facade.position = CGPoint(x: CGFloat(s.c) * tile, y: CGFloat(s.r) * tile)
-            buildingLayer.addChild(facade)
-            let bw = CGFloat(s.w) * tile
-            let bh = CGFloat(s.h) * tile
-            let body = SKPhysicsBody(rectangleOf: CGSize(width: bw - 4, height: bh - 4),
-                                     center: CGPoint(x: bw / 2, y: bh / 2))
-            body.isDynamic = false
-            body.categoryBitMask = GameConstants.Category.wall
-            body.collisionBitMask = 0xFFFFFFFF
-            facade.physicsBody = body
+        for (xT, yT) in [(12, 13), (50, 31)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-hydrant-24x36"), layer: .props)
         }
-        root.addChild(buildingLayer)
+        for (xT, yT) in [(12, 19), (34, 30), (5, 35), (58, 35)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-trashcan-32x48"), layer: .props)
+        }
+        for (xT, yT) in [(11, 28), (44, 19), (34, 44), (12, 45)] {
+            painter.placeTree(SpecRect(xT, yT, 2, 3), texture: ImportedArt.parkSmallConifer())
+        }
+        // parked cars + the police cruiser outside HQ
+        for (xT, yT, name) in [(6, 15, "prop-car-red-96x48"), (38, 15, "prop-car-blue-96x48"),
+                               (52, 33, "prop-car-red-96x48"), (10, 33, "prop-car-blue-96x48")] {
+            painter.placeSprite(SpecRect(xT, yT, 3, 2), texture: ImportedArt.genTile(name), layer: .props)
+        }
+        painter.placeSprite(SpecRect(22, 33, 3, 2),
+                            texture: ImportedArt.genTile("prop-car-police-96x48"), layer: .props)
 
-        // ── Decor layer ───────────────────────────────────────────────────────
-        let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
-
-        // Street trees and furniture
-        let emojiDecor: [(String, Int, Int)] = [
-            // Street trees along main road
-            ("🌳", 36, 34), ("🌳", 52, 34), ("🌳", 36, 28), ("🌳", 52, 28),
-            ("🌳", 20, 34), ("🌳", 68, 34),
-            // Benches
-            ("🪑", 30, 33), ("🪑", 58, 33), ("🪑", 30, 42), ("🪑", 58, 42),
-            // Signs, crates, trash
-            ("🪧", 30, 28), ("📦", 24, 11), ("📦", 38, 11),
-            ("💡", 32, 14), ("🌺", 22, 32), ("🌺", 66, 32),
-            ("🌷", 22, 9),  ("🌷", 38, 9),
-            // Subway area
-            ("🚇", 44, 4), ("🪧", 42, 5), ("🪧", 46, 5),
-            // Misc city detail
-            ("🗑️", 20, 14), ("🗑️", 68, 14),
-            ("📦", 20, 22), ("📦", 68, 22),
-            ("🌳", 30, 56), ("🌳", 58, 56),
-            ("🪑", 30, 55), ("🪑", 58, 55),
-            ("🛒", 44, 50),
-            ("🪧", 44, 58),
-            ("🕳️", 52, 34),
-            ("🎨", 18, 12),  // street art on alley wall
-            ("🎨", 70, 12),
-            // Food cart / vendor area
-            ("🍕", 43, 43), ("☕", 45, 43),
-            ("🪑", 41, 44), ("🪑", 47, 44),
-        ]
-        for (glyph, c, r) in emojiDecor {
-            guard c >= 0, c < cols, r >= 0, r < rows else { continue }
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(glyph, size: 96))
-            n.size = CGSize(width: tile * 1.1, height: tile * 1.1)
-            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
-            decorLayer.addChild(n)
+        // Phone booths + flower planters — EB street dressing.
+        for (xT, yT) in [(12, 8), (44, 27)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 2),
+                                texture: ImportedArt.genTile("prop-phonebooth-40x80"), layer: .props)
+            painter.addBlockingRect(SpecRect(xT, yT + 1, 1, 1))
+        }
+        for (xT, yT) in [(4, 12), (30, 19), (34, 12), (46, 44)] {
+            painter.placeSprite(SpecRect(xT, yT, 2, 1),
+                                texture: ImportedArt.genTile("prop-planter-64x48"), layer: .props)
+            painter.addBlockingRect(SpecRect(xT, yT, 2, 1))
+        }
+        // Benches: pocket plaza beside Development Corp + street corners.
+        let benchTex = ImportedArt.genTile("prop-bench-64x40")
+        let benchSpots = [(45, 21), (45, 29), (12, 24), (34, 41)]
+        for (xT, yT) in benchSpots {
+            painter.placeSprite(SpecRect(xT, yT, 2, 1), texture: benchTex, layer: .props)
         }
 
-        // Streetlamps
-        let lampCoords: [(Int, Int)] = [
-            (15, 8),  (40, 8),  (72, 8),    // south row
-            (15, 28), (40, 29), (52, 29), (72, 28),  // mid
-            (15, 44), (72, 44),              // north plaza row
-            (30, 56), (58, 56),              // far north
-        ]
-        for (c, r) in lampCoords {
-            guard c >= 0, c < cols, r >= 0, r < rows else { continue }
-            let lamp = WorldSprites.makeLampPost(city: true)
-            lamp.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile)
-            decorLayer.addChild(lamp)
-        }
+        painter.addSceneBoundary()
 
-        // Officer Grumble territory near subway
-        let grumbleDecor: [(String, Int, Int)] = [
-            ("🚫", 42, 5), ("🚫", 46, 5),
-            ("🪧", 44, 5),
-        ]
-        for (g, c, r) in grumbleDecor {
-            guard c >= 0, c < cols, r >= 0, r < rows else { continue }
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
-            n.size = CGSize(width: tile * 1.05, height: tile * 1.05)
-            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
-            n.zPosition = GameConstants.ZPos.decor
-            decorLayer.addChild(n)
-        }
-
-        root.addChild(decorLayer)
-
-        // ── Zone exits ────────────────────────────────────────────────────────
-        let northToSouthBand = ZoneExitNode(
-            destination: .citySouth,
-            triggerSize: CGSize(width: worldW, height: tile * 3),
-            arrowCount: 7, edgeLabel: "→ City South")
-        northToSouthBand.position = CGPoint(x: worldW / 2, y: worldH - tile * 1.5)
-        root.addChild(northToSouthBand)
-
-        let subwayToNorth = ZoneExitNode(
+        // Exits: north spur → construction, south spur → city south.
+        var exits: [ZoneExitNode] = []
+        let nExit = ZoneExitNode(
             destination: .cityNorth,
-            triggerSize: CGSize(width: tile * 5, height: tile * 3),
-            arrowCount: 0)
-        subwayToNorth.position = CGPoint(x: tile * 44.5, y: tile * 3.5)
-        root.addChild(subwayToNorth)
-
-        let benchCoords: [(Int, Int)] = [(30, 33), (58, 33), (30, 42), (58, 42)]
-        let benchPositions = benchCoords.map {
-            CGPoint(x: CGFloat($0.0) * tile + tile / 2, y: CGFloat($0.1) * tile + tile / 2)
-        }
-
-        let playerSpawn = CGPoint(x: tile * 44.5, y: tile * 6)
-
-        let itemSpawns: [CGPoint] = [
-            CGPoint(x: tile * 34, y: tile * 34),
-            CGPoint(x: tile * 54, y: tile * 34),
-            CGPoint(x: tile * 34, y: tile * 12),
-            CGPoint(x: tile * 76, y: tile * 34),
-            CGPoint(x: tile * 12, y: tile * 34),
-            CGPoint(x: tile * 44, y: tile * 16),
-            CGPoint(x: tile * 20, y: tile * 56),
-            CGPoint(x: tile * 68, y: tile * 56),
-        ]
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "Construction"
+        )
+        nExit.position = painter.center(SpecRect(30, 0, 4, 1))
+        root.addChild(nExit); exits.append(nExit)
+        let sExit = ZoneExitNode(
+            destination: .citySouth,
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "City South"
+        )
+        sExit.position = painter.center(SpecRect(30, rows - 1, 4, 1))
+        root.addChild(sExit); exits.append(sExit)
 
         let npcSpawns: [CGPoint] = [
-            CGPoint(x: tile * 32, y: tile * 32),
-            CGPoint(x: tile * 56, y: tile * 32),
-            CGPoint(x: tile * 32, y: tile * 12),
-            CGPoint(x: tile * 44, y: tile * 10),
-            CGPoint(x: tile * 44, y: tile * 55),
-            CGPoint(x: tile * 22, y: tile * 56),
-            CGPoint(x: tile * 66, y: tile * 56),
-        ]
-
+            SpecRect(8, 13, 1, 1), SpecRect(26, 19, 1, 1), SpecRect(50, 26, 1, 1),
+            SpecRect(12, 37, 1, 1), SpecRect(36, 46, 1, 1), SpecRect(56, 13, 1, 1),
+            SpecRect(44, 37, 1, 1)
+        ].map(painter.center)
+        let itemSpawns: [CGPoint] = [
+            SpecRect(4, 26, 1, 1), SpecRect(58, 26, 1, 1), SpecRect(26, 45, 1, 1),
+            SpecRect(40, 12, 1, 1)
+        ].map(painter.center)
         let enemySpawns: [(EnemyKind, CGPoint)] = [
-            (.officerGrumble, CGPoint(x: tile * 44, y: tile * 8)),   // Boss — blocks subway
-            (.goose,          CGPoint(x: tile * 30, y: tile * 33)),   // territorial city goose
-            (.goose,          CGPoint(x: tile * 58, y: tile * 33)),
-            (.skateboardKid,  CGPoint(x: tile * 60, y: tile * 12)),
-            (.skateboardKid,  CGPoint(x: tile * 24, y: tile * 12)),
-            (.raccoon,        CGPoint(x: tile * 20, y: tile * 20)),
-            (.raccoon,        CGPoint(x: tile * 68, y: tile * 20)),
-            (.sternAdult,     CGPoint(x: tile * 34, y: tile * 12)),
-            (.sternAdult,     CGPoint(x: tile * 54, y: tile * 12)),
-            (.vendingMachine, CGPoint(x: tile * 44, y: tile * 46)),   // possessed machine
+            (.pigeon,        painter.center(SpecRect(10, 18, 1, 1))),
+            (.pigeon,        painter.center(SpecRect(38, 28, 1, 1))),
+            (.sternAdult,    painter.center(SpecRect(52, 28, 1, 1))),
+            (.skateboardKid, painter.center(SpecRect(16, 40, 1, 1))),
+            (.vendingMachine, painter.center(SpecRect(33, 24, 1, 1))),
+            // BOSS 2 — Officer Grumble guards the police station steps (§5.2)
+            (.officerGrumble, painter.center(SpecRect(26, 29, 1, 1)))
         ]
 
         return BuildResult(
@@ -218,9 +174,9 @@ enum CityWorld {
             npcSpawns: npcSpawns,
             itemSpawns: itemSpawns,
             enemySpawns: enemySpawns,
-            playerSpawn: playerSpawn,
-            benchPositions: benchPositions,
-            zoneExitNodes: [northToSouthBand, subwayToNorth]
+            playerSpawn: painter.center(SpecRect(31, rows - 4, 1, 1)),
+            benchPositions: benchSpots.map { painter.center(SpecRect($0.0, $0.1, 1, 1)) },
+            zoneExitNodes: exits
         )
     }
 }

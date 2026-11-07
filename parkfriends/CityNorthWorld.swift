@@ -1,6 +1,9 @@
 import SpriteKit
 
-/// Zone 3 — construction / warehouse district (88×48). Reachable via subway from city center.
+// Construction zone (56×36, compact per EB density rules): chain-link
+// walled site. Six functional areas — the build (slab/frame/crane), the
+// dig, the material yard, the staked phase-2 lot, the site office, and
+// the old-park remnant where Quack hides. South gate → City Center.
 enum CityNorthWorld {
 
     struct BuildResult {
@@ -13,211 +16,194 @@ enum CityNorthWorld {
         let benchPositions: [CGPoint]
         let zoneExitNodes: [ZoneExitNode]
         let quackNode: QuackNode?
+        var searchSpawns: [(SearchableKind, CGPoint)] = []
     }
 
     static func build() -> BuildResult {
         let root = SKNode(); root.name = "world"
-        let tile = GameConstants.tileSize
-        let cols = GameConstants.cityNorthCols   // 88
-        let rows = GameConstants.cityNorthRows   // 48
-        let worldW = CGFloat(cols) * tile
-        let worldH = CGFloat(rows) * tile
+        let painter = ScenePainter(
+            root: root,
+            cols: GameConstants.cityNorthCols,
+            rows: GameConstants.cityNorthRows
+        )
+        let cols = painter.cols, rows = painter.rows
 
-        // Ground layer — textured; paved south entrance + dirt/gravel construction zone.
-        let groundLayer = SKNode()
-        groundLayer.zPosition = GameConstants.ZPos.ground
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let pave = r < 8   // south entrance strip is paved asphalt
-                let n: SKSpriteNode
-                if pave {
-                    n = WorldTerrain.makeCityGroundTile(
-                        col: c, row: r, tile: tile,
-                        isSidewalk: false, isRoad: false,
-                        isCrosswalkArea: false, isCrosswalkStripe: false,
-                        isCurbLip: false
-                    )
-                } else {
-                    // Dirt / gravel: reuse path texture from ImportedArt, fallback to color.
-                    let variant = abs(((c &* 73) ^ (r &* 151) ^ ((c + r) &* 19)))
-                    let sz = CGSize(width: tile, height: tile)
-                    if let tex = ImportedArt.cityDirtTexture(variant: variant) {
-                        n = SKSpriteNode(texture: tex, size: sz)
-                    } else {
-                        let gravel = (c + r * 3) % 7 == 0
-                        n = SKSpriteNode(color: gravel ? GamePalette.dirtD3 : GamePalette.dirtD1, size: sz)
-                    }
-                    n.anchorPoint = .zero
-                    n.position = CGPoint(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+        // L0 — churned dirt; the old park's grass survives in the NE corner.
+        for yT in 0..<rows { for xT in 0..<cols {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-dirt-\((xT * 3 + yT * 7) % 3)-32"),
+                             z: PaintLayer.ground.z)
+        } }
+        painter.fillDarkGrass(rect: SpecRect(40, 2, 14, 6))
+
+        // Chain-link perimeter, gate at the south spur x=26..29.
+        let fenceTex = ImportedArt.genTile("prop-chainlink-32x64")
+        func fenceRun(_ rect: SpecRect) {
+            for yT in stride(from: rect.y, to: rect.y + rect.h, by: 1) {
+                for xT in rect.x..<(rect.x + rect.w) {
+                    painter.placeSprite(SpecRect(xT, yT - 1, 1, 2), texture: fenceTex, layer: .props)
                 }
-                groundLayer.addChild(n)
             }
+            painter.addBlockingRect(rect)
         }
-        root.addChild(groundLayer)
+        fenceRun(SpecRect(0, 1, cols, 1))
+        fenceRun(SpecRect(0, rows - 2, 26, 1))
+        fenceRun(SpecRect(30, rows - 2, cols - 30, 1))
+        fenceRun(SpecRect(0, 2, 1, rows - 4))
+        fenceRun(SpecRect(cols - 1, 2, 1, rows - 4))
 
-        let border = SKNode()
-        border.physicsBody = {
-            let b = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero,
-                                                       size: CGSize(width: worldW, height: worldH)))
-            b.categoryBitMask = GameConstants.Category.wall
-            return b
-        }()
-        root.addChild(border)
-
-        // ── Buildings / Warehouses ────────────────────────────────────────────
-        let buildingLayer = SKNode(); buildingLayer.zPosition = GameConstants.ZPos.ground + 1
-
-        struct Spec {
-            let c: Int; let r: Int; let w: Int; let h: Int
-            let pal: BuildingFacade.PaletteKind; let seed: UInt64
-        }
-        let specs: [Spec] = [
-            Spec(c: 1,  r: 8,  w: 18, h: 16, pal: .concrete, seed: 801),  // west warehouse
-            Spec(c: 1,  r: 28, w: 16, h: 14, pal: .brick,    seed: 802),  // west warehouse 2
-            Spec(c: 24, r: 10, w: 14, h: 14, pal: .brick,    seed: 803),  // center building
-            Spec(c: 24, r: 28, w: 14, h: 14, pal: .concrete, seed: 804),  // center building 2
-            Spec(c: 42, r: 9,  w: 18, h: 16, pal: .wood,     seed: 805),  // mid warehouse
-            Spec(c: 64, r: 8,  w: 18, h: 16, pal: .concrete, seed: 806),  // east warehouse (Quack here)
-            Spec(c: 64, r: 28, w: 18, h: 16, pal: .brick,    seed: 807),  // east warehouse 2
-        ]
-        for s in specs {
-            let facade = BuildingFacade.makeNode(
-                widthTiles: s.w, heightTiles: s.h, tile: tile,
-                palette: s.pal, seed: s.seed)
-            facade.position = CGPoint(x: CGFloat(s.c) * tile, y: CGFloat(s.r) * tile)
-            buildingLayer.addChild(facade)
-            let bw = CGFloat(s.w) * tile
-            let bh = CGFloat(s.h) * tile
-            let body = SKPhysicsBody(rectangleOf: CGSize(width: bw - 4, height: bh - 4),
-                                     center: CGPoint(x: bw / 2, y: bh / 2))
-            body.isDynamic = false
-            body.categoryBitMask = GameConstants.Category.wall
-            body.collisionBitMask = 0xFFFFFFFF
-            facade.physicsBody = body
-        }
-        root.addChild(buildingLayer)
-
-        // ── Decor ─────────────────────────────────────────────────────────────
-        let decorLayer = SKNode(); decorLayer.zPosition = GameConstants.ZPos.decor
-
-        let decor: [(String, Int, Int)] = [
-            // Construction zone markings
-            ("🚧", 22, 4),  ("🚧", 40, 4),  ("🚧", 62, 4),  ("🚧", 32, 5),
-            ("🚧", 20, 25), ("🚧", 60, 25), ("🚧", 40, 26),
-            // Heavy machinery
-            ("🏗️", 22, 14), ("🏗️", 60, 14), ("🏗️", 42, 28),
-            // Worker gear
-            ("🦺", 28, 8),  ("🦺", 52, 8),  ("🦺", 22, 26),
-            ("⛑️", 36, 10), ("⛑️", 50, 10),
-            // Crates and supplies
-            ("📦", 20, 9),  ("📦", 21, 9),  ("📦", 40, 7),  ("📦", 41, 7),
-            ("📦", 60, 9),  ("📦", 61, 9),  ("📦", 22, 27), ("📦", 60, 27),
-            // Tools and equipment
-            ("⛽", 22, 7),  ("🪣", 38, 7),  ("🔩", 44, 14), ("🪛", 45, 14),
-            ("🔦", 58, 7),  ("🪚", 52, 26),
-            // Signs and warnings
-            ("🪧", 44, 4),  ("🪧", 45, 4),
-            ("⚠️", 40, 42), ("⚠️", 48, 42), ("⚠️", 74, 14),
-            // Trash and misc
-            ("🗑️", 20, 5),  ("🗑️", 62, 5),
-            ("🌡️", 22, 20), ("🔦", 60, 20),
-            // Far north — deep construction
-            ("🏗️", 20, 40), ("🏗️", 65, 40),
-            ("📦", 30, 42), ("📦", 55, 42), ("📦", 74, 38),
-            ("🚧", 44, 42), ("🚧", 34, 40),
-        ]
-        for (g, c, r) in decor {
-            guard c >= 0, c < cols, r >= 0, r < rows else { continue }
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
-            n.size = CGSize(width: tile * 1.1, height: tile * 1.1)
-            n.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile + tile / 2)
-            decorLayer.addChild(n)
+        func prop(_ name: String, _ rect: SpecRect, block: Bool = true) {
+            painter.placeSprite(rect, texture: ImportedArt.genTile(name), layer: .props)
+            if block { painter.addBlockingRect(rect) }
         }
 
-        // Site lamps (industrial style)
-        for (c, r) in [(20, 8), (62, 8), (40, 10), (20, 26), (62, 26), (40, 30)] {
-            guard c >= 0, c < cols, r >= 0, r < rows else { continue }
-            let lamp = WorldSprites.makeLampPost(city: true)
-            lamp.position = CGPoint(x: CGFloat(c) * tile + tile / 2, y: CGFloat(r) * tile)
-            decorLayer.addChild(lamp)
+        // — Haul roads: gate → build/dig, west branch under the dig, east
+        //   branch to the office (directional track tiles) —
+        for yT in 10..<(rows - 2) { for xT in 26..<29 {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-track-\(yT % 3)-32"),
+                             z: PaintLayer.ground.z + 0.15)
+        } }
+        for xT in 8..<26 { for yT in 24..<26 {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-trackh-\(xT % 3)-32"),
+                             z: PaintLayer.ground.z + 0.15)
+        } }
+        for xT in 29..<44 { for yT in 30..<32 {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-trackh-\(xT % 3)-32"),
+                             z: PaintLayer.ground.z + 0.15)
+        } }
+
+        // — THE BUILD (NW): slab with girder frame, crane, mixer, lumber —
+        for yT in 3..<14 { for xT in 12..<26 {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-gravel-\((xT * 5 + yT * 3) % 3)-32"),
+                             z: PaintLayer.ground.z + 0.1)
+        } }
+        prop("prop-girderframe-224x160", SpecRect(15, 4, 7, 5))
+        painter.placeSprite(SpecRect(10, 2, 5, 8),
+                            texture: ImportedArt.genTile("prop-crane-160x240"), layer: .props)
+        painter.addBlockingRect(SpecRect(11, 8, 3, 2))
+        prop("prop-cementmixer-64x96", SpecRect(23, 9, 2, 3))
+        prop("prop-lumberstack-96x48", SpecRect(17, 10, 3, 2))
+        for (xT, yT) in [(23, 4), (23, 6)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-barrel-32x40"), layer: .props)
         }
 
-        root.addChild(decorLayer)
+        // — THE DIG (center): pit, excavator on the lip, spoil ring —
+        let pitRect = SpecRect(16, 17, 10, 6)
+        painter.autotile(painter.tiles([pitRect]),
+                         z: PaintLayer.ground.z + 0.2,
+                         interior: { ImportedArt.genTile("tile-pit-\(($0 * 5 + $1 * 7) % 3)-32") },
+                         tile: { ImportedArt.genBlobTile("sheet-pit-blob-128", col: $0, rowFromTop: $1) })
+        painter.addBlockingRect(pitRect)
+        prop("prop-excavator-128x96", SpecRect(11, 19, 4, 3))
+        prop("prop-mound-96x64", SpecRect(14, 15, 3, 2), block: false)
+        prop("prop-mound-96x64", SpecRect(24, 16, 3, 2), block: false)
+        prop("prop-mound-96x64", SpecRect(19, 23, 3, 2), block: false)
+        for (xT, yT) in [(15, 16), (26, 15), (15, 23), (26, 23)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-cone-24x32"), layer: .decor)
+        }
 
-        // ── Quack! Trapped near the east warehouse ────────────────────────────
+        // — MATERIAL YARD (SW): ordered rows on gravel —
+        for yT in 27..<34 { for xT in 2..<12 {
+            painter.place1x1(at: xT, yT,
+                             texture: ImportedArt.genTile("tile-gravel-\((xT * 7 + yT) % 3)-32"),
+                             z: PaintLayer.ground.z + 0.1)
+        } }
+        prop("prop-container-160x96", SpecRect(3, 27, 5, 3))
+        prop("prop-lumberstack-96x48", SpecRect(3, 31, 3, 2))
+        prop("prop-lumberstack-96x48", SpecRect(7, 31, 3, 2))
+        prop("prop-pipes-128x48", SpecRect(8, 27, 4, 2))
+        painter.placeSprite(SpecRect(10, 30, 1, 1),
+                            texture: ImportedArt.genTile("prop-barrel-32x40"), layer: .props)
+
+        // — PHASE-2 LOT (E): surveyor stakes + foundation trenches —
+        for (xT, yT) in [(33, 12), (40, 12), (47, 12), (33, 18), (40, 18), (47, 18),
+                         (33, 24), (40, 24), (47, 24)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-stake-16x32"), layer: .decor)
+        }
+        for r in [SpecRect(35, 15, 10, 1), SpecRect(35, 21, 10, 1)] {
+            painter.autotile(painter.tiles([r]),
+                             z: PaintLayer.ground.z + 0.2,
+                             tile: { ImportedArt.genBlobTile("sheet-pit-blob-128", col: $0, rowFromTop: $1) })
+            painter.addBlockingRect(r)
+        }
+        for (xT, yT) in [(38, 19), (45, 23), (49, 15)] {
+            painter.placeRock(SpecRect(xT, yT, 1, 1), variant: xT % 3 + 1)
+        }
+
+        // — SITE OFFICE (SE): trailer, welfare, the foreman's pickup —
+        prop("prop-trailer-192x128", SpecRect(44, 28, 6, 4))
+        prop("prop-portapotty-48x80", SpecRect(41, 28, 1, 2))
+        prop("prop-portapotty-48x80", SpecRect(43, 28, 1, 2))
+        prop("prop-dumpster-96x64", SpecRect(38, 32, 3, 2))
+        painter.placeSprite(SpecRect(50, 32, 3, 2),
+                            texture: ImportedArt.genTile("prop-car-red-96x48"), layer: .props)
+        painter.addBlockingRect(SpecRect(50, 32, 3, 2))
+        painter.placeSprite(SpecRect(45, 33, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
+
+        // — OLD-PARK REMNANT (NE): what the site is burying —
+        painter.placeTree(SpecRect(48, 2, 3, 4), texture: ImportedArt.parkMediumTree())
+        painter.placeSprite(SpecRect(42, 5, 2, 1),
+                            texture: ImportedArt.genTile("prop-bench-64x40"), layer: .props)
+        painter.placeSprite(SpecRect(41, 3, 1, 1),
+                            texture: ImportedArt.genTile("prop-tallgrass-0-32"), layer: .decor)
+        painter.placeSprite(SpecRect(52, 6, 1, 1),
+                            texture: ImportedArt.genTile("prop-tallgrass-1-32"), layer: .decor)
+
+        // — Route dressing + variation rubble in the open ground —
+        for (xT, yT) in [(25, 12), (30, 16), (25, 21), (30, 26), (25, 30),
+                         (31, 29), (37, 33), (10, 23), (18, 26)] {
+            painter.placeSprite(SpecRect(xT, yT, 1, 1),
+                                texture: ImportedArt.genTile("prop-cone-24x32"), layer: .decor)
+        }
+        prop("prop-dumpster-96x64", SpecRect(30, 4, 3, 2))
+        for (xT, yT) in [(6, 8), (8, 16), (34, 7), (52, 20), (36, 26), (20, 33),
+                         (6, 21), (52, 26), (33, 9)] {
+            painter.placeRock(SpecRect(xT, yT, 1, 1), variant: xT % 3 + 1)
+        }
+
+        // Quack, cornered in the NE grass patch behind the equipment.
         let quack = QuackNode()
-        quack.position = CGPoint(x: tile * 73, y: tile * 22)
+        quack.position = painter.center(SpecRect(46, 4, 1, 1))
         root.addChild(quack)
 
-        // Caution signs and barrier around Quack's hiding spot
-        let quackDecor: [(String, CGFloat, CGFloat)] = [
-            ("⚠️", tile * 70, tile * 20),
-            ("🚧", tile * 69, tile * 24),
-            ("🚧", tile * 77, tile * 24),
-            ("🚧", tile * 69, tile * 18),
-            ("🚧", tile * 77, tile * 18),
-        ]
-        for (g, x, y) in quackDecor {
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
-            n.size = CGSize(width: tile, height: tile)
-            n.position = CGPoint(x: x, y: y)
-            n.zPosition = GameConstants.ZPos.decor
-            root.addChild(n)
-        }
+        painter.addSceneBoundary()
 
-        // Foreman Rex blueprint / command post zone
-        let rexDecor: [(String, CGFloat, CGFloat)] = [
-            ("📋", tile * 43, tile * 24),
-            ("⛑️", tile * 40, tile * 26),
-            ("⛑️", tile * 46, tile * 26),
-            ("🪧", tile * 43, tile * 26),
-        ]
-        for (g, x, y) in rexDecor {
-            let n = SKSpriteNode(texture: SpriteFactory.emojiTexture(g, size: 96))
-            n.size = CGSize(width: tile, height: tile)
-            n.position = CGPoint(x: x + tile / 2, y: y + tile / 2)
-            n.zPosition = GameConstants.ZPos.decor
-            root.addChild(n)
-        }
-
-        // ── Zone exit ─────────────────────────────────────────────────────────
-        let south = ZoneExitNode(
+        var exits: [ZoneExitNode] = []
+        let sExit = ZoneExitNode(
             destination: .cityCenter,
-            triggerSize: CGSize(width: worldW, height: tile),
-            arrowCount: 7, edgeLabel: "→ City Center")
-        south.position = CGPoint(x: worldW / 2, y: tile / 2)
-        root.addChild(south)
+            triggerSize: CGSize(width: GameConstants.tileSize * 4, height: GameConstants.tileSize),
+            arrowCount: 5, edgeLabel: "City Center"
+        )
+        sExit.position = painter.center(SpecRect(26, rows - 1, 4, 1))
+        root.addChild(sExit); exits.append(sExit)
 
         return BuildResult(
             root: root,
-            npcSpawns: [
-                CGPoint(x: tile * 36, y: tile * 22),   // worker near center
-                CGPoint(x: tile * 22, y: tile * 20),   // west worker
-                CGPoint(x: tile * 30, y: tile * 38),   // deep site worker
-            ],
-            itemSpawns: [
-                CGPoint(x: tile * 44, y: tile * 22),
-                CGPoint(x: tile * 22, y: tile * 24),
-                CGPoint(x: tile * 62, y: tile * 24),
-                CGPoint(x: tile * 44, y: tile * 38),
-                CGPoint(x: tile * 20, y: tile * 38),
-                CGPoint(x: tile * 68, y: tile * 38),
-            ],
+            npcSpawns: [SpecRect(18, 8, 1, 1), SpecRect(14, 25, 1, 1),
+                        SpecRect(36, 16, 1, 1), SpecRect(46, 26, 1, 1)].map(painter.center),
+            itemSpawns: [SpecRect(9, 29, 1, 1), SpecRect(50, 24, 1, 1),
+                         SpecRect(20, 32, 1, 1)].map(painter.center),
             fixedItems: [],
             enemySpawns: [
-                (.foremanRex,     CGPoint(x: tile * 44, y: tile * 26)),   // Boss
-                (.vendingMachine, CGPoint(x: tile * 22, y: tile * 6)),
-                (.skateboardKid,  CGPoint(x: tile * 50, y: tile * 6)),
-                (.skateboardKid,  CGPoint(x: tile * 38, y: tile * 36)),
-                (.wasp,           CGPoint(x: tile * 24, y: tile * 6)),
-                (.wasp,           CGPoint(x: tile * 62, y: tile * 36)),
-                (.sternAdult,     CGPoint(x: tile * 56, y: tile * 6)),
-                (.sternAdult,     CGPoint(x: tile * 34, y: tile * 36)),
-                (.raccoon,        CGPoint(x: tile * 44, y: tile * 42)),
+                (.wasp,           painter.center(SpecRect(32, 6, 1, 1))),
+                (.wasp,           painter.center(SpecRect(44, 20, 1, 1))),
+                (.raccoon,        painter.center(SpecRect(5, 30, 1, 1))),
+                (.vendingMachine, painter.center(SpecRect(34, 30, 1, 1))),
+                (.sternAdult,     painter.center(SpecRect(33, 28, 1, 1))),
+                // BOSS 3 — Foreman Rex stands between you and the dig (§5.2)
+                (.foremanRex,     painter.center(SpecRect(21, 15, 1, 1)))
             ],
-            playerSpawn: CGPoint(x: tile * 44.5, y: worldH - tile * 4),
+            playerSpawn: painter.center(SpecRect(27, rows - 4, 1, 1)),
             benchPositions: [],
-            zoneExitNodes: [south],
+            zoneExitNodes: exits,
             quackNode: quack
         )
     }

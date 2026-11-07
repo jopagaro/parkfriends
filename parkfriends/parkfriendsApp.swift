@@ -2,6 +2,10 @@ import SwiftUI
 
 @main
 struct parkfriendsApp: App {
+    init() {
+        MapSnapshot.runIfRequested()
+    }
+
     var body: some Scene {
 #if canImport(AppKit)
         WindowGroup {

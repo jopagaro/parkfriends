@@ -200,7 +200,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
 
     var isBoss: Bool {
         switch self {
-        case .grandGooseGerald, .officerGrumble, .foremanRex: true
+        case .grandGooseGerald, .officerGrumble, .foremanRex, .flockLeader: true
         default: false
         }
     }
@@ -212,6 +212,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: "🦢"
         case .officerGrumble:   "👮"
         case .foremanRex:       "👷"
+        case .flockLeader:      "🐦"
         default: ""
         }
     }
@@ -222,6 +223,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: "Ruler of the Pond"
         case .officerGrumble:   "12 Years on the Force. Zero Tolerance for Fun."
         case .foremanRex:       "The Man Behind the Construction"
+        case .flockLeader:      "Union Boss of the Rooftop Flock"
         default: ""
         }
     }
@@ -232,7 +234,27 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: "Gerald didn't ask to be this way. The pond just makes him this way."
         case .officerGrumble:   "He has a clipboard. He has been waiting to use it."
         case .foremanRex:       "He doesn't know what's under the site. He doesn't care."
+        case .flockLeader:      "Every crumb in this suburb passes through his beak first."
         default: ""
+        }
+    }
+
+    /// Story toasts shown in sequence after this boss goes down.
+    var bossVictoryBeats: [String] {
+        switch self {
+        case .grandGooseGerald:
+            return ["Gerald yields the fountain. He keeps the sash. Nobody argues.",
+                    "The south gate to the city is open."]
+        case .flockLeader:
+            return ["The flock scatters south in a panic of gray wings.",
+                    "Whatever spooked the pond, the pigeons answer to the city now."]
+        case .officerGrumble:
+            return ["Grumble looks at his clipboard, then at you, then eats the donut.",
+                    "The construction site gate stands unguarded."]
+        case .foremanRex:
+            return ["Rex, quietly: \"It was down there before any of us, you know.\"",
+                    "The dig lies open. Something old is waiting underneath."]
+        default: return []
         }
     }
 
@@ -241,6 +263,7 @@ enum EnemyKind: String, CaseIterable, Codable, Sendable {
         case .grandGooseGerald: 80
         case .officerGrumble:   Int(Double(maxHP) * 0.60)
         case .foremanRex:       Int(Double(maxHP) * 0.50)
+        case .flockLeader:      Int(Double(maxHP) * 0.50)
         default: 0
         }
     }
@@ -575,15 +598,28 @@ final class EnemyNode: SKSpriteNode {
     private var nextMoveTime: TimeInterval = 0
     private var hpBarBg:   SKSpriteNode!
     private var hpBarFill: SKSpriteNode!
+    private var currentDirectionRow = 0
 
     init(kind: EnemyKind) {
         self.kind = kind
         self.hp   = kind.maxHP
 
         let tex = WorldSprites.overworldTexture(enemy: kind)
-        let size = kind.isBoss
-            ? CGSize(width: 72, height: 72)
-            : CGSize(width: 48, height: 48)
+        let isHuman: Bool
+        switch kind {
+        case .ranger, .sternAdult, .skateboardKid, .officerGrumble, .foremanRex: isHuman = true
+        default: isHuman = false
+        }
+        let size: CGSize
+        if isHuman {
+            // Same 2:3 ruler as NPC humans (128×192 canvas); bosses loom.
+            size = kind.isBoss ? CGSize(width: 72, height: 108) : CGSize(width: 64, height: 96)
+        } else if kind == .goose || kind == .grandGooseGerald {
+            // goose art is 48×56 — keep the tall aspect
+            size = kind.isBoss ? CGSize(width: 66, height: 77) : CGSize(width: 46, height: 54)
+        } else {
+            size = kind.isBoss ? CGSize(width: 72, height: 72) : CGSize(width: 48, height: 48)
+        }
         super.init(texture: tex, color: .clear, size: size)
         name      = "enemy"
         zPosition = GameConstants.ZPos.entity
@@ -659,6 +695,67 @@ final class EnemyNode: SKSpriteNode {
 
     // MARK: - Overworld AI
 
+    private func directionalFrames() -> [SKTexture] {
+        switch kind {
+        case .pigeon:
+            let angry = ImportedArt.genCritterFrames("pigeon-angry", "40x40", directionRow: currentDirectionRow)
+            return angry.isEmpty ? ImportedArt.birdFrames(white: false, directionRow: currentDirectionRow) : angry
+        case .goose, .grandGooseGerald:
+            let angry = ImportedArt.genCritterFrames("goose-angry", "48x56", directionRow: currentDirectionRow)
+            return angry.isEmpty ? ImportedArt.birdFrames(white: true, directionRow: currentDirectionRow) : angry
+        case .raccoon:
+            let angry = ImportedArt.genCritterFrames("raccoon-angry", "48x48", directionRow: currentDirectionRow)
+            return angry.isEmpty ? ImportedArt.raccoonFrames(directionRow: currentDirectionRow) : angry
+        case .wasp:
+            return ImportedArt.genCritterFrames("wasp", "40x40", directionRow: currentDirectionRow)
+        case .flockLeader:
+            return ImportedArt.genCritterFrames("pigeon-angry", "40x40", directionRow: currentDirectionRow)
+        case .ranger:
+            return ImportedArt.genRoleWalkFrames(role: "ranger", directionRow: currentDirectionRow)
+        case .sternAdult:
+            return ImportedArt.genRoleWalkFrames(role: "sternadult", directionRow: currentDirectionRow)
+        case .skateboardKid:
+            return ImportedArt.genRoleWalkFrames(role: "skaterkid", directionRow: currentDirectionRow)
+        case .officerGrumble:
+            return ImportedArt.genRoleWalkFrames(role: "officer", directionRow: currentDirectionRow)
+        case .foremanRex:
+            return ImportedArt.genRoleWalkFrames(role: "foreman", directionRow: currentDirectionRow)
+        default:
+            return []
+        }
+    }
+
+    private func updateDirectionalTexture(dx: CGFloat, dy: CGFloat) {
+        let row: Int
+        if abs(dx) < 0.001 && abs(dy) < 0.001 {
+            row = currentDirectionRow
+        } else {
+            let angle = atan2(dy, dx)
+            let octant = Int(round(angle / (.pi / 4)))
+            switch octant {
+            case 0: row = 6
+            case 1: row = 5
+            case 2: row = 4
+            case 3: row = 3
+            case 4, -4: row = 2
+            case -3: row = 1
+            case -2: row = 0
+            case -1: row = 7
+            default: row = 0
+            }
+        }
+        if row != currentDirectionRow {
+            currentDirectionRow = row
+        }
+        let frames = directionalFrames()
+        if let first = frames.first {
+            texture = first
+            xScale = abs(xScale)
+        } else {
+            xScale = dx < 0 ? -1 : 1
+        }
+    }
+
     func tick(now: TimeInterval, playerPos: CGPoint) {
         guard !isDead, let body = physicsBody else { return }
 
@@ -669,18 +766,20 @@ final class EnemyNode: SKSpriteNode {
         if dist < kind.visionRadius {
             let len = max(dist, 0.001)
             body.velocity = CGVector(dx: dx/len * kind.speed, dy: dy/len * kind.speed)
-            xScale = dx < 0 ? -1 : 1
+            updateDirectionalTexture(dx: dx, dy: dy)
         } else {
             if now >= nextMoveTime {
                 nextMoveTime = now + Double.random(in: 1.5...3.5)
                 let angle = CGFloat.random(in: 0 ..< 2 * .pi)
                 body.velocity = CGVector(dx: cos(angle)*kind.speed*0.4,
                                          dy: sin(angle)*kind.speed*0.4)
+                updateDirectionalTexture(dx: body.velocity.dx, dy: body.velocity.dy)
             }
             let homeDx = position.x - patrolOrigin.x
             let homeDy = position.y - patrolOrigin.y
             if homeDx*homeDx + homeDy*homeDy > 200*200 {
                 body.velocity = CGVector(dx: -homeDx*0.5, dy: -homeDy*0.5)
+                updateDirectionalTexture(dx: -homeDx, dy: -homeDy)
             }
         }
     }
